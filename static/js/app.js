@@ -4378,9 +4378,6 @@ function toggleSelectAll() {
     scheduleRender();
 }
 function toggleSelectAllRows() {
-    // Header/title-bar checkbox: always behaves as "select all" (action-mode-independent),
-    // only exclude_from_totals is respected - unlike the action-bar's ☑/☐ button, which
-    // intentionally only selects rigs eligible for the currently active CPU/GPU/AUX mode.
     const eligible = getSelectAllEligibleRigNames();
     if (eligible.length === 0) return;
     const allSelected = eligible.every(name => selectedRigs.has(name));
@@ -6323,8 +6320,6 @@ function looksLikePoolAddress(value) {
     return /^(?:stratum\+ssl:\/\/|stratum\+tcp:\/\/|ssl:\/\/|tcp:\/\/)?(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}:\d{2,5}$/.test(String(value).trim());
 }
 function findBarePoolAddressesInText(text) {
-    // Catches pasted content with no -o/--pool flag at all - just a bare pool address, or a
-    // list of them (one per line, comma-separated, or space-separated).
     if (!text) return [];
     const tokens = text.split(/[\s,]+/).filter(Boolean);
     const found = [];
@@ -6346,9 +6341,6 @@ function extractFlightsheetFieldsFromFlags(rawText) {
         for (const aliasKey of aliasKeys) {
             if (flags[aliasKey] && flags[aliasKey].length > 0) {
                 if (canonical === "pool") {
-                    // A batch file can list failover pools as repeated -o flags, as one
-                    // comma-separated -o value, or both - collect every pool from every
-                    // occurrence of this flag, not just the first one found.
                     const allPools = flags[aliasKey]
                         .flatMap((v) => String(v).split(","))
                         .map((v) => v.trim())
@@ -6479,9 +6471,6 @@ function looksLikeMmposConfig(parsed) {
         Array.isArray(parsed.pools));
 }
 function translateMmposLoginTemplate(tpl) {
-    // mmpOS login strings use its own %wallet_address%/%rig_name%/%miner_id% tokens -
-    // translate to this dashboard's %WAL%/%WORKER_NAME% vocabulary so TEMPLATE is usable
-    // as-is (same idea as HiveOS's own %WAL%.%WORKER_NAME% default).
     if (!tpl) return "";
     return String(tpl)
         .replace(/%wallet_address%/gi, "%WAL%")
@@ -6490,10 +6479,6 @@ function translateMmposLoginTemplate(tpl) {
         .replace(/%miner_id%/gi, "");
 }
 function extractMmposExtraArgs(commandline, algo) {
-    // The rest of mmpOS's commandline (after stripping the leading script invocation and the
-    // --address/--worker flags, which are already represented via TEMPLATE, and --algo, which
-    // is already represented via ALGO) is real extra flags like --cpu/--gpu - keep those so
-    // they aren't silently dropped.
     if (typeof commandline !== "string" || !commandline.trim()) return "";
     let s = commandline.trim();
     s = s.replace(/^\S+\s*/, "");
@@ -6517,8 +6502,6 @@ function buildItemFromMmposConfig(parsed) {
     item.pool_ssl = false;
     item.miner = isCustom ? "custom" : (mp.miner || "");
     if (isCustom) {
-        // mmpOS ships a custom miner as one downloadable package (custom_url) rather than a
-        // separately-named binary - reuse the profile name as the CUSTOM_MINER label.
         item.miner_alt = mp.name || "";
     }
     item.miner_config = {
@@ -6543,16 +6526,11 @@ function looksLikeRaveosConfig(parsed) {
         Array.isArray(parsed.coins));
 }
 function minerNameFromRaveosPath(path) {
-    // RaveOS's task config doesn't name the miner directly - work_dir/miner_dir point at
-    // e.g. "/hive/miners/custom/nbminer", so the last path segment is the miner's own name.
     if (typeof path !== "string" || !path.trim()) return "";
     const parts = path.trim().replace(/\/+$/, "").split("/");
     return parts[parts.length - 1] || "";
 }
 function raveosPoolTypeIsSsl(poolType) {
-    // pool_type is a bitmask per RaveOS's custom_mining docs: low nibble is the connection
-    // scheme (TCP=0x1, SSL=0x2, HTTP=0x4, TLS=0x8), high nibble is proxy mode (ETH_PROXY=0x10,
-    // QTMINER=0x20, MINER_PROXY=0x40, NICEHASH=0x80). Treat SSL or TLS bits as encrypted.
     const v = Number(poolType);
     if (!Number.isFinite(v)) return false;
     return (v & 0x2) === 0x2 || (v & 0x8) === 0x8;
@@ -6571,8 +6549,6 @@ function buildItemFromRaveosConfig(parsed) {
         url: pool0.url || "",
         algo: coin0.algo || "",
         pass: auth.pass || pool0.password || "x",
-        // RaveOS's own pools[].user follows exactly this wallet.worker shape, so it's a safe
-        // default template rather than a guess.
         template: auth.ewal ? "%WAL%.%WORKER_NAME%" : "",
         user_config: (parsed.args || "").trim(),
     };
@@ -7772,8 +7748,6 @@ function autoSizeOcListColumns() {
     const headerFont = headerNameEl ? fsListColumnFont(headerNameEl) : null;
     const sampleRowNameEl = rowGrids.length > 0 ? rowGrids[0].children[0] : null;
     const rowFont = sampleRowNameEl ? fsListColumnFont(sampleRowNameEl) : headerFont;
-    // Each column's floor is its own header title's measured width - not an
-    // arbitrary guessed pixel value - so the title never gets truncated.
     const titleNamePx = headerNameEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerNameEl, headerFont)) : 0;
     const titleApplyAlgoPx = headerApplyAlgoEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerApplyAlgoEl, headerFont)) : 0;
     const titleAlgoPx = headerAlgoEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerAlgoEl, headerFont)) : 0;
@@ -8058,10 +8032,6 @@ function rebuildOcRawFromRows() {
 function populateOcAlgoApplySelect() {
     const select = document.getElementById("oc-algo-apply-select");
     if (!select) return;
-    // Read algo names straight from the row inputs (not collectOcRows()) so this
-    // never triggers the numeric-field validation alert that function throws -
-    // buildOcScriptFromRows() already calls collectOcRows() once per rebuild;
-    // calling it again here would risk double-alerting on an invalid field.
     const names = [];
     document.querySelectorAll("#oc-rows .oc-row .oc-algo").forEach(input => {
         (input.value || "").split(",").map(a => a.trim()).filter(Boolean).forEach(n => {
@@ -8091,10 +8061,6 @@ function onOcAlgoApplySelectChange() {
     const rawEl = document.getElementById("oc-raw");
     if (!select || !rawEl) return;
     ocApplyInvokeAlgo = select.value;
-    // Targeted edit only: strip a previously-appended invocation line (if any),
-    // then append the new one. Does NOT rebuild the raw script from the row
-    // table, so any other manual edits already sitting in Raw Content are left
-    // untouched.
     let text = rawEl.value.replace(/\n*sudo \/usr\/local\/bin\/gpu_apply_ocs\.sh \S+\s*$/, "");
     text = text.replace(/\s+$/, "");
     if (ocApplyInvokeAlgo) {

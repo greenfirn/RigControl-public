@@ -17,9 +17,7 @@ try:
 except ImportError as e:
     print(f"Warning: Telemetry module not available: {e}")
     TELEMETRY_AVAILABLE = False
-# ================================================================
 # GLOBAL SETTINGS
-# ================================================================
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 1883
 BROKER_USER = None
@@ -30,15 +28,11 @@ STATS_DB_ENABLED = True
 STATS_DB_MAX_HISTORY_DAYS = 7
 STATS_DB_INTERVAL_SECONDS = 90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
-# ================================================================
 # LOGGING
-# ================================================================
 def log(msg):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[RigControl] {timestamp} {msg}", flush=True)
-# ================================================================
 # CONFIG - load
-# ================================================================
 def load_broker_config():
     """Load configuration from rigcontrol_agent.conf"""
     global CONFIG_PATH
@@ -62,9 +56,7 @@ def load_broker_config():
     except Exception as e:
         log(f"Config load error: {e}")
     return cfg
-# ================================================================
 # CONFIG - LOCAL MQTT OR AWS
-# ================================================================
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
 if USE_AWS:
@@ -82,9 +74,7 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
-# ================================================================
 # CONFIG - LOCAL STATS DB
-# ================================================================
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
     STATS_DB_MAX_HISTORY_DAYS = int(cfg.get("STATS_DB_MAX_HISTORY_DAYS", STATS_DB_MAX_HISTORY_DAYS))
@@ -108,9 +98,7 @@ log(f"[Config] Local stats DB max history days = {STATS_DB_MAX_HISTORY_DAYS}")
 log(f"[Config] Local stats DB periodic save interval = {STATS_DB_INTERVAL_SECONDS}s")
 log(f"[Config] Local stats DB path = {STATS_DB_PATH}")
 log(f"[Config] Minimum telemetry pull interval = {MIN_TELEMETRY_PULL_INTERVAL_SECONDS}s")
-# ================================================================
 # TOPICS
-# ================================================================
 TOPIC_PREFIX = "rigcontrol"
 RIG_NAME = socket.gethostname().lower()
 STATUS_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/status"
@@ -266,9 +254,7 @@ def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None)
                 f.writelines(lines)
     except Exception as e:
         log(f"[StatsDB] Error persisting stats config to conf: {e}")
-# ================================================================
 # SYSTEM STATS COLLECTION (Fallback if telemetry not available)
-# ================================================================
 def collect_basic_stats():
     """Collect basic system stats as fallback"""
     stats = {
@@ -315,9 +301,7 @@ def collect_full_stats():
     stats = collect_basic_stats()
     stats["telemetry_status"] = "fallback"
     return stats
-# ================================================================
 # MQTT PUBLISH FUNCTIONS
-# ================================================================
 _last_telemetry_pull_ts = 0.0
 _telemetry_pull_lock = threading.Lock()
 def publish_status(reason="request"):
@@ -368,9 +352,7 @@ def publish_check():
             log(f"Failed to publish check: MQTT error {result.rc}")
     except Exception as e:
         log(f"Error publishing check: {e}")
-# ================================================================
 # COMMAND HANDLER (Same as Ubuntu version - pass command via STDIN)
-# ================================================================
 def handle_command(raw):
     """Handle incoming MQTT commands (same format as Ubuntu version)"""
     log(f"Command received RAW: {raw}")
@@ -429,9 +411,7 @@ def handle_command(raw):
             "stderr": f"Command script not found: {CMD_SCRIPT}"
         }
         mqtt_client.publish(RESP_TOPIC, json.dumps(response))
-# ================================================================
 # STATS CONTROL HANDLER
-# ================================================================
 def handle_stats_control(raw):
     """Handles incoming MQTT stats_control messages: enables/disables and/or live-tweaks local stats DB settings, persisting to conf."""
     log(f"Stats control message received: {raw}")
@@ -449,9 +429,7 @@ def handle_stats_control(raw):
         data.get("interval_seconds"),
     )
     publish_status("stats-control")
-# ================================================================
 # STATS HISTORY REQUEST HANDLER
-# ================================================================
 def mqtt_publish_resilient(topic, payload_str, context):
     """Synchronous MQTT publish with one retry on failure; success only reflects local queuing, not broker acknowledgment."""
     try:
@@ -542,9 +520,7 @@ def handle_stats_request(raw):
         log(f"Stats history sent: {total_entries} entries covering {days} day(s) from {start_date} ({req_id}) in {chunk_count} chunk(s), {total_bytes} bytes total")
     else:
         log(f"Stats history sent: {total_entries} entries covering last {days} day(s) ({req_id}) in {chunk_count} chunk(s), {total_bytes} bytes total")
-# ================================================================
 # STATS DB PERIODIC SAVE LOOP
-# ================================================================
 def stats_db_periodic_loop():
     """Background thread loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS) independent of refresh/cmd-triggered publishes, skipping a cycle if a more recent row already exists."""
     CHECK_EVERY = 5
@@ -565,9 +541,7 @@ def stats_db_periodic_loop():
             log(f"[StatsDB] Periodic save ({STATS_DB_INTERVAL_SECONDS}s interval)")
         except Exception as e:
             log(f"[StatsDB] Periodic collection error: {e}")
-# ================================================================
 # MQTT CALLBACKS
-# ================================================================
 def on_connect(client, userdata, flags, rc):
     """MQTT connection callback"""
     if rc == 0:
@@ -616,9 +590,7 @@ def on_disconnect(client, userdata, rc):
         log(f"Unexpected MQTT disconnection (code: {rc}), reconnecting...")
     else:
         log("MQTT disconnected gracefully")
-# ================================================================
 # MAIN
-# ================================================================
 def main():
     """Main synchronous entry point"""
     global mqtt_client

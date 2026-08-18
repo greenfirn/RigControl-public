@@ -39,18 +39,14 @@ USAGE:
 Always run without --write first and review the diff before committing.
 Back up the .db file before running with --write, just in case.
 """
-
 import sqlite3
 import sys
 import shutil
 import datetime
-
 TARGET_PREFIXES = (
     "tee /etc/rigcontrol/rig-gpu.conf",
     "tee /etc/rigcontrol/rig-cpu.conf",
 )
-
-
 def strip_zero_column(text):
     """Rewrite every 'KEY 0 VALUE' line to 'KEY VALUE'. Any other line
     (including lines where the 2nd token is "ALL", or isn't a bare "0"
@@ -65,32 +61,25 @@ def strip_zero_column(text):
         else:
             out_lines.append(line)
     return "\n".join(out_lines), changed
-
-
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
-
     db_path = sys.argv[1]
     write = "--write" in sys.argv[2:]
-
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
         "SELECT FlightsheetId, GpuId, Key, Value FROM flightsheets WHERE Key='RAW_COMMAND'"
     )
     rows = cur.fetchall()
-
     any_changed = False
     for flightsheet_id, gpu_id, key, value in rows:
         if not value or not value.startswith(TARGET_PREFIXES):
             continue
-
         new_value, changed = strip_zero_column(value)
         if not changed:
             continue
-
         any_changed = True
         print(f"===== {flightsheet_id} (GpuId={gpu_id}) =====")
         old_lines = value.split("\n")
@@ -100,26 +89,20 @@ def main():
                 print(f"  - {old_line}")
                 print(f"  + {new_line}")
         print()
-
         if write:
             cur.execute(
                 "UPDATE flightsheets SET Value = ? WHERE FlightsheetId = ? AND GpuId = ? AND Key = ?",
                 (new_value, flightsheet_id, gpu_id, key),
             )
-
     if not any_changed:
         print("No matching '0'-column lines found - nothing to change.")
         conn.close()
         return
-
     if write:
         conn.commit()
         print(f"Wrote changes to {db_path}.")
     else:
         print("Dry run only - no changes written. Re-run with --write to apply.")
-
     conn.close()
-
-
 if __name__ == "__main__":
     main()

@@ -9,23 +9,17 @@ import urllib.request
 import os
 import datetime
 from aiomqtt import Client, MqttError
-# ================================================================
 # GLOBAL SETTINGS
-# ================================================================
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 1883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = "/usr/local/bin/rigcontrol_cmd.sh"
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
-# ================================================================
 # LOGGING
-# ================================================================
 def log(msg):
     print(f"[RigControl] {msg}", flush=True)
-# ================================================================
 # CONFIG - load
-# ================================================================
 def load_broker_config():
     path = "/etc/rigcontrol/rigcontrol-agent.conf"
     cfg = {}
@@ -43,9 +37,7 @@ def load_broker_config():
     except Exception as e:
         log(f"Config load error: {e}")
     return cfg
-# ================================================================
 # CONFIG - LOCAL MQTT OR AWS
-# ================================================================
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
 if USE_AWS:
@@ -70,9 +62,7 @@ try:
 except (TypeError, ValueError):
     MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
 log(f"[Config] Minimum telemetry pull interval = {MIN_TELEMETRY_PULL_INTERVAL_SECONDS}s")
-# ================================================================
 # TOPICS
-# ================================================================
 TOPIC_PREFIX = "rigcontrol"
 RIG_NAME = socket.gethostname()
 STATUS_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/status"
@@ -81,9 +71,7 @@ CMD_TOPIC_ALL = f"{TOPIC_PREFIX}/all/cmd"
 CHECK_TOPIC_DIRECT = f"{TOPIC_PREFIX}/{RIG_NAME}/check"
 CHECK_TOPIC_ALL = f"{TOPIC_PREFIX}/all/check"
 RESP_TOPIC   = f"{TOPIC_PREFIX}/{RIG_NAME}/cmd_response"
-# ================================================================
 # RUN SHELL HELPERS (unchanged)
-# ================================================================
 def run(cmd):
     proc = subprocess.run(cmd, shell=True, text=True,
                           stdout=subprocess.PIPE,
@@ -91,9 +79,7 @@ def run(cmd):
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 _last_telemetry_pull_ts = 0.0
 _telemetry_pull_in_progress = False
-# ================================================================
 # ASYNC PUBLISH
-# ================================================================
 async def publish_status(mqtt, reason="periodic"):
     global _last_telemetry_pull_ts, _telemetry_pull_in_progress
     if _telemetry_pull_in_progress:
@@ -115,9 +101,7 @@ async def publish_status(mqtt, reason="periodic"):
         log(f"Telemetry sent ({reason})")
     finally:
         _telemetry_pull_in_progress = False
-# ================================================================
 # ASYNC COMMAND HANDLER (EXTERNAL SCRIPT)
-# ================================================================
 async def handle_command(raw, mqtt):
     log(f"Command received RAW: {raw}")
     try:
@@ -154,9 +138,7 @@ async def handle_command(raw, mqtt):
         await publish_status(mqtt, "cmd-run")
     except Exception as e:
         log(f"Command execution error: {e}")
-# ================================================================
 # Publish check
-# ================================================================
 async def publish_check(mqtt):
     payload = {
         "rig": RIG_NAME,
@@ -166,9 +148,7 @@ async def publish_check(mqtt):
         "state": "online"
     }
     await mqtt.publish(STATUS_TOPIC, json.dumps(payload))
-# ================================================================
 # MQTT LOOP (LOCAL BROKER, AUTH OPTIONAL)
-# ================================================================
 async def mqtt_loop():
     while True:
         try:
@@ -209,9 +189,7 @@ async def mqtt_loop():
         except MqttError as e:
             log(f"MQTT error: {e} — retrying in 3s")
             await asyncio.sleep(3)
-# ================================================================
 # MAIN
-# ================================================================
 async def main():
     await asyncio.gather(
         mqtt_loop()

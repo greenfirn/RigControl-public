@@ -63,7 +63,6 @@ Examples:
     # Convert just one flightsheet:
     python3 migrate_flightsheets_to_json.py --db ./rigcontrol_flightsheets.db --apply --id "My Rig 1"
 """
-
 import argparse
 import json
 import re
@@ -72,7 +71,6 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-
 FS_RAW_KEYS = {
     "TARGET_IMAGE": "text",
     "TARGET_NAME": "text",
@@ -88,7 +86,6 @@ FS_RAW_KEYS = {
     "PASS": "text",
     "ARGS": "text",
 }
-
 DEFAULT_CPU_TEMPLATE = (
     "tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'\n"
     "%RIG_GPU_JSON%\n"
@@ -101,13 +98,10 @@ DEFAULT_GPU_TEMPLATE = (
     "EOF\n"
     "sudo systemctl restart docker_events_gpu"
 )
-
 LEGACY_WRAPPER_RE = re.compile(
     r"tee\s+/etc/rigcontrol/rig-(cpu|gpu)\.conf\s*>\s*/dev/null\s*<<'EOF'"
 )
 EOF_BODY_RE = re.compile(r"<<'EOF'\n([\s\S]*?)\nEOF\n?")
-
-
 def load_templates(templates_path):
     """Returns (cpu_template, gpu_template) from the given templates.json
     if present/valid, else the built-in defaults above."""
@@ -125,13 +119,9 @@ def load_templates(templates_path):
         else:
             print(f"NOTE: {templates_path} not found, using built-in template text", file=sys.stderr)
     return DEFAULT_CPU_TEMPLATE, DEFAULT_GPU_TEMPLATE
-
-
 def extract_field(raw, key):
     m = re.search(rf'^{re.escape(key)}\s+(?:0\s+)?"([^"]*)"', raw, re.MULTILINE)
     return m.group(1) if m else None
-
-
 def already_json(raw):
     """True if raw's EOF body already parses as the new {"items":[...]}
     shape - nothing to do."""
@@ -144,35 +134,25 @@ def already_json(raw):
     except Exception:
         return False
     return isinstance(parsed, dict) and isinstance(parsed.get("items"), list) and len(parsed["items"]) > 0
-
-
 def classify(raw):
     """Returns one of: 'json', 'legacy', 'not-a-flightsheet'."""
     if not raw or not raw.strip():
         return "not-a-flightsheet"
-
     if already_json(raw):
         return "json"
-
     if not LEGACY_WRAPPER_RE.search(raw):
         return "not-a-flightsheet"
-
     if not EOF_BODY_RE.search(raw):
         return "not-a-flightsheet"
-
     has_known_field = any(extract_field(raw, key) is not None for key in FS_RAW_KEYS)
     if not has_known_field:
         return "not-a-flightsheet"
-
     return "legacy"
-
-
 def build_json_body(values):
     """Mirrors buildRigGpuJsonBody() in app.js / the jq filter in
     00-get_rig_conf.sh exactly - same key set, same conditional-inclusion
     rules for optional fields."""
     is_custom = bool(values.get("CUSTOM_MINER")) and values["CUSTOM_MINER"] != "0"
-
     pool = values.get("POOL") or ""
     pool_ssl = False
     pool_url = pool
@@ -182,7 +162,6 @@ def build_json_body(values):
     elif pool.startswith("stratum+tcp://"):
         pool_ssl = False
         pool_url = pool[len("stratum+tcp://"):]
-
     miner_config = {
         "url": pool_url,
         "algo": values.get("ALGO") or "",
@@ -195,7 +174,6 @@ def build_json_body(values):
             miner_config["install_url"] = values["CUSTOM_MINER_URL"]
     if values.get("ARGS"):
         miner_config["user_config"] = values["ARGS"]
-
     item = {
         "pool_ssl": pool_ssl,
         "miner": "custom" if is_custom else (values.get("MINER") or ""),
@@ -211,10 +189,7 @@ def build_json_body(values):
     if values.get("APPLY_OC"):
         item["apply_oc"] = values["APPLY_OC"]
     item["miner_config"] = miner_config
-
     return json.dumps({"items": [item]}, indent=2)
-
-
 def convert_raw(raw, cpu_template, gpu_template):
     """Converts one confirmed-legacy raw flightsheet text to the new
     JSON-embedded format. Returns the new raw text."""
@@ -224,13 +199,10 @@ def convert_raw(raw, cpu_template, gpu_template):
         if v is None:
             v = "false" if kind == "checkbox" else ""
         values[key] = v
-
     is_cpu = "rig-cpu.conf" in raw
     template = cpu_template if is_cpu else gpu_template
     json_body = build_json_body(values)
     return template.replace("%RIG_GPU_JSON%", json_body)
-
-
 def main():
     ap = argparse.ArgumentParser(
         description="Migrate RigControl flightsheet DB rows from old conf-line format to rig-gpu.json format.",
@@ -245,31 +217,24 @@ def main():
     ap.add_argument("--list", action="store_true", help="List classifications and exit, no conversion")
     ap.add_argument("--show-diff", action="store_true", help="In dry-run mode, print the generated JSON body for each candidate")
     args = ap.parse_args()
-
     db_path = Path(args.db)
     if not db_path.exists():
         print(f"ERROR: DB file not found: {db_path}", file=sys.stderr)
         sys.exit(1)
-
     templates_path = args.templates or (db_path.parent / "config" / "templates.json")
     cpu_template, gpu_template = load_templates(templates_path)
-
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-
     cur.execute("SELECT DISTINCT FlightsheetId FROM flightsheets ORDER BY FlightsheetId")
     all_ids = [row[0] for row in cur.fetchall()]
-
     if args.id:
         wanted = set(args.id)
         missing = wanted - set(all_ids)
         for m in missing:
             print(f"WARNING: requested id not found in DB: {m}", file=sys.stderr)
         all_ids = [i for i in all_ids if i in wanted]
-
     results = {"converted": [], "skipped_already_json": [], "skipped_not_a_flightsheet": [], "failed": []}
-
     for fs_id in all_ids:
         cur.execute(
             "SELECT Value FROM flightsheets WHERE FlightsheetId = ? AND GpuId = 0 AND Key = 'RAW_COMMAND'",
@@ -277,31 +242,25 @@ def main():
         )
         row = cur.fetchone()
         raw = row["Value"] if row else None
-
         kind = classify(raw or "")
-
         if args.list:
             print(f"{kind:20s} {fs_id}")
             continue
-
         if kind == "json":
             results["skipped_already_json"].append(fs_id)
             continue
         if kind == "not-a-flightsheet":
             results["skipped_not_a_flightsheet"].append(fs_id)
             continue
-
         try:
             new_raw = convert_raw(raw, cpu_template, gpu_template)
         except Exception as e:
             results["failed"].append((fs_id, str(e)))
             continue
-
         if args.show_diff and not args.apply:
             print(f"--- {fs_id} ---")
             print(new_raw)
             print()
-
         if args.apply:
             try:
                 now = int(time.time())
@@ -312,13 +271,10 @@ def main():
             except Exception as e:
                 results["failed"].append((fs_id, str(e)))
                 continue
-
         results["converted"].append(fs_id)
-
     if args.list:
         conn.close()
         return
-
     if args.apply and results["converted"]:
         if not args.no_backup:
             backup_path = db_path.with_suffix(db_path.suffix + f".bak.{int(time.time())}")
@@ -330,9 +286,7 @@ def main():
         conn.rollback()
         if results["converted"]:
             print(f"DRY RUN - would convert {len(results['converted'])} flightsheet(s). Re-run with --apply to write.")
-
     conn.close()
-
     print()
     print("=== Summary ===")
     print(f"Converted:                   {len(results['converted'])}  {results['converted']}")
@@ -340,7 +294,5 @@ def main():
     print(f"Not a flightsheet (skipped): {len(results['skipped_not_a_flightsheet'])}  {results['skipped_not_a_flightsheet']}")
     if results["failed"]:
         print(f"FAILED:                      {len(results['failed'])}  {results['failed']}")
-
-
 if __name__ == "__main__":
     main()

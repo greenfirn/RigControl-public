@@ -3,10 +3,8 @@ setlocal enabledelayedexpansion
 set AGENT_DIR=%~dp0
 set REMOTE_USER=user
 set REMOTE_DEST=/home/user
-
 set NAME=worker
 set IP=10.10.0.111
-
 echo.
 echo ============================================================
 echo  Copying files to %REMOTE_USER%@%IP% (%NAME%, EXCLUDE_FROM_TOTALS)
@@ -18,7 +16,6 @@ scp "%AGENT_DIR%rigcontrol-agent-local-keryxd.sh" %REMOTE_USER%@%IP%:%REMOTE_DES
 if errorlevel 1 set OK=0
 scp "%AGENT_DIR%rigcontrol_telemetry-exclude.sh" %REMOTE_USER%@%IP%:%REMOTE_DEST%/rigcontrol_telemetry.sh
 if errorlevel 1 set OK=0
-
 echo.
 echo ============================================================
 if "%OK%"=="0" (

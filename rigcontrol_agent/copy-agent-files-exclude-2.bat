@@ -3,16 +3,13 @@ setlocal enabledelayedexpansion
 set AGENT_DIR=%~dp0
 set REMOTE_USER=user
 set REMOTE_DEST=/home/user
-
 set HOSTS[0]=5900x-3 10.10.0.126
 set HOSTS[1]=i9-12900 10.10.0.x
 set HOST_COUNT=2
-
 echo Rig inventory:
 for /l %%N in (0,1,1) do (
     for /f "tokens=1,2" %%a in ("!HOSTS[%%N]!") do echo   %%a  -  %%b
 )
-
 set FAILED=
 for /l %%N in (0,1,1) do (
     for /f "tokens=1,2" %%a in ("!HOSTS[%%N]!") do (

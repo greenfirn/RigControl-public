@@ -4,15 +4,12 @@ set LOG="%USERPROFILE%\rigcontrol_cmd.log"
 set GPU_SERVICE="docker_events_gpu"
 set CPU_SERVICE="docker_events_cpu"
 set AUX_SERVICE="docker_events_aux"
-REM Shared stop-flag convention with each miner's own launcher script (e.g. start-logs.bat); *.stop creates the matching flag file, *.start/*.restart delete it, and the launcher exits instead of relaunching the miner after a stop.
 set STATE_DIR="%ProgramData%\RigControl"
 if not exist %STATE_DIR% mkdir %STATE_DIR% > nul 2>&1
 set GPU_STOP_FLAG="%ProgramData%\RigControl\stop_gpu.flag"
 set CPU_STOP_FLAG="%ProgramData%\RigControl\stop_cpu.flag"
 set AUX_STOP_FLAG="%ProgramData%\RigControl\stop_aux.flag"
-REM --------------------------------------------------
 REM Read entire command from STDIN (multi-line safe)
-REM --------------------------------------------------
 set "RAW_CMD="
 set "LINE="
 :read_stdin
@@ -38,9 +35,7 @@ for /f "tokens=1* delims=:" %%i in ('echo !RAW_CMD!') do (
 echo ================================================== >> !LOG!
 echo %date% %time% >> !LOG!
 echo !RAW_CMD! >> !LOG!
-REM --------------------------------------------------
 REM Parse first line for structured commands
-REM --------------------------------------------------
 for /f "tokens=1,*" %%a in ("!FIRST_LINE!") do (
     set "CMD=%%a"
     set "ARG=%%b"
@@ -89,9 +84,7 @@ if "!CMD_LOWER!"=="processes" goto PROCESSES
 if "!CMD_LOWER!"=="network" goto NETWORK
 if "!CMD_LOWER!"=="disks" goto DISKS
 goto raw_execution
-REM ############################################################
 REM GPU Miner Controls
-REM ############################################################
 :gpu_start
 if exist !GPU_STOP_FLAG! del !GPU_STOP_FLAG! > nul 2>&1
 sc start !GPU_SERVICE!
@@ -109,9 +102,7 @@ timeout /t 2 /nobreak > nul
 sc start !GPU_SERVICE!
 echo Restarted !GPU_SERVICE!
 goto :eof
-REM ############################################################
 REM CPU Miner Controls
-REM ############################################################
 :cpu_start
 if exist !CPU_STOP_FLAG! del !CPU_STOP_FLAG! > nul 2>&1
 sc start !CPU_SERVICE!
@@ -129,9 +120,7 @@ timeout /t 2 /nobreak > nul
 sc start !CPU_SERVICE!
 echo Restarted !CPU_SERVICE!
 goto :eof
-REM ############################################################
 REM AUX Service Controls
-REM ############################################################
 :aux_start
 if exist !AUX_STOP_FLAG! del !AUX_STOP_FLAG! > nul 2>&1
 sc start !AUX_SERVICE!
@@ -149,9 +138,7 @@ timeout /t 2 /nobreak > nul
 sc start !AUX_SERVICE!
 echo Restarted !AUX_SERVICE!
 goto :eof
-REM ############################################################
 REM MODE SWITCHING
-REM ############################################################
 :mode_set
 set "MODE=!ARG!"
 set "MODE=!MODE:a=A!"
@@ -202,9 +189,7 @@ if "!MODE!"=="GPU" (
 )
 echo Invalid mode: !ARG!
 exit /b 1
-REM ############################################################
 REM SYSTEM REBOOT
-REM ############################################################
 :reboot_system
 echo Rebooting system...
 shutdown /r /t 0
@@ -264,9 +249,7 @@ echo.
 echo ===== Detailed Disk Info =====
 powershell "Get-WmiObject Win32_LogicalDisk | Format-Table DeviceID, @{Name='Size(GB)';Expression={[math]::round($_.Size/1GB,2)}}, @{Name='Free(GB)';Expression={[math]::round($_.FreeSpace/1GB,2)}}, @{Name='Free(%)';Expression={[math]::round(($_.FreeSpace/$_.Size)*100,2)}} -AutoSize"
 exit /b 0
-REM ############################################################
 REM RAW MULTI-LINE SHELL COMMAND (DEFAULT)
-REM ############################################################
 :raw_execution
 echo [Raw Execution] >> !LOG!
 echo Executing raw command: !RAW_CMD!

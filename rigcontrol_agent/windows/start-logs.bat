@@ -3,7 +3,6 @@ cd %~dp0
 cls
 timeout /t 10
 set KERYX_LOG_PATH=%~dp0gpu_miner.log
-REM Shared stop-flag file with rigcontrol_cmd.bat; gpu.stop creates it, gpu.start/restart delete it, and this loop exits instead of relaunching the miner when it's present.
 set STOP_FLAG="%ProgramData%\RigControl\stop_gpu.flag"
 :loop
 if exist %STOP_FLAG% (

@@ -1,5 +1,4 @@
 WARTHOG_TARGET=""
-
 if [[ "$ALGO" == "warthog" ]]; then
     if (( TOTAL_THREADS >= 32 )); then
         WARTHOG_TARGET=47000000
@@ -9,4 +8,3 @@ if [[ "$ALGO" == "warthog" ]]; then
         WARTHOG_TARGET=30000000
     fi
 fi
-
