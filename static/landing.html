@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RigControl - Summary</title>
+<style>
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #121212;
+        color: #e8e8e8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+    }
+    #landing-tile {
+        width: min(900px, 94vw);
+        background: #1c1c1c;
+        border: 1px solid #333;
+        border-radius: 10px;
+        padding: 28px 26px 20px;
+        cursor: pointer;
+        transition: border-color 0.15s ease, transform 0.15s ease;
+        user-select: none;
+    }
+    #landing-tile:hover {
+        border-color: #4fc3f7;
+        transform: translateY(-2px);
+    }
+    #landing-tile:active {
+        transform: translateY(0);
+    }
+    .landing-title {
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-bottom: 4px;
+    }
+    .landing-subtitle {
+        font-size: 13px;
+        color: #8a8a8a;
+        margin-bottom: 20px;
+    }
+    .stat-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+    .stat-row + .stat-row {
+        margin-top: 10px;
+    }
+    #stat-row-algos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    #stat-row-algos .stat-panel {
+        flex: 1 1 120px;
+    }
+    .stat-panel {
+        background: #232323;
+        border: 1px solid #303030;
+        border-radius: 8px;
+        padding: 14px 10px;
+        text-align: center;
+    }
+    .stat-panel-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #4fc3f7;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+    .stat-panel-label {
+        font-size: 11px;
+        color: #9a9a9a;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-top: 4px;
+        white-space: nowrap;
+    }
+    .landing-hint {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #6f6f6f;
+        text-align: center;
+    }
+    .landing-hint span {
+        color: #4fc3f7;
+    }
+    #landing-updated {
+        margin-top: 6px;
+        font-size: 11px;
+        color: #555;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+<div id="landing-tile" title="Click to open the full dashboard">
+    <div class="landing-title">RigControl Fleet Summary</div>
+    <div class="landing-subtitle">Same status panels as the main dashboard's stats bar - only GPU/miner/docker/service telemetry is being collected while this page is open</div>
+    <div class="stat-row" id="stat-row-1"></div>
+    <div class="stat-row" id="stat-row-2"></div>
+    <div class="stat-row" id="stat-row-algos"></div>
+    <div class="landing-hint">Click anywhere on this tile to open the <span>full dashboard</span></div>
+    <div id="landing-updated"></div>
+</div>
+<script>
+(function () {
+    "use strict";
+    const CLIENT_BASE_PATH = location.pathname.replace(/\/static\/landing\.html$/, "");
+    let API = "";
+    const POLL_INTERVAL_MS = 10000;
+    const LANDING_VISIBLE_GROUPS = ["gpu", "miner", "docker", "cpu_service", "gpu_service", "aux_service"];
+    async function loadConfig() {
+        try {
+            const res = await fetch(`${CLIENT_BASE_PATH}/api/config`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const cfg = await res.json();
+            API = cfg.basePath || "";
+        } catch (e) {
+            console.error("Landing: failed to load config, falling back to client-detected base path", e);
+            API = CLIENT_BASE_PATH;
+        }
+    }
+    async function syncMinimalTelemetryFilter() {
+        try {
+            await fetch(`${API}/api/telemetry-columns`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ visible_groups: LANDING_VISIBLE_GROUPS })
+            });
+        } catch (e) {
+            console.error("Landing: failed to sync minimal telemetry filter to server", e);
+        }
+    }
+    async function triggerRefresh() {
+        try {
+            await fetch(`${API}/refresh`, { method: "POST" });
+        } catch (e) {
+            console.error("Landing: failed to trigger refresh", e);
+        }
+    }
+    function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+    }
+    function fmtRateHs(totalHs, label) {
+        if (!totalHs || totalHs <= 0) return null;
+        const units = [
+            ["PH/s", 1e15], ["TH/s", 1e12], ["GH/s", 1e9], ["MH/s", 1e6], ["kH/s", 1e3]
+        ];
+        for (const [unit, mult] of units) {
+            if (totalHs >= mult) return `${(totalHs / mult).toFixed(2)} ${unit} ${label}`.trim();
+        }
+        return `${totalHs.toFixed(0)} H/s ${label}`.trim();
+    }
+    function getGpuCount(data) {
+        if (typeof data.gpu_count === "number") return data.gpu_count;
+        return Array.isArray(data.gpus) ? data.gpus.length : 0;
+    }
+    function getGpuPowerNumber(gpu) {
+        const power =
+            gpu.power_watts !== undefined ? gpu.power_watts :
+            gpu.power_usage !== undefined ? gpu.power_usage :
+            gpu.power !== undefined ? gpu.power :
+            gpu.Power !== undefined ? gpu.Power :
+            (gpu.power_consumption && gpu.power_consumption.watt !== undefined) ? gpu.power_consumption.watt :
+            0;
+        return typeof power === "number" && !isNaN(power) ? power : 0;
+    }
+    function getTotalGpuPower(data) {
+        if (!Array.isArray(data.gpus)) return 0;
+        return data.gpus.reduce((sum, gpu) => sum + getGpuPowerNumber(gpu), 0);
+    }
+    function getDockerContainers(data) {
+        return Array.isArray(data.docker) ? data.docker : [];
+    }
+    function getServiceStatus(data, service) {
+        const serviceData = data[service];
+        return {
+            state: serviceData?.state || "unknown",
+            isActive: serviceData?.state === "active",
+        };
+    }
+    const MINER_KEY_PREFIX = "miner_";
+    function getAllAlgorithms(data) {
+        const algorithms = [];
+        Object.keys(data).forEach((key) => {
+            if (!key.startsWith(MINER_KEY_PREFIX)) return;
+            const miner = data[key];
+            if (!miner || miner.status !== "ok" || !Array.isArray(miner.algorithms)) return;
+            miner.algorithms.forEach((algo) => algorithms.push(algo));
+        });
+        return algorithms;
+    }
+    function getTotalHashrateHS(algo) {
+        const base = algo.hashrate_hs || 0;
+        if (base > 0) return base;
+        return (algo.cpu_hashrate_hs || 0) + (algo.gpu_hashrate_hs || 0);
+    }
+    function getMiningType(algo) {
+        return algo.mining_type || (algo.cpu_hashrate_hs > 0 ? "CPU" : "GPU");
+    }
+    function renderStatPanels(rigs) {
+        let totalWatts = 0;
+        let totalGpuCount = 0;
+        let activeDockerCount = 0;
+        const runningDockerEntries = new Map();
+        let miningCpuRigs = 0;
+        let miningGpuRigs = 0;
+        let activeCpuServiceRigs = 0;
+        let activeGpuServiceRigs = 0;
+        let activeAuxServiceRigs = 0;
+        const auxActiveEntries = [];
+        const algoTotals = {};
+        const algoIsCpu = {};
+        const algoShares = {};
+        const rigNames = Object.keys(rigs).filter((name) => {
+            if (name === "rigs") return false;
+            return !rigs[name]?.data?.exclude_from_totals;
+        });
+        rigNames.forEach((name) => {
+            const d = rigs[name]?.data;
+            if (!d) return;
+            totalGpuCount += getGpuCount(d);
+            const dockerContainers = getDockerContainers(d);
+            if (dockerContainers.length > 0) activeDockerCount++;
+            dockerContainers.forEach((c) => {
+                if (c && c.name && c.image) {
+                    const key = `${c.name}: ${c.image}`;
+                    runningDockerEntries.set(key, (runningDockerEntries.get(key) || 0) + 1);
+                }
+            });
+            totalWatts += getTotalGpuPower(d);
+            const algorithms = getAllAlgorithms(d);
+            let rigHasActiveCpuMiner = false;
+            let rigHasActiveGpuMiner = false;
+            algorithms.forEach((algo) => {
+                const algoName = algo.algorithm || "--";
+                const hashrate = getTotalHashrateHS(algo);
+                if (hashrate <= 0) return;
+                algoTotals[algoName] = (algoTotals[algoName] || 0) + hashrate;
+                if (!algoShares[algoName]) algoShares[algoName] = { accepted: 0, rejected: 0 };
+                algoShares[algoName].accepted += algo.accepted_shares || 0;
+                algoShares[algoName].rejected += algo.rejected_shares || 0;
+                if (getMiningType(algo) === "CPU") {
+                    algoIsCpu[algoName] = true;
+                    rigHasActiveCpuMiner = true;
+                } else {
+                    rigHasActiveGpuMiner = true;
+                }
+            });
+            if (rigHasActiveCpuMiner) miningCpuRigs++;
+            if (rigHasActiveGpuMiner) miningGpuRigs++;
+            if (getServiceStatus(d, "cpu_service").isActive) activeCpuServiceRigs++;
+            if (getServiceStatus(d, "gpu_service").isActive) activeGpuServiceRigs++;
+            const auxService = getServiceStatus(d, "aux_service");
+            if (auxService.isActive) {
+                activeAuxServiceRigs++;
+                auxActiveEntries.push(`${name} (${auxService.name || "unknown service"})`);
+            }
+        });
+        const sortedAlgos = Object.keys(algoTotals).sort((a, b) => {
+            const aCpu = algoIsCpu[a] ? 0 : 1;
+            const bCpu = algoIsCpu[b] ? 0 : 1;
+            if (aCpu !== bCpu) return aCpu - bCpu;
+            return algoTotals[b] - algoTotals[a];
+        });
+        const dockerTooltip = runningDockerEntries.size > 0
+            ? `Running containers:\n${Array.from(runningDockerEntries.entries())
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([entry, count]) => `${entry} (${count})`)
+                .join("\n")}`
+            : "No containers running";
+        const row1 = [`
+            <div class="stat-panel" id="stat-workers-panel">
+                <div class="stat-panel-value" id="stat-workers">${rigNames.length}</div>
+                <div class="stat-panel-label">Workers</div>
+            </div>
+        `, `
+            <div class="stat-panel" id="stat-gpu-count-panel">
+                <div class="stat-panel-value" id="stat-gpu-count">${totalGpuCount}</div>
+                <div class="stat-panel-label">GPU</div>
+            </div>
+        `, `
+            <div class="stat-panel" id="stat-docker-count-panel" title="${escapeHtml(dockerTooltip)}">
+                <div class="stat-panel-value" id="stat-docker-count">${activeDockerCount}</div>
+                <div class="stat-panel-label">Docker</div>
+            </div>
+        `];
+        const row2 = [`
+            <div class="stat-panel" id="stat-cpu-services-panel" title="Mining / Active Service">
+                <div class="stat-panel-value" id="stat-cpu-services">${miningCpuRigs} / ${activeCpuServiceRigs}</div>
+                <div class="stat-panel-label">CPU Services</div>
+            </div>
+        `, `
+            <div class="stat-panel" id="stat-gpu-services-panel" title="Mining / Active Service">
+                <div class="stat-panel-value" id="stat-gpu-services">${miningGpuRigs} / ${activeGpuServiceRigs}</div>
+                <div class="stat-panel-label">GPU Services</div>
+            </div>
+        `];
+        const auxTooltip = auxActiveEntries.length > 0
+            ? `Active AUX Service:\n${auxActiveEntries.sort().join("\n")}`
+            : "No AUX service active";
+        row2.push(`
+            <div class="stat-panel" id="stat-aux-services-panel" title="${escapeHtml(auxTooltip)}">
+                <div class="stat-panel-value" id="stat-aux-services">${activeAuxServiceRigs}</div>
+                <div class="stat-panel-label">AUX Services</div>
+            </div>
+        `);
+        row2.push(`
+            <div class="stat-panel" id="stat-gpu-watts-panel">
+                <div class="stat-panel-value" id="stat-gpu-watts">${totalWatts > 0 ? totalWatts.toFixed(1) : "--"}</div>
+                <div class="stat-panel-label">GPU Watts</div>
+            </div>
+        `);
+        const algoPanels = [];
+        sortedAlgos.forEach((algoName) => {
+            const totalHashrate = algoTotals[algoName];
+            if (totalHashrate <= 0) return;
+            const shares = algoShares[algoName] || { accepted: 0, rejected: 0 };
+            algoPanels.push(`
+                <div class="stat-panel" title="Accepted/Rejected: ${shares.accepted}/${shares.rejected}">
+                    <div class="stat-panel-value">${fmtRateHs(totalHashrate, "")}</div>
+                    <div class="stat-panel-label">${escapeHtml(algoName)}</div>
+                </div>
+            `);
+        });
+        if (algoPanels.length === 0) {
+            algoPanels.push('<div class="stat-panel"><div class="stat-panel-value">&ndash;</div><div class="stat-panel-label">No active algorithms</div></div>');
+        }
+        const row1El = document.getElementById("stat-row-1");
+        const row2El = document.getElementById("stat-row-2");
+        const row3El = document.getElementById("stat-row-algos");
+        if (row1El) row1El.innerHTML = row1.join("");
+        if (row2El) row2El.innerHTML = row2.join("");
+        if (row3El) row3El.innerHTML = algoPanels.join("");
+    }
+    async function refreshSummary() {
+        try {
+            await triggerRefresh();
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            const res = await fetch(`${API}/rigs`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const payload = await res.json();
+            const rigs = payload.rigs || {};
+            renderStatPanels(rigs);
+            const updatedEl = document.getElementById("landing-updated");
+            if (updatedEl) {
+                updatedEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+            }
+        } catch (e) {
+            console.error("Landing: failed to refresh summary", e);
+        }
+    }
+    document.getElementById("landing-tile").addEventListener("click", () => {
+        window.location.href = `${CLIENT_BASE_PATH}/`;
+    });
+    (async function init() {
+        await loadConfig();
+        await syncMinimalTelemetryFilter();
+        await refreshSummary();
+        setInterval(refreshSummary, POLL_INTERVAL_MS);
+    })();
+})();
+</script>
+</body>
+</html>

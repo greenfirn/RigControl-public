@@ -1,0 +1,358 @@
+
+XMRIG_VERSION=$(get_rig_conf "$MINER_CONF" "XMRIG_VERSION" "0")
+BZMINER_VERSION=$(get_rig_conf "$MINER_CONF" "BZMINER_VERSION" "0")
+WILDRIG_VERSION=$(get_rig_conf "$MINER_CONF" "WILDRIG_VERSION" "0")
+SRBMINER_VERSION=$(get_rig_conf "$MINER_CONF" "SRBMINER_VERSION" "0")
+RIGEL_VERSION=$(get_rig_conf "$MINER_CONF" "RIGEL_VERSION" "0")
+LOLMINER_VERSION=$(get_rig_conf "$MINER_CONF" "LOLMINER_VERSION" "0")
+ONEZEROMINER_VERSION=$(get_rig_conf "$MINER_CONF" "ONEZEROMINER_VERSION" "0")
+GMINER_VERSION=$(get_rig_conf "$MINER_CONF" "GMINER_VERSION" "0")
+TEAMREDMINER_VERSION=$(get_rig_conf "$MINER_CONF" "TEAMREDMINER_VERSION" "0")
+TREXMINER_VERSION=$(get_rig_conf "$MINER_CONF" "TREXMINER_VERSION" "0")
+
+CUSTOM_MINER_URL=$(get_rig_conf "$CFG_FILE" "CUSTOM_MINER_URL" "0")
+CUSTOM_MINER_NAME=$(get_rig_conf "$CFG_FILE" "CUSTOM_MINER" "0")
+
+INSTALL_ALL=false
+REQUESTED_MINERS=()
+
+# Miner selection: no args -> use MINER from rig.conf; single arg "all" (case-insensitive) -> install every miner; any other args -> install only those named miners.
+# convert_old_miner_name (from 00-get_rig_conf.sh) upgrades legacy slugs
+# (e.g. "wildrig" -> "wildrig-multi") wherever a miner name comes in, so
+# should_install()/install_miner() only ever see the current canonical name.
+if [ $# -eq 0 ]; then
+    CONFIG_MINER=$(get_rig_conf "$CFG_FILE" "MINER" "0")
+    CONFIG_MINER=$(convert_old_miner_name "$CONFIG_MINER")
+	echo "$CONFIG_MINER from rig.conf"
+    if [ -n "$CONFIG_MINER" ] && [ "$CONFIG_MINER" != "0" ]; then
+        REQUESTED_MINERS+=("$CONFIG_MINER")
+        echo "Using MINER=$CONFIG_MINER from rig.conf"
+    else
+        INSTALL_ALL=false
+        echo "No miner specified in config or arguments - skipping install"
+    fi
+elif [ $# -eq 1 ] && [ "$(echo "$1" | tr '[:upper:]' '[:lower:]')" = "all" ]; then
+    INSTALL_ALL=true
+    echo "Installing ALL miners (requested via command line)"
+else
+    for miner in "$@"; do
+        REQUESTED_MINERS+=("$(convert_old_miner_name "$miner")")
+    done
+fi
+
+echo ""
+echo "==============================================="
+echo "  Miner Versions Loaded from rig.conf"
+echo "==============================================="
+echo "  XMRig:        $XMRIG_VERSION"
+echo "  BzMiner:      $BZMINER_VERSION"
+echo "  WildRig:      $WILDRIG_VERSION"
+echo "  SRBMiner:     $SRBMINER_VERSION"
+echo "  Rigel:        $RIGEL_VERSION"
+echo "  lolMiner:     $LOLMINER_VERSION"
+echo "  OneZeroMiner: $ONEZEROMINER_VERSION"
+echo "  GMiner:       $GMINER_VERSION"
+echo "  TeamRedMiner: $TEAMREDMINER_VERSION"
+echo "  TRex:         $TREXMINER_VERSION"
+if [ -n "$CUSTOM_MINER_URL" ] && [ "$CUSTOM_MINER_URL" != "0" ]; then
+    echo "  Custom:       ${CUSTOM_MINER_NAME:-<unset>} <- $CUSTOM_MINER_URL"
+fi
+echo "==============================================="
+
+if [ "$INSTALL_ALL" = true ]; then
+    echo "  Installing: ALL miners"
+else
+    echo "  Installing: ${REQUESTED_MINERS[*]}"
+fi
+echo "==============================================="
+echo ""
+
+download_with_retry() {
+    local outfile="$1"
+    local url="$2"
+
+    for attempt in 1 2 3; do
+        echo "  [Attempt $attempt] Downloading: $url"
+        if wget -q "$url" -O "$outfile"; then
+            if [ -s "$outfile" ]; then return 0; fi
+        fi
+        echo "  Download failed, retrying..."
+        sleep 2
+    done
+
+    echo "ERROR: Could not download $url"
+    return 1
+}
+
+cleanup_old_versions() {
+    local miner="$1"
+    local keep="$2"
+
+    local folder="$BASE_DIR/$miner"
+    [ -d "$folder" ] || return 0
+
+    for dir in "$folder"/*; do
+        [[ "$dir" == "$folder/current" ]] && continue
+        [[ "$dir" == "$folder/$keep" ]] && continue
+        echo "  Removing old version: $dir"
+        rm -rf "$dir"
+    done
+}
+
+install_miner() {
+    local name="$1"
+    local version="$2"
+    local url="$3"
+    local file="$4"
+    local strip="$5"
+    local bin_name="$6"
+
+    local miner_dir="$BASE_DIR/$name/$version"
+    local bin_path="$miner_dir/$bin_name"
+
+    if [ ! -f "$bin_path" ]; then
+        echo ""
+        echo "==== Installing $name $version ===="
+        rm -rf "$miner_dir"
+        mkdir -p "$miner_dir"
+        cd "$miner_dir"
+
+        download_with_retry "$file" "$url"
+
+        echo "  Extracting..."
+        if ! tar -xf "$file" $strip; then
+            echo "ERROR: Extraction failed — file likely invalid."
+            rm -f "$file"
+            exit 1
+        fi
+        rm -f "$file"
+
+        if [ ! -f "$bin_name" ]; then
+            echo "ERROR: Expected binary '$bin_name' not found!"
+            exit 1
+        fi
+    else
+        echo ""
+        echo "$name $version already installed (found $bin_name), skipping."
+    fi
+
+    ln -sfn "$miner_dir" "$BASE_DIR/$name/current"
+    echo "  Symlink: $BASE_DIR/$name/current -> $miner_dir"
+
+    cleanup_old_versions "$name" "$version"
+}
+
+install_custom_miner() {
+    local url="$1"
+    local bin_name="$2"
+
+    local file
+    file="$(basename "$url")"
+
+    local version
+    version="$(echo -n "$url" | md5sum | cut -d' ' -f1)"
+
+    local miner_dir="$BASE_DIR/$bin_name/$version"
+    local bin_path="$miner_dir/$bin_name"
+
+    if [ ! -f "$bin_path" ]; then
+        echo ""
+        echo "==== Installing CUSTOM_MINER ($bin_name) ===="
+        rm -rf "$miner_dir"
+        mkdir -p "$miner_dir"
+        cd "$miner_dir"
+
+        download_with_retry "$file" "$url"
+
+        echo "  Extracting..."
+        case "$file" in
+            *.tar.gz|*.tgz)  tar -xzf "$file" --strip-components=1 ;;
+            *.tar.xz|*.txz)  tar -xJf "$file" --strip-components=1 ;;
+            *.tar.bz2)       tar -xjf "$file" --strip-components=1 ;;
+            *.tar)           tar -xf  "$file" --strip-components=1 ;;
+            *.zip)           unzip -o -q "$file" ;;
+            *)
+                # Not a recognized archive extension - assume CUSTOM_MINER_URL
+                # points directly at the binary itself (e.g. a raw executable
+                # asset with no/unusual extension) rather than failing
+                # outright. Rename it into place as $bin_name so the checks
+                # below find it exactly like a freshly-extracted archive would.
+                echo "  '$file' isn't a recognized archive type - treating it as a direct binary download."
+                if [ "$file" != "$bin_name" ]; then
+                    mv -f "$file" "$bin_name"
+                fi
+                ;;
+        esac
+
+        if [ ! -f "$bin_name" ]; then
+            echo "  Binary not found after stripped extract, retrying flat..."
+            case "$file" in
+                *.tar.gz|*.tgz)  tar -xzf "$file" ;;
+                *.tar.xz|*.txz)  tar -xJf "$file" ;;
+                *.tar.bz2)       tar -xjf "$file" ;;
+                *.tar)           tar -xf  "$file" ;;
+                *.zip)
+                    local entries=()
+                    for e in "$miner_dir"/*; do
+                        [ "$(basename "$e")" = "$file" ] && continue
+                        entries+=("$e")
+                    done
+                    if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
+                        echo "  Flattening single top-level folder: $(basename "${entries[0]}")"
+                        cp -a "${entries[0]}"/. "$miner_dir"/
+                        rm -rf "${entries[0]}"
+                    fi
+                    ;;
+            esac
+        fi
+
+        if [ "$file" != "$bin_name" ]; then
+            rm -f "$file"
+        fi
+
+        if [ ! -f "$bin_name" ]; then
+            echo "ERROR: Expected binary '$bin_name' not found after extracting $url!"
+            exit 1
+        fi
+
+        chmod +x "$bin_name" 2>/dev/null
+    else
+        echo ""
+        echo "CUSTOM_MINER already installed (found $bin_name), skipping."
+    fi
+
+    local reported_version
+    reported_version="$("$miner_dir/$bin_name" --version 2>&1 | head -n1)"
+    if [ -n "$reported_version" ]; then
+        echo "  Binary reports: $reported_version"
+    else
+        echo "  WARNING: '$bin_name --version' produced no output"
+    fi
+
+    ln -sfn "$miner_dir" "$BASE_DIR/$bin_name/current"
+    echo "  Symlink: $BASE_DIR/$bin_name/current -> $miner_dir"
+
+    cleanup_old_versions "$bin_name" "$version"
+}
+
+should_install() {
+    local miner="$1"
+
+    if [ "$INSTALL_ALL" = true ]; then
+        return 0
+    fi
+
+    for requested in "${REQUESTED_MINERS[@]}"; do
+        if [ "$requested" = "$miner" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+if should_install "xmrig"; then
+    XMRIG_TAR="xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
+    install_miner "xmrig" "$XMRIG_VERSION" \
+      "https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/${XMRIG_TAR}" \
+      "$XMRIG_TAR" "--strip-components=1" "xmrig"
+fi
+
+if should_install "wildrig-multi"; then
+    WILDRIG_TAR="wildrig-multi-linux-${WILDRIG_VERSION}.tar.gz"
+    install_miner "wildrig-multi" "$WILDRIG_VERSION" \
+      "https://github.com/andru-kun/wildrig-multi/releases/download/${WILDRIG_VERSION}/${WILDRIG_TAR}" \
+      "$WILDRIG_TAR" "" "wildrig-multi"
+fi
+
+if should_install "bzminer"; then
+    BZ_TAR="bzminer_${BZMINER_VERSION}_linux.tar.gz"
+    install_miner "bzminer" "$BZMINER_VERSION" \
+      "https://github.com/bzminer/bzminer/releases/download/${BZMINER_VERSION}/${BZ_TAR}" \
+      "$BZ_TAR" "--strip-components=1" "bzminer"
+fi
+
+if should_install "srbminer"; then
+    SRB_DASH="${SRBMINER_VERSION//./-}"
+    SRB_TAR="SRBMiner-Multi-${SRB_DASH}-Linux.tar.gz"
+    install_miner "srbminer" "$SRBMINER_VERSION" \
+      "https://github.com/doktor83/SRBMiner-Multi/releases/download/${SRBMINER_VERSION}/${SRB_TAR}" \
+      "$SRB_TAR" "--strip-components=1" "SRBMiner-MULTI"
+fi
+
+if should_install "rigel"; then
+    RIGEL_TAR="rigel-${RIGEL_VERSION}-linux.tar.gz"
+    install_miner "rigel" "$RIGEL_VERSION" \
+      "https://github.com/rigelminer/rigel/releases/download/${RIGEL_VERSION}/${RIGEL_TAR}" \
+      "$RIGEL_TAR" "--strip-components=1" "rigel"
+fi
+
+if should_install "lolminer"; then
+    LOL_TAR="lolMiner_v${LOLMINER_VERSION}_Lin64.tar.gz"
+    install_miner "lolminer" "$LOLMINER_VERSION" \
+      "https://github.com/Lolliedieb/lolMiner-releases/releases/download/${LOLMINER_VERSION}/${LOL_TAR}" \
+      "$LOL_TAR" "--strip-components=1" "lolMiner"
+fi
+
+if should_install "onezerominer"; then
+    ONEZERO_TAR="onezerominer-linux-${ONEZEROMINER_VERSION}.tar.gz"
+    install_miner "onezerominer" "$ONEZEROMINER_VERSION" \
+      "https://github.com/OneZeroMiner/OneZeroMiner/releases/download/v${ONEZEROMINER_VERSION}/${ONEZERO_TAR}" \
+      "$ONEZERO_TAR" "--strip-components=1" "onezerominer"
+fi
+
+if should_install "gminer"; then
+    GM_U="${GMINER_VERSION//./_}"
+    GM_TAR="gminer_${GM_U}_linux64.tar.xz"
+    install_miner "gminer" "$GMINER_VERSION" \
+      "https://github.com/develsoftware/GMinerRelease/releases/download/${GMINER_VERSION}/${GM_TAR}" \
+      "$GM_TAR" "" "miner"
+fi
+
+if should_install "teamredminer"; then
+    TEAMRED_TAR="teamredminer-v${TEAMREDMINER_VERSION}-linux.tgz"
+    install_miner "teamredminer" "$TEAMREDMINER_VERSION" \
+      "https://github.com/todxx/teamredminer/releases/download/v${TEAMREDMINER_VERSION}/${TEAMRED_TAR}" \
+      "$TEAMRED_TAR" "--strip-components=1" "teamredminer"
+fi
+
+if should_install "trex"; then
+    TREX_TAR="t-rex-${TREXMINER_VERSION}-linux.tar.gz"
+    install_miner "trexminer" "$TREXMINER_VERSION" \
+      "https://github.com/trexminer/T-Rex/releases/download/${TREXMINER_VERSION}/${TREX_TAR}" \
+      "$TREX_TAR" "" "t-rex"
+fi
+
+if [ -n "$CUSTOM_MINER_URL" ] && [ "$CUSTOM_MINER_URL" != "0" ]; then
+    if [ -z "$CUSTOM_MINER_NAME" ] || [ "$CUSTOM_MINER_NAME" = "0" ]; then
+        echo "ERROR: CUSTOM_MINER_URL is set but CUSTOM_MINER (binary name) is not — skipping custom miner install." >&2
+    else
+        install_custom_miner "$CUSTOM_MINER_URL" "$CUSTOM_MINER_NAME"
+    fi
+fi
+
+cat <<EXPORTS > "$BASE_DIR/miner_paths.env"
+
+$(if [ -f "$BASE_DIR/xmrig/current/xmrig" ]; then echo 'XMRIG_BIN="$BASE_DIR/xmrig/current/xmrig"'; fi)
+$(if [ -f "$BASE_DIR/wildrig-multi/current/wildrig-multi" ]; then echo 'WILDRIG_BIN="$BASE_DIR/wildrig-multi/current/wildrig-multi"'; fi)
+$(if [ -f "$BASE_DIR/bzminer/current/bzminer" ]; then echo 'BZMINER_BIN="$BASE_DIR/bzminer/current/bzminer"'; fi)
+$(if [ -f "$BASE_DIR/srbminer/current/SRBMiner-MULTI" ]; then echo 'SRBMINER_BIN="$BASE_DIR/srbminer/current/SRBMiner-MULTI"'; fi)
+$(if [ -f "$BASE_DIR/rigel/current/rigel" ]; then echo 'RIGEL_BIN="$BASE_DIR/rigel/current/rigel"'; fi)
+$(if [ -f "$BASE_DIR/lolminer/current/lolMiner" ]; then echo 'LOLMINER_BIN="$BASE_DIR/lolminer/current/lolMiner"'; fi)
+$(if [ -f "$BASE_DIR/onezerominer/current/onezerominer" ]; then echo 'ONEZEROMINER_BIN="$BASE_DIR/onezerominer/current/onezerominer"'; fi)
+$(if [ -f "$BASE_DIR/gminer/current/miner" ]; then echo 'GMINER_BIN="$BASE_DIR/gminer/current/miner"'; fi)
+$(if [ -f "$BASE_DIR/teamredminer/current/teamredminer" ]; then echo 'TEAMREDMINER_BIN="$BASE_DIR/teamredminer/current/teamredminer"'; fi)
+$(if [ -f "$BASE_DIR/trexminer/current/t-rex" ]; then echo 'TREXMINER_BIN="$BASE_DIR/trexminer/current/t-rex"'; fi)
+$(if [ -n "$CUSTOM_MINER_NAME" ] && [ "$CUSTOM_MINER_NAME" != "0" ] && [ -f "$BASE_DIR/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME" ]; then echo "CUSTOM_MINER_BIN=\"\$BASE_DIR/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME\""; fi)
+EXPORTS
+
+echo ""
+echo "Miner paths saved to: $BASE_DIR/miner_paths.env"
+echo "Load them with: source $BASE_DIR/miner_paths.env"
+
+if [ -f "$BASE_DIR/miner_paths.env" ]; then
+    source "$BASE_DIR/miner_paths.env"
+fi
+
+echo ""
+echo "Installation complete!"

@@ -1,0 +1,33 @@
+{
+    "_readme": [
+        "This file controls the example scripts the dashboard generates for Flightsheets, Overclocking, and Watchdog (the 'New' button / auto-generated raw content). Edit the values/templates below to change what gets generated - no app.js edit or redeploy needed. The dashboard re-fetches this file on every page load.",
+        "",
+        "%Placeholder% tokens inside a *_template string get replaced with live values from the dashboard form fields when the script is generated. Matching is exact and case-sensitive, including the % on both sides - a typo'd placeholder name will not be replaced and will show up literally in the generated script instead.",
+        "",
+        "flightsheet.cpu_template / flightsheet.gpu_template have exactly ONE placeholder: %RIG_GPU_JSON%.",
+        "  It gets filled with the rig-gpu.json body (pretty-printed JSON, matching the rig-side generate_rig_gpu_json_from_conf()/convert-conf-to-rig-gpu-json.sh output) built by buildRigGpuJsonBody() in app.js from the Flightsheet form fields - custom vs. built-in miner, splitting POOL into url+pool_ssl, etc. need real branching logic, not just a field substitution, so that part isn't editable from this file the way the wrapper text (the tee target path, the systemctl service name) still is.",
+        "",
+        "overclocking.apply_script_template placeholders:",
+        "  %Lock Core Clock% %Core Clock Offset% %Lock Memory Clock% %Memory Clock Offset% %Power Limit% - direct field values.",
+        "  %Fan Args% - filled in automatically by the dashboard as either ' --setfan <value>' (percent fan mode) or '' (empty, curve mode) - not a raw field value, leave this placeholder as-is.",
+        "",
+        "overclocking.fan_curve_service_template placeholders:",
+        "  %FAN Curve% - the fan curve string (e.g. '30:30,40:45,50:65'), only used when the Fan field is a curve instead of a percent.",
+        "",
+        "watchdog.conf_dir / watchdog.conf_path are plain values (not templates with placeholders) - the directory watchdog config gets mkdir'd into, and the full path the watchdog conf file gets written to/read from on each worker."
+    ],
+    "flightsheet": {
+        "cpu_template": "tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_cpu",
+        "gpu_template": "tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_gpu"
+    },
+    "overclocking": {
+        "apply_script_header": "sudo tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n#!/bin/bash\n# gpu_apply_ocs.sh <algo_name> / <custom miner name>\n# Generated from the dashboard's Overclock module - edit there, not by hand.\n# Note: a row's Algorithm field can list multiple comma-separated algo names\n# (e.g. keryxhash,keryx-miner,keryx-minerx) - they're combined into one case\n# pattern below, joined by '|', so they all share this row's OC settings.\n\nALGO=\"${1:-}\"\nif [[ -z \"$ALGO\" ]]; then\n    echo \"Usage: $0 <algo_name>\"\n    exit 1\nfi\n\nALGO_LOWER=$(echo \"$ALGO\" | tr '[:upper:]' '[:lower:]')\n\ncase \"$ALGO_LOWER\" in\n",
+        "apply_script_algo_block": "    %ALGO%)\n        CORE=%Lock Core Clock%\n        CORE_OFFSET=%Core Clock Offset%\n        MEM=%Lock Memory Clock%\n        MEM_OFFSET=%Memory Clock Offset%\n        POWER_LIMIT=%Power Limit%\n        FAN_MODE=\"%Fan Mode%\"\n        FAN_VALUE=\"%Fan Value%\"\n        ;;\n",
+        "apply_script_footer": "    *)\n        echo \"No OC profile defined for algo '$ALGO' - add a row for it in the dashboard's Overclock module\"\n        exit 1\n        ;;\nesac\n\necho \"Setting GPU OC for algo '$ALGO': core=$CORE (+$CORE_OFFSET) mem=$MEM (+$MEM_OFFSET) power_limit=$POWER_LIMIT fan=$FAN_MODE:$FAN_VALUE\"\nCMD=(py-nvtool --setcore \"$CORE\" --setcoreoffset \"$CORE_OFFSET\" --setmem \"$MEM\" --setmemoffset \"$MEM_OFFSET\")\nif [[ -n \"$POWER_LIMIT\" && \"$POWER_LIMIT\" != \"0\" ]]; then\n    CMD+=(--setpl \"$POWER_LIMIT\")\nfi\nif [[ \"$FAN_MODE\" == \"percent\" ]]; then\n    CMD+=(--setfan \"$FAN_VALUE\")\nfi\n\"${CMD[@]}\"\n\nif [[ \"$FAN_MODE\" == \"curve\" ]]; then\n    :\n%FAN_CURVE_BLOCK%fi\nEOF\nsudo chmod +x /usr/local/bin/gpu_apply_ocs.sh",
+        "fan_curve_service_template": "    sudo tee /etc/systemd/system/fan-curve.service > /dev/null <<FCEOF\n[Unit]\nDescription=NVIDIA Fan Curve Controller (NVML, no Xorg/Coolbits required)\nAfter=multi-user.target nvidia-persistenced.service\nWants=nvidia-persistenced.service\nStartLimitIntervalSec=0\n[Service]\nType=notify\nNotifyAccess=main\nUser=root\nEnvironment=PYTHONUNBUFFERED=1\nTimeoutStartSec=30\nWatchdogSec=15\nWatchdogSignal=SIGTERM\nExecStartPre=/bin/bash -c 'sleep 3'\nExecStart=/usr/bin/python3 /usr/local/bin/fan_curve.py \\\n    --interval 2 --hysteresis 2 \\\n    --cooldown-delta 10 --cooldown-seconds 15 \\\n    --curve \"$FAN_VALUE\"\nRestart=always\nRestartSec=5\n[Install]\nWantedBy=multi-user.target\nFCEOF\n    sudo systemctl daemon-reload\n    sudo systemctl restart fan-curve.service\n"
+    },
+    "watchdog": {
+        "conf_dir": "/etc/rigcontrol",
+        "conf_path": "/etc/rigcontrol/rigcontrol-watchdog.conf"
+    }
+}

@@ -1,0 +1,39 @@
+* windows service doesnt work for me when changing to user/pass mode
+
+install x64 version of mqtt broker from https://mosquitto.org/download/
+
+https://mosquitto.org/files/binary/win64/mosquitto-2.1.2-install-windows-x64.exe
+
+# open a cmd window as admin, browse to...
+cd C:\Program Files\mosquitto\
+
+# create a MQTT password
+mosquitto_passwd -c pwfile admin
+ 
+# if needed: stop, delete mosquitto service, doesnt work for user/password mode
+net stop mosquitto
+sc delete mosquitto
+
+# make a new easier to use location for data
+mkdir C:\mosquitto
+mkdir C:\mosquitto\data
+
+# move the newly created password file to new location
+move "C:\Program Files\mosquitto\pwfile" C:\mosquitto\
+
+# replace contents of the conf file with below to use the password file and data location
+C:\Program Files\mosquitto\mosquitto.conf
+
+listener 1883
+allow_anonymous false
+
+password_file C:\mosquitto\pwfile
+
+persistence true
+persistence_location C:\mosquitto\data\
+
+log_dest file C:\mosquitto\mosquitto.log
+log_type all
+
+# test start command
+"C:\Program Files\mosquitto\mosquitto.exe" -c "C:\Program Files\mosquitto\mosquitto.conf"

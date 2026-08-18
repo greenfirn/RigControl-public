@@ -1,0 +1,111 @@
+/opt/miners/keryx-miner/current/keryx-miner --help
+
+keryx-miner 0.4.3
+A Keryx high performance GPU miner with OPoI inference
+
+Uncensored model tiers — one model per tier (default: GLM-4-9B):
+  --very-light Qwen3-8B-abliterated (Q4_K_S) — 6GB+ VRAM, smallest tier
+  --light      Mistral-7B-v0.3 (Q6_K) — 8GB+ VRAM
+  (default)    GLM-4-9B (Q6_K) — 12GB+ VRAM
+  --high       Qwen3.6-27B (Q4_K_M) — 24GB+ VRAM
+  --very-high  Kimi-Linear-48B (Q4_K_M) — 32GB+ VRAM
+
+USAGE:
+    keryx-miner [OPTIONS]
+
+OPTIONS:
+    -a, --mining-address <MINING_ADDRESS>
+            The Keryx address for the miner reward
+
+    -d, --debug
+            Enable debug logging level
+
+        --devfund-percent <DEVFUND_PERCENT>
+            The percentage of blocks to send to the devfund (minimum 2%)
+
+            [default: 2]
+
+    -h, --help
+            Print help information
+
+        --mine-when-not-synced
+            Mine even when keryxd says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to keryxd  [default: false]
+
+    -p, --port <PORT>
+            Keryxd port [default: Mainnet = 22110, Testnet = 22211]
+
+    -s, --keryxd-address <KERYXD_ADDRESS>
+            The IP of the keryxd instance
+
+            [default: 127.0.0.1]
+
+    -t, --threads <NUM_THREADS>
+            Amount of CPU miner threads to launch [default: 0]
+
+        --testnet
+            Use testnet instead of mainnet: default port 22211 and testnet DAA activation gates (PoM/H3 from genesis, H4/H5 at 3000) [default: false]
+
+    -V, --version
+            Print version information
+
+OPoI / Inference:
+        --escrow-key-file <ESCROW_KEY_FILE>
+            Path to the OPoI escrow private key file (auto-generated if absent)
+
+            [default: escrow.key]
+
+        --escrow-state-file <ESCROW_STATE_FILE>
+            Path to the escrow claim state file
+
+            [default: escrow_state.json]
+
+        --force-model <TIER[,TIER...]>
+            Force the model tier per GPU (CUDA-driver order, CSV): e.g. --force-model light,very-high → GPU0=light, GPU1=very-high. Names: very-light|light|default|high|very-high. Bypasses the per-card VRAM check (an undersized card will OOM); unlisted/extra cards keep auto best-fit.
+
+        --high
+            Model tier: Qwen3.6-27B (Q4_K_M) — 24GB+ VRAM
+
+        --hiveos
+            Enable HiveOS defaults (uses /hive/miners/custom/models when --models-dir is not set)
+
+        --ipfs-url <IPFS_URL>
+            IPFS Kubo API URL for uploading inference results
+
+            [default: http://127.0.0.1:5001]
+
+        --light
+            Model tier: Mistral-7B-v0.3 — 8GB+ VRAM
+
+        --models-dir <MODELS_DIR>
+            Directory where model files are stored/downloaded (overrides default <exe_dir>/models)
+
+        --recover-escrow
+            Rebuild escrow_state.json by querying the Keryx public API. Exits after recovery.
+
+        --recover-escrow-api <RECOVER_ESCROW_API>
+            Base URL of the Keryx API to use for escrow recovery
+
+            [default: https://keryx-labs.com]
+
+        --resident-tree
+            Hold the full Merkle tree in RAM for faster proof build (needs ~2x model size of system RAM; falls back to disk if unavailable)
+
+        --very-high
+            Model tier: Kimi-Linear-48B (Q4_K_M) — 32GB+ VRAM
+
+        --very-light
+            Model tier: Qwen3-8B-abliterated — 6GB+ GPU, smallest tier
+
+Monitoring:
+        --plain-log-file <PLAIN_LOG_FILE>
+            Write plain text logs to this file path
+
+        --stats-bind <STATS_BIND>
+            Stats API bind address (e.g. 0.0.0.0, 127.0.0.1)
+
+            [default: 127.0.0.1]
+
+        --stats-port <STATS_PORT>
+            Stats API TCP port
+
+            [default: 3338]

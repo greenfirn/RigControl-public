@@ -1,0 +1,136 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=${TZ}
+
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - NODE_RED_ENABLE_PROJECTS=true  # Enable projects feature
+      # - NODE_RED_ENABLE_PATHS=true  # Enable path-based projects
+    volumes:
+      - ./nodered:/data
+      - ./nodered/alexa-cookies:/data/alexa-cookies
+      # Add additional volumes for custom nodes if needed
+      # - ./nodered/nodered-custom-nodes:/data/node_modules
+    network_mode: host
+
+  duckdns:
+    image: linuxserver/duckdns:latest
+    container_name: duckdns
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+      - SUBDOMAINS=${DUCKDNS_SUBDOMAINS}
+      - TOKEN=${DUCKDNS_TOKEN}
+      - INTERVAL=${DUCKDNS_INTERVAL}
+    volumes:
+      - ./duckdns:/config
+    network_mode: host
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    network_mode: host
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    network_mode: host
+
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt
+    container_name: zigbee2mqtt
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    volumes:
+      - ./zigbee2mqtt/data:/app/data
+      - /run/udev:/run/udev:ro
+    devices:
+      - /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_**********-port0:/dev/ttyUSB0
+    environment:
+      - TZ=${TZ}
+    network_mode: host
+
+  rigcontrol-ws:
+    build: ./rigcontrol-ws
+    container_name: rigcontrol-ws
+    restart: unless-stopped
+    volumes:
+      - /etc/rigcontrol/aws-certs:/certs:ro
+      - /home/user/ha-docker/rigcontrol-ws/themes:/app/themes:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_config.json:/app/rigcontrol_config.json:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_saved_commands.db:/app/rigcontrol_saved_commands.db:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_flightsheets.db:/app/rigcontrol_flightsheets.db:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_wallets.db:/app/rigcontrol_wallets.db:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_overclocks.db:/app/rigcontrol_overclocks.db:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_watchdog_profiles.db:/app/rigcontrol_watchdog_profiles.db:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_status_log.db:/app/rigcontrol_status_log.db:rw
+    environment:
+      - API_BIND=${API_BIND}
+      - API_PORT=${API_PORT}
+      - BASE_PATH=/dashboard
+      - USE_AWS_DB=${USE_AWS_DB}
+      - MQTT_TOPIC_FILTER=${MQTT_TOPIC_FILTER}
+      - MQTT_MODE=${MQTT_MODE}
+      - MQTT_HOST=${MQTT_HOST}
+      - MQTT_PORT=${MQTT_PORT}
+      - MQTT_USER=${MQTT_USER}
+      - MQTT_PASS=${MQTT_PASS}
+      - AWS_MQTT_HOST=${AWS_MQTT_HOST}
+      - AWS_MQTT_PORT=${AWS_MQTT_PORT}
+      - AWS_MQTT_CA=/certs/${AWS_MQTT_CA_FILENAME}
+      - AWS_MQTT_CERT=/certs/${AWS_MQTT_CERT_FILENAME}
+      - AWS_MQTT_KEY=/certs/${AWS_MQTT_KEY_FILENAME}
+      - BROADCAST_INTERVAL=${BROADCAST_INTERVAL}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
+      - GMAIL_USERNAME=${GMAIL_USERNAME}
+      - GMAIL_PASSWORD=${GMAIL_PASSWORD}
+      - EMAIL_RECIPIENTS=${EMAIL_RECIPIENTS}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+      - OFFLINE_PING_INTERVAL=${OFFLINE_PING_INTERVAL}
+      - OFFLINE_THRESHOLD=${OFFLINE_THRESHOLD}
+      # Caddy (both the public /dashboard/* block and the LAN-only :8081
+      # block) reverse-proxies here over 127.0.0.1 since everything uses
+      # network_mode: host - without this, is_local_request() in
+      # rigcontrol_dashboard_server.py always sees 127.0.0.1 as the client
+      # (Caddy's own connection), so it can never tell a LAN browser from
+      # a remote one and view-only mode never actually engages. Caddy
+      # already sets X-Forwarded-For correctly for both paths; this just
+      # tells the server to trust it. See 2FA.md before changing this.
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS}
+      - TRUSTED_PROXY_HOPS=${TRUSTED_PROXY_HOPS}
+      - TRUST_CLOUDFLARE=${TRUST_CLOUDFLARE}
+      - UNLOCK_CODE_TTL_SECONDS=${UNLOCK_CODE_TTL_SECONDS}
+      - UNLOCK_CODE_COOLDOWN_SECONDS=${UNLOCK_CODE_COOLDOWN_SECONDS}
+      - UNLOCK_TOKEN_TTL_SECONDS=${UNLOCK_TOKEN_TTL_SECONDS}
+      - UNLOCK_COOKIE_NAME=${UNLOCK_COOKIE_NAME}
+    network_mode: host

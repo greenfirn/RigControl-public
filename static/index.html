@@ -1,0 +1,2034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RigControl - Dashboard</title>
+    <link rel="stylesheet" href="./static/css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="./static/js/app.js"></script>
+    <script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+        }
+    </script>
+</head>
+<body>
+    <div id="sticky-top-wrap">
+    <div id="header-bar">
+        <div class="action-status">
+            <div
+                id="action-output"
+                class="action-output collapsed"
+                tabindex="0"
+                role="textbox"
+                aria-readonly="true"
+                aria-label="Action output"
+                data-placeholder="Action output..."
+            ></div>
+        </div>
+        <div id="view-only-banner" class="view-only-banner" style="display:none" title="Click to request a remote unlock code">
+            🔒 View-Only Mode - remote connection detected, sending commands and changing settings is disabled. Click to unlock.
+        </div>
+        <div id="action-stats-bar">
+            <div class="stat-panel" id="stat-workers-panel">
+                <div class="stat-panel-value" id="stat-workers">--</div>
+                <div class="stat-panel-label">Workers</div>
+            </div>
+            <div class="stat-panel" id="stat-gpu-count-panel">
+                <div class="stat-panel-value" id="stat-gpu-count">--</div>
+                <div class="stat-panel-label">GPU</div>
+            </div>
+            <div class="stat-panel" id="stat-cpu-services-panel">
+                <div class="stat-panel-value" id="stat-cpu-services">--</div>
+                <div class="stat-panel-label">Active CPU Services</div>
+            </div>
+            <div class="stat-panel" id="stat-gpu-services-panel">
+                <div class="stat-panel-value" id="stat-gpu-services">--</div>
+                <div class="stat-panel-label">Active GPU Services</div>
+            </div>
+            <div class="stat-panel" id="stat-gpu-watts-panel">
+                <div class="stat-panel-value" id="stat-gpu-watts">--</div>
+                <div class="stat-panel-label">GPU Watts</div>
+            </div>
+        </div>
+    </div>
+    <div id="view-tabs" class="view-tabs">
+        <span class="view-tab active" data-tab-panel="workers"><span class="view-tab-icon" id="view-tab-icon-workers">&#128421;&#65039;</span><span class="view-tab-text">Workers</span></span>
+        <span class="view-tab" data-tab-panel="stats"><span class="view-tab-icon" id="view-tab-icon-stats">&#128202;</span><span class="view-tab-text">Stats</span></span>
+        <span class="view-tab" data-tab-panel="wallets"><span class="view-tab-icon" id="view-tab-icon-wallets">&#128176;</span><span class="view-tab-text">Wallets</span></span>
+        <span class="view-tab" data-tab-panel="flightsheets"><span class="view-tab-icon" id="view-tab-icon-flightsheets">&#128203;</span><span class="view-tab-text">Flight Sheets</span></span>
+        <span class="view-tab" data-tab-panel="overclocking"><span class="view-tab-icon" id="view-tab-icon-overclocking">&#9889;</span><span class="view-tab-text">Overclocking</span></span>
+        <span class="view-tab" data-tab-panel="watchdog"><span class="view-tab-icon" id="view-tab-icon-watchdog">&#128054;</span><span class="view-tab-text">Watchdog</span></span>
+        <span class="view-tab" data-tab-panel="statuslog"><span class="view-tab-icon" id="view-tab-icon-statuslog">&#128220;</span><span class="view-tab-text">Status Log</span></span>
+        <span class="view-tab" data-tab-panel="backups"><span class="view-tab-icon" id="view-tab-icon-backups">&#128452;&#65039;</span><span class="view-tab-text">Backups</span></span>
+        <span class="view-tab" data-tab-panel="settings"><span class="view-tab-icon" id="view-tab-icon-settings">&#9881;&#65039;</span><span class="view-tab-text">Settings</span></span>
+    </div>
+    </div>
+    <div class="cmd-modal hidden" id="unlock-modal">
+        <div class="cmd-dialog unlock-dialog">
+            <div class="cmd-header">
+                <span>🔒 Remote Unlock</span>
+            </div>
+            <div class="cmd-body unlock-body">
+                <p class="unlock-explainer">
+                    This dashboard is in view-only mode because you're connecting from
+                    outside the local network. Enter the email address configured for
+                    this dashboard under Settings to receive a one-time code - entering
+                    it here unlocks full control on this browser for
+                    <span id="unlock-duration-hint">12 hours</span>.
+                </p>
+                <input
+                    type="email"
+                    id="unlock-email-input"
+                    class="unlock-code-input"
+                    placeholder="Configured email address"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+                <button class="cmd-btn ok" id="btn-unlock-request-code">Send Unlock Code</button>
+                <div class="unlock-code-row hidden" id="unlock-code-row">
+                    <input
+                        type="text"
+                        id="unlock-code-input"
+                        class="unlock-code-input"
+                        placeholder="Enter code from email"
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                    <button class="cmd-btn ok" id="btn-unlock-submit-code">Unlock</button>
+                </div>
+                <div class="unlock-status" id="unlock-status"></div>
+            </div>
+            <div class="cmd-footer">
+                <button class="cmd-btn cancel" id="btn-unlock-close">Close</button>
+            </div>
+        </div>
+    </div>
+    <div class="cmd-modal hidden" id="fs-pools-modal">
+        <div class="cmd-dialog fs-pools-dialog">
+            <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
+            <div class="cmd-header">
+                <span>Manage Pools</span>
+            </div>
+            <div class="cmd-body fs-pools-body">
+                <p class="unlock-explainer" id="fs-pools-explainer">
+                    One pool per line, first line is primary. All pools share this
+                    flightsheet's single SSL setting above - not every miner supports
+                    backup pools the same way (or at all), see the rig-side docs for
+                    your miner. Paste a batch file, a pool website's list, or another
+                    flightsheet's pool block directly - addresses are extracted
+                    automatically and the rest is ignored.
+                </p>
+                <textarea
+                    id="fs-pools-textarea"
+                    class="fs-pools-textarea"
+                    spellcheck="false"
+                    autocomplete="off"
+                    placeholder="pool.example.com:3333"
+                ></textarea>
+            </div>
+            <div class="cmd-footer">
+                <button class="cmd-btn cancel" id="btn-fs-pools-cancel">Cancel</button>
+                <button class="cmd-btn ok" id="btn-fs-pools-save">Save</button>
+            </div>
+        </div>
+    </div>
+    <div class="cmd-modal hidden" id="fs-wallet-save-modal">
+        <div class="cmd-dialog">
+            <div class="cmd-header">
+                <span>Save to Wallets</span>
+            </div>
+            <div class="cmd-body">
+                <p class="unlock-explainer" id="fs-wallet-save-explainer">
+                    Saves this flightsheet's WALLET address as a new wallet entry. Give it a name below.
+                </p>
+                <input
+                    type="text"
+                    id="fs-wallet-save-name-input"
+                    class="unlock-code-input"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Wallet name"
+                />
+            </div>
+            <div class="cmd-footer">
+                <button class="cmd-btn cancel" id="btn-fs-wallet-save-cancel">Cancel</button>
+                <button class="cmd-btn ok" id="btn-fs-wallet-save-confirm">Save</button>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="wdconfig-modal" data-tab-panel="watchdog">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">
+                    (<span id="wdconfig-target-count">0</span> <span id="wdconfig-target-label">workers</span> selected)
+                </span>
+            </div>
+            <div class="cmd-body">
+                <div class="fs-editor-panel">
+                    <div class="wdconfig-settings-panel" id="wdconfig-settings-panel">
+                        <div class="wdconfig-upper-panel">
+                        <div class="settings-section">
+                            <div class="section-header">Timing &amp; When Triggered</div>
+                            <div class="wdconfig-timing-triggers-row">
+                                <div class="field-group wdconfig-interval-group">
+                                    <label for="wdconfig-check-interval">Check Interval (s)</label>
+                                    <input type="number" id="wdconfig-check-interval" min="1" step="1" value="60" class="wdconfig-narrow-input" />
+                                </div>
+                                <div class="wdconfig-actions-row">
+                                    <span class="wdconfig-action-group-label">Restart:</span>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-restart-cpu" checked>
+                                        <span class="checkbox-text">CPU</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-restart-gpu" checked>
+                                        <span class="checkbox-text">GPU</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-restart-fan">
+                                        <span class="checkbox-text">Fan</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-restart-aux">
+                                        <span class="checkbox-text">AUX</span>
+                                    </label>
+                                    <span class="wdconfig-action-group-label">Notify:</span>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-email-notify">
+                                        <span class="checkbox-text">Email</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-sms-notify">
+                                        <span class="checkbox-text">SMS</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-reboot-rig">
+                                        <span class="checkbox-text">Reboot</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-action-custom-script">
+                                        <span class="checkbox-text">Custom Script</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <div class="section-header">Per-Algorithm Thresholds <span class="wdconfig-section-header-hint">Grace Checks: fails before restart. Cooldown (s): time between restarts.</span></div>
+                        </div>
+                        <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
+                            <button class="cmd-btn" id="btn-wdconfig-add-row">+ Add Algorithm</button>
+                            <span class="wdconfig-hashrate-unit-toggle" title="Min Hashrate display unit - always saved as true H/s regardless of what's selected">
+                                <span class="wdconfig-unit-label wdconfig-hashrate-unit-label">MH/s</span>
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-hashrate-unit-down" title="Smaller unit">▼</button>
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-hashrate-unit-up" title="Larger unit">▲</button>
+                            </span>
+                            <span class="wdconfig-editing-algo-label" id="wdconfig-editing-algo-label"></span>
+                            <span class="wdconfig-global-stop-group" title="Stops the watchdog SERVICE itself (not just this worker's miners) once this many total actions/notifications have fired across every algorithm combined since it last started - protects against endlessly restarting things on a persistently unhealthy worker. Applies per worker. 0 disables this - the service never stops itself.">
+                                <span class="wdconfig-global-stop-label">Stop Watchdog After</span>
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-global-stop-down" title="Decrease">▼</button>
+                                <input type="number" id="wdconfig-global-stop-fails" min="0" step="1" value="5" class="wdconfig-global-stop-input" />
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-global-stop-up" title="Increase">▲</button>
+                                <span class="wdconfig-global-stop-label">Fails</span>
+                            </span>
+                        </div>
+                        <div class="wdconfig-table-wrap">
+                            <table class="wdconfig-table">
+                                <thead>
+                                    <tr>
+                                        <th>Algorithm</th>
+                                        <th title="Minimum acceptable combined hashrate across every GPU/thread mining this algo, typed in whatever unit is selected via the toggle above (always converted to/from H/s under the hood). 0 disables this check.">Min <span class="wdconfig-unit-label wdconfig-hashrate-unit-label">MH/s</span></th>
+                                        <th title="Minimum acceptable combined GPU power draw (W) while this algo is active. 0 disables this check. Ignored by the CPU watchdog.">Min Watts</th>
+                                        <th title="Maximum acceptable combined GPU power draw (W) while this algo is active. 0 disables this check. Ignored by the CPU watchdog.">Max Watts</th>
+                                        <th title="Consecutive failing checks required before a restart is triggered">Grace Checks</th>
+                                        <th title="Minimum seconds between auto-restarts triggered by this algo">Cooldown (s)</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wdconfig-rows">
+                                </tbody>
+                            </table>
+                        </div>
+                        </div>
+                        <div class="settings-section wdconfig-tabbed-section raw-active">
+                            <div class="wdconfig-tabs">
+                                <button type="button" class="wdconfig-tab-btn active" id="wdconfig-tab-btn-raw" data-tab="raw">Raw Content</button>
+                                <button type="button" class="wdconfig-tab-btn" id="wdconfig-tab-btn-script" data-tab="script">Custom Script</button>
+                                <span class="input-help-inline wdconfig-tab-hint">Runs only when "Custom Script" enabled</span>
+                            </div>
+                            <div class="wdconfig-tab-body" id="wdconfig-tab-body">
+                                <textarea
+                                    id="wdconfig-custom-script"
+                                    class="wdconfig-script-textarea wdconfig-tab-panel"
+                                    spellcheck="false"
+                                    disabled
+                                    placeholder="#!/bin/bash&#10;# runs on the worker when the watchdog triggers"
+                                ></textarea>
+                                <textarea
+                                    id="wdconfig-raw"
+                                    class="fs-raw-shrunk wdconfig-tab-panel active"
+                                    spellcheck="false"
+                                ></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="wdconfig-list-toolbar">
+                    <input
+                        type="text"
+                        id="wdconfig-search"
+                        class="fs-search"
+                        placeholder="Search..."
+                        autocomplete="off"
+                    />
+                    <span id="wdconfig-status" class="wdconfig-status"></span>
+                    <div class="field-group wdconfig-name-group">
+                        <label for="wdconfig-name">Watchdog Profile Name</label>
+                        <input
+                            type="text"
+                            id="wdconfig-name"
+                            class="fs-field-input"
+                            placeholder="Watchdog profile name"
+                            autocomplete="off"
+                        />
+                    </div>
+                    <div class="cmd-btn-row">
+                        <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
+                            <input type="checkbox" id="confirm-wd" checked>
+                            <span class="checkbox-text">Confirm</span>
+                        </label>
+                        <button class="cmd-btn send-it" id="btn-send-it-wd" title="Send this watchdog config to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
+                        <button class="cmd-btn" id="btn-save-wdconfig">Save</button>
+                        <button class="cmd-btn" id="btn-load-wdconfig">Load</button>
+                        <button class="cmd-btn" id="btn-delete-wdconfig">Delete</button>
+                        <button class="cmd-btn" id="btn-clear-wdconfig">Clear</button>
+                    </div>
+                </div>
+                <div class="fs-list-panel">
+                    <div id="wdconfig-list" class="fs-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="quick-actions-modal" class="cmd-modal hidden">
+        <div class="cmd-dialog qa-dialog">
+            <div class="cmd-header">
+                <span>Set Quick Actions</span>
+            </div>
+            <div class="cmd-body qa-body">
+                <div class="cmd-row">
+                    <label for="qa-command-a">Quick Action A</label>
+                    <textarea
+                        id="qa-command-a"
+                        class="qa-command-input"
+                        spellcheck="false"
+                        placeholder="Command to run on selected workers"
+                    ></textarea>
+                </div>
+                <div class="cmd-row">
+                    <label for="qa-command-b">Quick Action B</label>
+                    <textarea
+                        id="qa-command-b"
+                        class="qa-command-input"
+                        spellcheck="false"
+                        placeholder="Command to run on selected workers"
+                    ></textarea>
+                </div>
+                <div class="cmd-row">
+                    <label for="qa-command-c">Quick Action C</label>
+                    <textarea
+                        id="qa-command-c"
+                        class="qa-command-input"
+                        spellcheck="false"
+                        placeholder="Command to run on selected workers"
+                    ></textarea>
+                </div>
+            </div>
+            <div class="cmd-footer">
+                <button class="cmd-btn ok" id="btn-qa-apply">Apply</button>
+                <button class="cmd-btn cancel" id="btn-qa-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <div id="color-scheme-modal" class="cmd-modal hidden">
+        <div class="cmd-dialog">
+            <div class="cmd-header">
+                <span>Themes</span>
+            </div>
+            <div class="cmd-body color-scheme-4col">
+                <div class="color-scheme-tabs" id="color-scheme-tabs">
+                    <button type="button" class="color-scheme-tab-btn active" id="color-scheme-tab-btn-style" data-tab-panel="style">Style &amp; Icons</button>
+                    <button type="button" class="color-scheme-tab-btn" id="color-scheme-tab-btn-colors" data-tab-panel="colors">Colors &amp; Text Sizes</button>
+                    <button type="button" class="color-scheme-tab-btn" id="color-scheme-tab-btn-buttons" data-tab-panel="buttons">Buttons</button>
+                </div>
+                <div class="color-scheme-tab-content">
+                <div class="color-scheme-tab-panel" data-tab-panel="style">
+                <div class="color-scheme-style-scroll-wrap">
+                <div class="color-scheme-style-row">
+                <div class="color-scheme-group color-scheme-group-panel-style">
+                    <div class="color-scheme-group-title">Panel Style</div>
+                    <div class="stat-panel-style-row">
+                        <span class="stat-panel-style-field">
+                            <label for="stat-panel-shape-select">Shape</label>
+                            <select id="stat-panel-shape-select" class="cmd-select" title="Corner rounding of the stat panels">
+                                <option value="square">Square</option>
+                                <option value="rounded">Rounded</option>
+                                <option value="pill">Pill</option>
+                            </select>
+                        </span>
+                        <span class="stat-panel-style-field">
+                            <label for="stat-panel-size-select">Size</label>
+                            <select id="stat-panel-size-select" class="cmd-select" title="Padding/width of the stat panels">
+                                <option value="compact">Compact</option>
+                                <option value="normal">Normal</option>
+                                <option value="large">Large</option>
+                            </select>
+                        </span>
+                        <span class="stat-panel-style-field">
+                            <label for="stat-panel-layout-select">Layout</label>
+                            <select id="stat-panel-layout-select" class="cmd-select" title="Arrangement of the value and label inside each stat panel">
+                                <option value="stacked">Stacked</option>
+                                <option value="horizontal">Horizontal</option>
+                            </select>
+                        </span>
+                        <span class="stat-panel-style-field">
+                            <label for="page-align-select">Page Layout</label>
+                            <select id="page-align-select" class="cmd-select" title="Align the tabs row, workers list/toolbar, and status panel to the left or center them on screen">
+                                <option value="centered">Centered</option>
+                                <option value="left">Left</option>
+                            </select>
+                        </span>
+                        <span class="stat-panel-style-field">
+                            <label for="stat-panel-image-fit-select">Panel BG</label>
+                            <select id="stat-panel-image-fit-select" class="cmd-select" title="How the info tiles background image is scaled/positioned inside each panel">
+                                <option value="cover">Window View (fill, may crop)</option>
+                                <option value="contain">Shrink to Edges (no crop)</option>
+                                <option value="stretch">Stretch to Fill</option>
+                                <option value="center">Center (original size)</option>
+                                <option value="tile">Tile (repeat at original size)</option>
+                                <option value="tile-contain">Tile (shrink, then repeat)</option>
+                            </select>
+                            <button type="button" class="wallpaper-opacity-btn stat-panel-image-clear-btn" id="btn-stat-panel-image-clear" title="Remove the info tiles background image">&#10005;</button>
+                        </span>
+                    </div>
+                </div>
+                <div class="color-scheme-group color-scheme-group-toolbar-style">
+                    <div class="color-scheme-group-title">Toolbar Button Style</div>
+                    <div class="stat-panel-style-row">
+                        <span class="stat-panel-style-field">
+                            <label for="toolbar-btn-shape-select">Shape</label>
+                            <select id="toolbar-btn-shape-select" class="cmd-select" title="Corner rounding of all toolbar buttons and tabs">
+                                <option value="square">Square</option>
+                                <option value="rounded">Rounded</option>
+                                <option value="pill">Pill</option>
+                                <option value="circle">Circle</option>
+                            </select>
+                        </span>
+                        <span class="stat-panel-style-field">
+                            <label for="toolbar-btn-size-select">Size</label>
+                            <select id="toolbar-btn-size-select" class="cmd-select" title="Height/padding/font size of all toolbar buttons and tabs">
+                                <option value="compact">Compact</option>
+                                <option value="normal">Normal</option>
+                                <option value="large">Large</option>
+                            </select>
+                        </span>
+                    </div>
+                </div>
+                </div>
+                </div>
+                <div class="color-scheme-group color-scheme-group-toolbar-icons">
+                    <div class="color-scheme-group-title">Toolbar Button Icons/Text</div>
+                    <div class="toolbar-icon-row">
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-mode-all">Mode: All</label>
+                            <input type="text" id="toolbar-icon-input-btn-mode-all" class="toolbar-icon-input" value="ALL" title="Custom text/icon for the Mode: All button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-mode-all" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-mode-cpu">Mode: CPU</label>
+                            <input type="text" id="toolbar-icon-input-btn-mode-cpu" class="toolbar-icon-input" value="CPU" title="Custom text/icon for the Mode: CPU button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-mode-cpu" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-mode-gpu">Mode: GPU</label>
+                            <input type="text" id="toolbar-icon-input-btn-mode-gpu" class="toolbar-icon-input" value="GPU" title="Custom text/icon for the Mode: GPU button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-mode-gpu" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-wd-enable">WD Toggle</label>
+                            <input type="text" id="toolbar-icon-input-btn-wd-enable" class="toolbar-icon-input" value="WD" title="Custom text/icon for the WD Toggle button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-wd-enable" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-start">Start</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-start" class="toolbar-icon-input" value="▶" title="Custom text/icon for the Start button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-start" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-stop">Stop</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-stop" class="toolbar-icon-input" value="■" title="Custom text/icon for the Stop button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-stop" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-restart">Restart</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-restart" class="toolbar-icon-input" value="↻" title="Custom text/icon for the Restart button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-restart" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-quick-a">Quick A</label>
+                            <input type="text" id="toolbar-icon-input-btn-quick-a" class="toolbar-icon-input" value="A" title="Custom text/icon for the Quick A button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-quick-a" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-quick-b">Quick B</label>
+                            <input type="text" id="toolbar-icon-input-btn-quick-b" class="toolbar-icon-input" value="B" title="Custom text/icon for the Quick B button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-quick-b" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-quick-c">Quick C</label>
+                            <input type="text" id="toolbar-icon-input-btn-quick-c" class="toolbar-icon-input" value="C" title="Custom text/icon for the Quick C button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-quick-c" alt="">
+                        </span>
+                        <span class="toolbar-icon-field toolbar-icon-picker-field">
+                            <div class="toolbar-icon-picker-wrap" id="toolbar-icon-picker-wrap">
+                                <button type="button" class="cmd-btn secondary" id="btn-toolbar-icon-picker-toggle" title="Pick an icon, click into a field above, then Apply">
+                                    <span id="toolbar-icon-picker-selected-label">&gt;_ Terminal</span> &#9662;
+                                </button>
+                                <div class="toolbar-icon-picker-list hidden" id="toolbar-icon-picker-list"></div>
+                            </div>
+                            <select id="toolbar-icon-picker-select" class="cmd-select" style="display:none" title="Pick an icon, click into a field above, then Apply">
+                                <option value=">_">>_ Terminal</option>
+                                <option value="▶">▶ Play</option>
+                                <option value="■">■ Stop</option>
+                                <option value="⏸">⏸ Pause</option>
+                                <option value="↻">↻ Restart / Refresh</option>
+                                <option value="⟳">⟳ Refresh (alt)</option>
+                                <option value="⚙">⚙ Gear / Settings</option>
+                                <option value="🎨">🎨 Palette / Themes</option>
+                                <option value="⎋">⎋ Eject / Logout</option>
+                                <option value="✕">✕ Close / X</option>
+                                <option value="✓">✓ Check</option>
+                                <option value="⚡">⚡ Lightning / Fast</option>
+                                <option value="🔒">🔒 Locked</option>
+                                <option value="🔓">🔓 Unlocked</option>
+                                <option value="📊">📊 Bar Chart / Stats</option>
+                                <option value="📁">📁 Folder</option>
+                                <option value="💾">💾 Save / Disk</option>
+                                <option value="🖥">🖥 Monitor / Rig</option>
+                                <option value="🌡">🌡 Thermometer</option>
+                                <option value="🔔">🔔 Bell / Notify</option>
+                                <option value="⭐">⭐ Star</option>
+                                <option value="❤">❤ Heart</option>
+                                <option value="⚠">⚠ Warning</option>
+                                <option value="ℹ">ℹ Info</option>
+                                <option value="➕">➕ Plus</option>
+                                <option value="➖">➖ Minus</option>
+                                <option value="↑">↑ Up</option>
+                                <option value="↓">↓ Down</option>
+                                <option value="←">← Left</option>
+                                <option value="→">→ Right</option>
+                                <option value="⌂">⌂ Home</option>
+                                <option value="🔍">🔍 Search</option>
+                                <option value="🖨">🖨 Print</option>
+                                <option value="📤">📤 Export / Upload</option>
+                                <option value="📥">📥 Import / Download</option>
+                                <option value="🔄">🔄 Sync</option>
+                                <option value="⏱">⏱ Timer</option>
+                                <option value="🧰">🧰 Toolbox</option>
+                                <option value="🔗">🔗 Link</option>
+                                <option value="📌">📌 Pin</option>
+                                <option value="📋">📋 Flightsheets</option>
+                                <option value="🚀">🚀 Overclocks</option>
+                                <option value="👛">👛 Wallet</option>
+                                <option value="🐕">🐕 Watchdog</option>
+                                <option value="🎮">🎮 GPU</option>
+                                <option value="🧠">🧠 CPU</option>
+                            </select>
+                            <button type="button" class="cmd-btn secondary" id="btn-toolbar-icon-picker-apply" title="Click into one of the fields above first, then Apply to insert the selected icon there">Apply</button>
+                        </span>
+                        <button type="button" class="cmd-btn secondary" id="btn-toolbar-icon-load" title="Load an icon image from a URL or your computer and add it to the picker above">Load Icon</button>
+                        <input type="file" id="toolbar-icon-file-input" accept="image/*" style="display:none">
+                        <button type="button" class="cmd-btn secondary" id="btn-toolbar-icons-reset-all" title="Restore every toolbar button back to its default text/icon">Reset All</button>
+                        <span class="toolbar-icon-field toolbar-style-lock-field">
+                            <label for="toolbar-style-lock-checkbox" title="When checked, loading/importing a theme will not change these icon/text overrides - your current button icons/text stay as-is. Shape/Size above still follow themes.">
+                                <input type="checkbox" id="toolbar-style-lock-checkbox">
+                                Lock icons (themes won't change these)
+                            </label>
+                        </span>
+                    </div>
+                </div>
+                <div class="color-scheme-group color-scheme-group-tab-icons">
+                    <div class="color-scheme-group-title">Tab Icons</div>
+                    <div class="toolbar-icon-row">
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-workers">Workers</label>
+                            <input type="text" id="tab-icon-input-workers" class="toolbar-icon-input" value="&#128421;&#65039;" title="Icon shown before the Workers tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-workers" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-stats">Stats</label>
+                            <input type="text" id="tab-icon-input-stats" class="toolbar-icon-input" value="&#128202;" title="Icon shown before the Stats tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-stats" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-wallets">Wallets</label>
+                            <input type="text" id="tab-icon-input-wallets" class="toolbar-icon-input" value="&#128176;" title="Icon shown before the Wallets tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-wallets" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-flightsheets">Flight Sheets</label>
+                            <input type="text" id="tab-icon-input-flightsheets" class="toolbar-icon-input" value="&#128203;" title="Icon shown before the Flight Sheets tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-flightsheets" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-overclocking">Overclocking</label>
+                            <input type="text" id="tab-icon-input-overclocking" class="toolbar-icon-input" value="&#9889;" title="Icon shown before the Overclocking tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-overclocking" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-watchdog">Watchdog</label>
+                            <input type="text" id="tab-icon-input-watchdog" class="toolbar-icon-input" value="&#128054;" title="Icon shown before the Watchdog tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-watchdog" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-statuslog">Status Log</label>
+                            <input type="text" id="tab-icon-input-statuslog" class="toolbar-icon-input" value="&#128220;" title="Icon shown before the Status Log tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-statuslog" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-backups">Backups</label>
+                            <input type="text" id="tab-icon-input-backups" class="toolbar-icon-input" value="&#128452;&#65039;" title="Icon shown before the Backups tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-backups" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="tab-icon-input-settings">Settings</label>
+                            <input type="text" id="tab-icon-input-settings" class="toolbar-icon-input" value="&#9881;&#65039;" title="Icon shown before the Settings tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
+                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-settings" alt="">
+                        </span>
+                        <button type="button" class="cmd-btn secondary" id="btn-tab-icons-reset-all" title="Restore every tab icon back to its default">Reset All</button>
+                    </div>
+                </div>
+                </div>
+                <div class="color-scheme-tab-panel hidden" data-tab-panel="colors">
+                <div class="color-scheme-scroll-wrap">
+                <div class="color-scheme-row color-scheme-row-top">
+                    <div class="color-scheme-group color-scheme-group-tight">
+                    <div class="color-picker-row">
+                        <label for="color-surface-app">Main Background</label>
+                        <span class="color-picker-input-wrap">
+                            <input type="color" id="color-surface-app" class="color-picker-input" title="Main page background">
+                            <button type="button" class="color-picker-clear-btn" id="btn-clear-color-surface-app" title="Set to transparent - lets the wallpaper/backdrop show through instead of a solid color">✕</button>
+                        </span>
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-surface-header">Header Bar</label>
+                        <span class="color-picker-input-wrap">
+                            <input type="color" id="color-surface-header" class="color-picker-input" title="Top header bar background">
+                            <button type="button" class="color-picker-clear-btn" id="btn-clear-color-surface-header" title="Clear override - back to transparent">✕</button>
+                        </span>
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-surface-tabs">Tab Bar</label>
+                        <span class="color-picker-input-wrap">
+                            <input type="color" id="color-surface-tabs" class="color-picker-input" title="Tab bar (Workers/Stats/etc row) background">
+                            <button type="button" class="color-picker-clear-btn" id="btn-clear-color-surface-tabs" title="Clear override - back to transparent">✕</button>
+                        </span>
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-search-bg">Worker Search Bg</label>
+                        <input type="color" id="color-search-bg" class="color-picker-input" title="Worker name search box background">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-search-border">Worker Search Border</label>
+                        <input type="color" id="color-search-border" class="color-picker-input" title="Worker name search box border">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-surface-panel">Stat Panels</label>
+                        <span class="color-picker-input-wrap">
+                            <input type="color" id="color-surface-panel" class="color-picker-input" title="Top stat panel boxes background">
+                            <button type="button" class="color-picker-clear-btn" id="btn-clear-color-surface-panel" title="Set to transparent">✕</button>
+                        </span>
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-surface-row">Worker Rows</label>
+                        <input type="color" id="color-surface-row" class="color-picker-input" title="Worker row background">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-surface-row-header">Worker List Header</label>
+                        <input type="color" id="color-surface-row-header" class="color-picker-input" title="Sticky worker list title row background">
+                    </div>
+                </div>
+                    <div class="color-scheme-group color-scheme-group-tight">
+                    <div class="color-picker-row">
+                        <label for="color-surface-modal">Module Backgrounds</label>
+                        <input type="color" id="color-surface-modal" class="color-picker-input" title="Modal / module dialog background">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-docker-popover-bg">Docker/Miner Popout</label>
+                        <input type="color" id="color-docker-popover-bg" class="color-picker-input" title="Docker container / miner details popout background">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-list-item-hover">Docker Detail Boxes</label>
+                        <input type="color" id="color-list-item-hover" class="color-picker-input" title="Individual docker detail box background">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-surface-popup">Miner Details Bg</label>
+                        <input type="color" id="color-surface-popup" class="color-picker-input" title="Compact miner details strip background">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-primary">Primary Text</label>
+                        <input type="color" id="color-text-primary" class="color-picker-input" title="Primary text color">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-secondary">Secondary Text</label>
+                        <input type="color" id="color-text-secondary" class="color-picker-input" title="Secondary / muted text color">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-accent">Accent Text</label>
+                        <input type="color" id="color-text-accent" class="color-picker-input" title="Accent (links, highlights) text color">
+                    </div>
+                </div>
+                    <div class="color-scheme-group color-scheme-group-tight">
+                    <div class="color-picker-row">
+                        <label for="color-docker-header-text">Docker Header Text</label>
+                        <input type="color" id="color-docker-header-text" class="color-picker-input" title="Docker popout header text color">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-white">Miner Details Text</label>
+                        <input type="color" id="color-text-white" class="color-picker-input" title="Compact miner details strip text color">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-muted">Muted Text</label>
+                        <input type="color" id="color-text-muted" class="color-picker-input" title="Muted text color (GPU table header/vendor, hints, etc.)">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-header">Worker List Header Text</label>
+                        <input type="color" id="color-text-header" class="color-picker-input" title="Worker list title row text color">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-worker-name">Worker Name Text</label>
+                        <input type="color" id="color-text-worker-name" class="color-picker-input" title="Worker name text color in the data rows">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-text-list">Worker List Text</label>
+                        <input type="color" id="color-text-list" class="color-picker-input" title="Worker data row base text color">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-wd-active-text">WD Active Text</label>
+                        <input type="color" id="color-wd-active-text" class="color-picker-input" title="Worker name text color when watchdog is active">
+                    </div>
+                </div>
+                    <div class="color-scheme-group color-scheme-group-tight">
+                    <div class="color-picker-row">
+                        <label for="color-wd-paused-text">WD Paused Text</label>
+                        <input type="color" id="color-wd-paused-text" class="color-picker-input" title="Worker name text color when watchdog is standing down / paused">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="color-action-output-bg">Status Output Bg</label>
+                        <span class="color-picker-input-wrap">
+                            <input type="color" id="color-action-output-bg" class="color-picker-input" title="Background of the status/action output line at the top">
+                            <button type="button" class="color-picker-clear-btn" id="btn-clear-color-action-output-bg" title="Set to transparent">✕</button>
+                        </span>
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-toolbar-btn">Toolbar Buttons</label>
+                        <input type="number" id="size-toolbar-btn" class="size-picker-input" min="8" max="24" step="1" title="Main page button row (FS, OC, WD, A/B/C, etc.) text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-status-value">Status Bar Numbers</label>
+                        <input type="number" id="size-status-value" class="size-picker-input" min="8" max="36" step="1" title="Main status bar (top) big number size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-status-label">Status Bar Labels</label>
+                        <input type="number" id="size-status-label" class="size-picker-input" min="8" max="24" step="1" title="Main status bar (top) label text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-action-output">Status Output Text</label>
+                        <input type="number" id="size-action-output" class="size-picker-input" min="8" max="24" step="1" title="'Mode: GPU' / action status line text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-worker-header">Worker List Title</label>
+                        <input type="number" id="size-worker-header" class="size-picker-input" min="8" max="24" step="1" title="Sticky worker list title row text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-main-list">Worker List Text</label>
+                        <input type="number" id="size-main-list" class="size-picker-input" min="8" max="24" step="1" title="Worker row text size (data rows, not the title)">
+                    </div>
+                </div>
+                    <div class="color-scheme-group color-scheme-group-tight">
+                    <div class="color-picker-row">
+                        <label for="size-label">Labels</label>
+                        <input type="number" id="size-label" class="size-picker-input" min="8" max="24" step="1" title="Field label text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-section-header">Section Headers</label>
+                        <input type="number" id="size-section-header" class="size-picker-input" min="8" max="24" step="1" title="Section header text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-input">Input Text</label>
+                        <input type="number" id="size-input" class="size-picker-input" min="8" max="24" step="1" title="Text box input text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-hint">Hint Text</label>
+                        <input type="number" id="size-hint" class="size-picker-input" min="8" max="24" step="1" title="Hint / help text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-popover">Popout Details Text</label>
+                        <input type="number" id="size-popover" class="size-picker-input" min="8" max="24" step="1" title="Docker/miner details popout text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-gpu-table">GPU List Text</label>
+                        <input type="number" id="size-gpu-table" class="size-picker-input" min="8" max="24" step="1" title="Per-GPU table text size">
+                    </div>
+                </div>
+                </div>
+                </div>
+                </div>
+                <div class="color-scheme-tab-panel hidden" data-tab-panel="buttons">
+                <div class="color-scheme-scroll-wrap">
+                <div class="color-scheme-row color-scheme-row-bottom">
+                    <div class="color-scheme-group color-scheme-group-btns">
+                    <div class="btn-color-cols">
+                        <div class="btn-color-table">
+                        <div class="btn-color-row btn-color-header">
+                                                        <span class="btn-color-name"></span>
+                                                        <span class="btn-color-col-label">Txt</span>
+                                                        <span class="btn-color-col-label">Bg</span>
+                                                        <span class="btn-color-col-label">Brd</span>
+                                                        <span class="btn-color-col-label">Hvr</span>
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Toolbar</span>
+                                                        <input type="color" id="color-button-text" class="color-picker-input" title="Toolbar icon button text">
+                                                        <input type="color" id="color-button-bg" class="color-picker-input" title="Toolbar icon button background">
+                                                        <input type="color" id="color-button-border" class="color-picker-input" title="Toolbar icon button border">
+                                                        <input type="color" id="color-button-hover-bg" class="color-picker-input" title="Toolbar icon button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Mode Tabs</span>
+                                                        <input type="color" id="color-button-text" class="color-picker-input" title="ALL/CPU/GPU mode tab text">
+                                                        <input type="color" id="color-tab-bg" class="color-picker-input" title="ALL/CPU/GPU mode tab background">
+                                                        <input type="color" id="color-tab-border" class="color-picker-input" title="ALL/CPU/GPU mode tab border">
+                                                        <input type="color" id="color-tab-hover-bg" class="color-picker-input" title="ALL/CPU/GPU mode tab hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Mode Tabs Active</span>
+                                                        <input type="color" id="color-tab-active-text" class="color-picker-input" title="Selected ALL/CPU/GPU mode tab text">
+                                                        <input type="color" id="color-tab-active-bg" class="color-picker-input" title="Selected ALL/CPU/GPU mode tab background">
+                                                        <input type="color" id="color-tab-active-border" class="color-picker-input" title="Selected ALL/CPU/GPU mode tab border">
+                                                        <input type="color" id="color-tab-active-hover-bg" class="color-picker-input" title="Selected ALL/CPU/GPU mode tab hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">WD Toggle</span>
+                                                        <input type="color" id="color-wd-toggle-text" class="color-picker-input" title="Watchdog toggle button text when active">
+                                                        <input type="color" id="color-wd-toggle-bg" class="color-picker-input" title="Watchdog toggle button background when active">
+                                                        <input type="color" id="color-wd-toggle-border" class="color-picker-input" title="Watchdog toggle button border when active">
+                                                        <input type="color" id="color-wd-toggle-hover-bg" class="color-picker-input" title="Watchdog toggle button hover background when active">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Send</span>
+                                                        <input type="color" id="color-button-send-text" class="color-picker-input" title="Send (main command modal) text and border">
+                                                        <input type="color" id="color-button-send-bg" class="color-picker-input" title="Send (main command modal) background">
+                                                        <input type="color" id="color-button-send-border" class="color-picker-input" title="Send (main command modal) border">
+                                                        <input type="color" id="color-button-send-hover-bg" class="color-picker-input" title="Send (main command modal) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Send Unlock Code</span>
+                                                        <input type="color" id="color-button-unlock-request-text" class="color-picker-input" title="Send Unlock Code button text and border">
+                                                        <input type="color" id="color-button-unlock-request-bg" class="color-picker-input" title="Send Unlock Code button background">
+                                                        <input type="color" id="color-button-unlock-request-border" class="color-picker-input" title="Send Unlock Code button border">
+                                                        <input type="color" id="color-button-unlock-request-hover-bg" class="color-picker-input" title="Send Unlock Code button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Unlock</span>
+                                                        <input type="color" id="color-button-unlock-submit-text" class="color-picker-input" title="Unlock button text and border">
+                                                        <input type="color" id="color-button-unlock-submit-bg" class="color-picker-input" title="Unlock button background">
+                                                        <input type="color" id="color-button-unlock-submit-border" class="color-picker-input" title="Unlock button border">
+                                                        <input type="color" id="color-button-unlock-submit-hover-bg" class="color-picker-input" title="Unlock button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Apply (Flightsheets)</span>
+                                                        <input type="color" id="color-button-apply-fs-text" class="color-picker-input" title="Apply Flightsheet config button text and border">
+                                                        <input type="color" id="color-button-apply-fs-bg" class="color-picker-input" title="Apply Flightsheet config button background">
+                                                        <input type="color" id="color-button-apply-fs-border" class="color-picker-input" title="Apply Flightsheet config button border">
+                                                        <input type="color" id="color-button-apply-fs-hover-bg" class="color-picker-input" title="Apply Flightsheet config button hover background">
+                                                    </div>
+                        </div>
+                        <div class="btn-color-table">
+                        <div class="btn-color-row btn-color-header">
+                                                        <span class="btn-color-name"></span>
+                                                        <span class="btn-color-col-label">Txt</span>
+                                                        <span class="btn-color-col-label">Bg</span>
+                                                        <span class="btn-color-col-label">Brd</span>
+                                                        <span class="btn-color-col-label">Hvr</span>
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Apply (Overclocks)</span>
+                                                        <input type="color" id="color-button-apply-oc-text" class="color-picker-input" title="Apply Overclock config button text and border">
+                                                        <input type="color" id="color-button-apply-oc-bg" class="color-picker-input" title="Apply Overclock config button background">
+                                                        <input type="color" id="color-button-apply-oc-border" class="color-picker-input" title="Apply Overclock config button border">
+                                                        <input type="color" id="color-button-apply-oc-hover-bg" class="color-picker-input" title="Apply Overclock config button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Load (Stats)</span>
+                                                        <input type="color" id="color-button-stats-load-text" class="color-picker-input" title="Load stats button text and border">
+                                                        <input type="color" id="color-button-stats-load-bg" class="color-picker-input" title="Load stats button background">
+                                                        <input type="color" id="color-button-stats-load-border" class="color-picker-input" title="Load stats button border">
+                                                        <input type="color" id="color-button-stats-load-hover-bg" class="color-picker-input" title="Load stats button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Apply (Watchdog)</span>
+                                                        <input type="color" id="color-button-apply-wd-text" class="color-picker-input" title="Apply Watchdog config button text and border">
+                                                        <input type="color" id="color-button-apply-wd-bg" class="color-picker-input" title="Apply Watchdog config button background">
+                                                        <input type="color" id="color-button-apply-wd-border" class="color-picker-input" title="Apply Watchdog config button border">
+                                                        <input type="color" id="color-button-apply-wd-hover-bg" class="color-picker-input" title="Apply Watchdog config button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Apply (Quick Actions)</span>
+                                                        <input type="color" id="color-button-apply-qa-text" class="color-picker-input" title="Apply Quick Action command button text and border">
+                                                        <input type="color" id="color-button-apply-qa-bg" class="color-picker-input" title="Apply Quick Action command button background">
+                                                        <input type="color" id="color-button-apply-qa-border" class="color-picker-input" title="Apply Quick Action command button border">
+                                                        <input type="color" id="color-button-apply-qa-hover-bg" class="color-picker-input" title="Apply Quick Action command button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Apply Notifications</span>
+                                                        <input type="color" id="color-button-notify-text" class="color-picker-input" title="Apply Notifications button text and border">
+                                                        <input type="color" id="color-button-notify-bg" class="color-picker-input" title="Apply Notifications button background">
+                                                        <input type="color" id="color-button-notify-border" class="color-picker-input" title="Apply Notifications button border">
+                                                        <input type="color" id="color-button-notify-hover-bg" class="color-picker-input" title="Apply Notifications button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Apply Stats</span>
+                                                        <input type="color" id="color-button-apply-stats-text" class="color-picker-input" title="Apply Stats button text">
+                                                        <input type="color" id="color-button-apply-stats-bg" class="color-picker-input" title="Apply Stats button background">
+                                                        <input type="color" id="color-button-apply-stats-border" class="color-picker-input" title="Apply Stats button border">
+                                                        <input type="color" id="color-button-apply-stats-hover-bg" class="color-picker-input" title="Apply Stats button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Delete / Danger</span>
+                                                        <input type="color" id="color-button-danger-text" class="color-picker-input" title="Delete / danger button text">
+                                                        <input type="color" id="color-button-danger-bg" class="color-picker-input" title="Delete / danger button background">
+                                                        <input type="color" id="color-button-danger-border" class="color-picker-input" title="Delete / danger button border">
+                                                        <input type="color" id="color-button-danger-hover-bg" class="color-picker-input" title="Delete / danger button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">New</span>
+                                                        <input type="color" id="color-button-new-text" class="color-picker-input" title="New button text">
+                                                        <input type="color" id="color-button-new-bg" class="color-picker-input" title="New button background">
+                                                        <input type="color" id="color-button-new-border" class="color-picker-input" title="New button border">
+                                                        <input type="color" id="color-button-new-hover-bg" class="color-picker-input" title="New button hover background">
+                                                    </div>
+                        </div>
+                        <div class="btn-color-table">
+                        <div class="btn-color-row btn-color-header">
+                                                        <span class="btn-color-name"></span>
+                                                        <span class="btn-color-col-label">Txt</span>
+                                                        <span class="btn-color-col-label">Bg</span>
+                                                        <span class="btn-color-col-label">Brd</span>
+                                                        <span class="btn-color-col-label">Hvr</span>
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Save</span>
+                                                        <input type="color" id="color-button-save-text" class="color-picker-input" title="Save button text">
+                                                        <input type="color" id="color-button-save-bg" class="color-picker-input" title="Save button background">
+                                                        <input type="color" id="color-button-save-border" class="color-picker-input" title="Save button border">
+                                                        <input type="color" id="color-button-save-hover-bg" class="color-picker-input" title="Save button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Clear</span>
+                                                        <input type="color" id="color-button-clear-text" class="color-picker-input" title="Clear button text">
+                                                        <input type="color" id="color-button-clear-bg" class="color-picker-input" title="Clear button background">
+                                                        <input type="color" id="color-button-clear-border" class="color-picker-input" title="Clear button border">
+                                                        <input type="color" id="color-button-clear-hover-bg" class="color-picker-input" title="Clear button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Close (Unlock)</span>
+                                                        <input type="color" id="color-button-close-unlock-text" class="color-picker-input" title="Close button (Unlock modal) text and border">
+                                                        <input type="color" id="color-button-close-unlock-bg" class="color-picker-input" title="Close button (Unlock modal) background">
+                                                        <input type="color" id="color-button-close-unlock-border" class="color-picker-input" title="Close button (Unlock modal) border">
+                                                        <input type="color" id="color-button-close-unlock-hover-bg" class="color-picker-input" title="Close button (Unlock modal) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Save (Send Cmd)</span>
+                                                        <input type="color" id="color-button-saved-cmd-save-text" class="color-picker-input" title="Save button (Send Cmd tab) text and border">
+                                                        <input type="color" id="color-button-saved-cmd-save-bg" class="color-picker-input" title="Save button (Send Cmd tab) background">
+                                                        <input type="color" id="color-button-saved-cmd-save-border" class="color-picker-input" title="Save button (Send Cmd tab) border">
+                                                        <input type="color" id="color-button-saved-cmd-save-hover-bg" class="color-picker-input" title="Save button (Send Cmd tab) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Delete (Send Cmd)</span>
+                                                        <input type="color" id="color-button-saved-cmd-delete-text" class="color-picker-input" title="Delete button (Send Cmd tab) text and border">
+                                                        <input type="color" id="color-button-saved-cmd-delete-bg" class="color-picker-input" title="Delete button (Send Cmd tab) background">
+                                                        <input type="color" id="color-button-saved-cmd-delete-border" class="color-picker-input" title="Delete button (Send Cmd tab) border">
+                                                        <input type="color" id="color-button-saved-cmd-delete-hover-bg" class="color-picker-input" title="Delete button (Send Cmd tab) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Clear (Send Cmd)</span>
+                                                        <input type="color" id="color-button-cmd-clear-text" class="color-picker-input" title="Clear button (Send Cmd tab) text and border">
+                                                        <input type="color" id="color-button-cmd-clear-bg" class="color-picker-input" title="Clear button (Send Cmd tab) background">
+                                                        <input type="color" id="color-button-cmd-clear-border" class="color-picker-input" title="Clear button (Send Cmd tab) border">
+                                                        <input type="color" id="color-button-cmd-clear-hover-bg" class="color-picker-input" title="Clear button (Send Cmd tab) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Close (Send Cmd)</span>
+                                                        <input type="color" id="color-button-close-cmd-text" class="color-picker-input" title="Close button (Send Cmd panel) text and border">
+                                                        <input type="color" id="color-button-close-cmd-bg" class="color-picker-input" title="Close button (Send Cmd panel) background">
+                                                        <input type="color" id="color-button-close-cmd-border" class="color-picker-input" title="Close button (Send Cmd panel) border">
+                                                        <input type="color" id="color-button-close-cmd-hover-bg" class="color-picker-input" title="Close button (Send Cmd panel) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Cancel (Settings)</span>
+                                                        <input type="color" id="color-button-close-refresh-text" class="color-picker-input" title="Cancel button (Settings tab) text and border">
+                                                        <input type="color" id="color-button-close-refresh-bg" class="color-picker-input" title="Cancel button (Settings tab) background">
+                                                        <input type="color" id="color-button-close-refresh-border" class="color-picker-input" title="Cancel button (Settings tab) border">
+                                                        <input type="color" id="color-button-close-refresh-hover-bg" class="color-picker-input" title="Cancel button (Settings tab) hover background">
+                                                    </div>
+                        </div>
+                        <div class="btn-color-table">
+                        <div class="btn-color-row btn-color-header">
+                                                        <span class="btn-color-name"></span>
+                                                        <span class="btn-color-col-label">Txt</span>
+                                                        <span class="btn-color-col-label">Bg</span>
+                                                        <span class="btn-color-col-label">Brd</span>
+                                                        <span class="btn-color-col-label">Hvr</span>
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Cancel (Quick Actions)</span>
+                                                        <input type="color" id="color-button-close-qa-text" class="color-picker-input" title="Cancel button (Quick Actions) text and border">
+                                                        <input type="color" id="color-button-close-qa-bg" class="color-picker-input" title="Cancel button (Quick Actions) background">
+                                                        <input type="color" id="color-button-close-qa-border" class="color-picker-input" title="Cancel button (Quick Actions) border">
+                                                        <input type="color" id="color-button-close-qa-hover-bg" class="color-picker-input" title="Cancel button (Quick Actions) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Close (Themes)</span>
+                                                        <input type="color" id="color-button-close-themes-text" class="color-picker-input" title="Close button (Themes modal) text and border">
+                                                        <input type="color" id="color-button-close-themes-bg" class="color-picker-input" title="Close button (Themes modal) background">
+                                                        <input type="color" id="color-button-close-themes-border" class="color-picker-input" title="Close button (Themes modal) border">
+                                                        <input type="color" id="color-button-close-themes-hover-bg" class="color-picker-input" title="Close button (Themes modal) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Cancel (Theme JSON)</span>
+                                                        <input type="color" id="color-button-close-themes-json-text" class="color-picker-input" title="Cancel button (Paste Theme JSON modal) text and border">
+                                                        <input type="color" id="color-button-close-themes-json-bg" class="color-picker-input" title="Cancel button (Paste Theme JSON modal) background">
+                                                        <input type="color" id="color-button-close-themes-json-border" class="color-picker-input" title="Cancel button (Paste Theme JSON modal) border">
+                                                        <input type="color" id="color-button-close-themes-json-hover-bg" class="color-picker-input" title="Cancel button (Paste Theme JSON modal) hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Send It</span>
+                                                        <input type="color" id="color-button-send-it" class="color-picker-input" title="Send it button text and border">
+                                                        <input type="color" id="color-button-send-it-bg" class="color-picker-input" title="Send it button background">
+                                                        <input type="color" id="color-button-send-it-border" class="color-picker-input" title="Send it button border">
+                                                        <input type="color" id="color-button-send-it-hover-bg" class="color-picker-input" title="Send it button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Refresh Now</span>
+                                                        <input type="color" id="color-button-refresh-now-text" class="color-picker-input" title="Refresh Now button text and border">
+                                                        <input type="color" id="color-button-refresh-now-bg" class="color-picker-input" title="Refresh Now button background">
+                                                        <input type="color" id="color-button-refresh-now-border" class="color-picker-input" title="Refresh Now button border">
+                                                        <input type="color" id="color-button-refresh-now-hover-bg" class="color-picker-input" title="Refresh Now button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Ping Now</span>
+                                                        <input type="color" id="color-button-ping-now-text" class="color-picker-input" title="Ping Now button text and border">
+                                                        <input type="color" id="color-button-ping-now-bg" class="color-picker-input" title="Ping Now button background">
+                                                        <input type="color" id="color-button-ping-now-border" class="color-picker-input" title="Ping Now button border">
+                                                        <input type="color" id="color-button-ping-now-hover-bg" class="color-picker-input" title="Ping Now button hover background">
+                                                    </div>
+                        <div class="btn-color-row">
+                                                        <span class="btn-color-name">Test Alert</span>
+                                                        <input type="color" id="color-button-test-alert-text" class="color-picker-input" title="Test Alert button text and border">
+                                                        <input type="color" id="color-button-test-alert-bg" class="color-picker-input" title="Test Alert button background">
+                                                        <input type="color" id="color-button-test-alert-border" class="color-picker-input" title="Test Alert button border">
+                                                        <input type="color" id="color-button-test-alert-hover-bg" class="color-picker-input" title="Test Alert button hover background">
+                                                    </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+                </div>
+                </div>
+                </div>
+            </div>
+            <div class="cmd-footer">
+                <div class="color-scheme-list-wrap" id="color-scheme-list-wrap">
+                    <button type="button" class="cmd-btn secondary" id="btn-color-scheme-list-toggle" title="Choose a saved theme">
+                        <span id="color-scheme-selected-label">Select theme...</span> &#9662;
+                    </button>
+                    <div class="color-scheme-list hidden" id="color-scheme-list"></div>
+                </div>
+                <button class="cmd-btn secondary" id="btn-save-color-scheme" title="Save the current theme to the server">Save</button>
+                <button class="cmd-btn secondary" id="btn-open-color-scheme-json" title="Import or export a theme as JSON">JSON</button>
+                <button type="button" class="action-btn" id="btn-wallpaper" title="Set a background image - Main Page or Info Tiles.">WP</button>
+                <label class="wallpaper-fit-toggle" title="Shrink the wallpaper to fit with no cropping. Combine with Tile to repeat it at that smaller size">
+                    <input type="checkbox" id="wallpaper-fit-checkbox"> Fit
+                </label>
+                <label class="wallpaper-fit-toggle" title="Repeat the wallpaper in a tiled grid. Combine with Fit to tile it at a shrunk-to-fit size">
+                    <input type="checkbox" id="wallpaper-tile-checkbox"> Tile
+                </label>
+                <label class="wallpaper-fit-toggle" title="Solid color shown behind the wallpaper when it doesn't fill the whole screen (e.g. with Fit) - pick something matching the image's edges instead of it fading into the default background">
+                    BG <input type="color" id="color-wallpaper-backdrop" class="color-picker-input">
+                </label>
+                <button type="button" class="wallpaper-opacity-btn stat-panel-image-clear-btn" id="btn-wallpaper-clear-themes" title="Remove the main background wallpaper">&#10005;</button>
+                <input type="file" id="wallpaper-file-input" accept="image/*" style="display:none">
+                <span class="input-help-inline color-scheme-footer-hint">saved in browser only, themes on server.</span>
+                <button type="button" class="cmd-btn secondary" id="btn-color-scheme-collapse" title="Collapse this panel down to just this footer row so you can see the live page, click again to bring it back">Collapse</button>
+                <button class="cmd-btn secondary" id="btn-reset-color-scheme" title="Remove all theme overrides, the wallpaper, and the panel style/background, then reload">Reset</button>
+                <button class="cmd-btn cancel" id="btn-close-color-scheme">Close</button>
+            </div>
+        </div>
+    </div>
+    <div id="color-scheme-json-modal" class="cmd-modal hidden">
+        <div class="cmd-dialog color-scheme-json-dialog">
+            <div class="cmd-header">
+                <span>Paste Theme JSON</span>
+            </div>
+            <div class="cmd-body">
+                <textarea id="color-scheme-json-paste" rows="12" spellcheck="false"
+                    placeholder='Paste a theme here, e.g. {&quot;My Theme&quot;: {&quot;color-body-bg&quot;: &quot;#101010&quot;, ...}}'></textarea>
+            </div>
+            <div class="cmd-footer">
+                <input type="file" id="color-scheme-json-file-input" accept=".json,application/json" style="display:none">
+                <button class="cmd-btn secondary" id="btn-browse-color-scheme-json"
+                    title="Browse for a local .json theme file and load it into the box above">Browse&hellip;</button>
+                <button class="cmd-btn secondary" id="btn-export-color-scheme-json"
+                    title="Save the current theme's colors and wallpaper as a .json file on your computer">Export</button>
+                <button class="cmd-btn secondary" id="btn-import-color-scheme-json"
+                    title="Apply this pasted JSON to the dashboard now (use the Save button afterward to persist it to the server)">Apply</button>
+                <button class="cmd-btn cancel" id="btn-close-color-scheme-json">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <div id="wallpaper-backdrop"></div>
+    <div id="wallpaper-layer"></div>
+    <div class="view-tab-panel" data-tab-panel="workers">
+        <div id="action-bar">
+        <div class="action-left">
+            <input
+                type="text"
+                id="rig-search"
+                class="rig-search-input"
+                placeholder="Search worker name..."
+                autocomplete="off"
+            />
+            <span class="action-mode-sep"></span>
+            <button class="action-btn" id="btn-send-cmd" title="Send Cmd">
+                &gt;_
+            </button>
+            <button class="action-btn" id="btn-toggle-select" title="Select / Unselect">
+                ✕
+            </button>
+        </div>
+        <div class="action-modes">
+            <button class="action-tab" data-mode="all" id="btn-mode-all" title="Show and target all workers (CPU + GPU)">ALL</button>
+            <button class="action-tab active" data-mode="cpu" id="btn-mode-cpu" title="Show and target CPU workers only">CPU</button>
+            <button class="action-tab" data-mode="gpu" id="btn-mode-gpu" title="Show and target GPU workers only">GPU</button>
+            <button class="action-tab" data-mode="aux" id="btn-mode-aux" title="Show and target AUX workers only">AUX</button>
+        </div>
+        <button class="action-tab wd-enable-toggle" id="btn-wd-enable" title="Toggle watchdog control">
+            WD
+        </button>
+        <div class="action-buttons">
+            <button class="action-btn" id="btn-action-start" title="Start ALL/CPU/GPU">▶</button>
+            <button class="action-btn" id="btn-action-stop" title="Stop ALL/CPU/GPU">■</button>
+            <button class="action-btn" id="btn-action-restart" title="Restart ALL/CPU/GPU">↻</button>
+        </div>
+        <div class="action-quick-buttons">
+            <button class="action-btn" id="btn-quick-a" title="Quick action A - Ctrl+click to edit">A</button>
+            <button class="action-btn" id="btn-quick-b" title="Quick action B - Ctrl+click to edit">B</button>
+            <button class="action-btn" id="btn-quick-c" title="Quick action C - Ctrl+click to edit">C</button>
+        </div>
+        <span class="action-mode-sep"></span>
+        <button class="action-btn" id="btn-color-scheme" title="Themes">
+           🎨
+        </button>
+        <div class="wallpaper-opacity-controls">
+            <button type="button" class="wallpaper-opacity-btn" id="btn-wallpaper-opacity-up" title="Increase wallpaper opacity">&#9650;</button>
+            <button type="button" class="wallpaper-opacity-btn" id="btn-wallpaper-opacity-down" title="Decrease wallpaper opacity">&#9660;</button>
+        </div>
+        <div class="wallpaper-opacity-controls">
+            <button type="button" class="wallpaper-opacity-btn" id="btn-stat-panel-image-opacity-up" title="Increase info tiles background image opacity">&#9650;</button>
+            <button type="button" class="wallpaper-opacity-btn" id="btn-stat-panel-image-opacity-down" title="Decrease info tiles background image opacity">&#9660;</button>
+        </div>
+        <button class="action-btn" id="btn-remote-logout" title="Log out of remote unlock (return to view-only)" style="display:none;">
+           ⎋
+        </button>
+        <span id="last-update-ts" class="last-update-ts" title="Time of the last dashboard update received">--</span>
+        </div>
+    <div class="rig-header">
+        <div class="rig-main-wrap">
+            <input type="checkbox" class="rig-select-checkbox" id="rig-select-all-checkbox" title="Select / unselect all visible workers">
+            <div class="rig-main rig-header-grid">
+            <div class="header-item title-left">
+                <span class="reset-btn" id="btn-reset" title="Hard reset workers">⟳</span>
+                <span>Name</span>
+            </div>
+            <div class="header-item metric" title="CPU Temperature (°C)">CPU°</div>
+            <div class="header-item metric">CPU %</div>
+            <div class="header-item metric">LA ( 1m, 5m, 15m )</div>
+            <div class="header-item metric">RAM</div>
+            <div class="header-item metric">Uptime</div>
+            <div class="header-item metric" title="GPU Temperature (°C)">GPU°</div>
+            <div class="header-item metric" title="GPU Memory Temperature (°C)">MEM°</div>
+            <div class="header-item metric">GPU %</div>
+            <div class="header-item metric">GPU W</div>
+            <div class="header-item metric">Fan</div>
+            <div class="header-item metric">VRAM</div>
+            <div class="header-item metric">Core</div>
+            <div class="header-item metric">Mem</div>
+            <div class="header-item metric" title="CPU service status/shares | GPU service status/shares | AUX service status">CPU | GPU | AUX</div>
+            <div class="header-item metric">D</div>
+            <div class="header-item title-left">Miner</div>
+            </div>
+        </div>
+    </div>
+    <div id="rig-container"></div>
+    </div>
+    <div id="cmd-modal" class="cmd-float-panel hidden">
+        <div class="cmd-dialog">
+            <div class="cmd-header">
+                <span class="cmd-target">
+                    (<span id="cmd-target-count">0</span> workers)
+                </span>
+                <button type="button" class="cmd-header-close" id="btn-close-cmd-modal" title="Close">&#10005;</button>
+            </div>
+            <textarea
+                id="cmd-input"
+                spellcheck="false"
+                placeholder="# Enter command(s) to execute on selected workers
+# Example:
+uptime
+df -h
+nvidia-smi
+"></textarea>
+            <div class="cmd-resize-divider" id="cmd-resize-divider" title="Drag to resize"></div>
+            <div class="input-help">Ctrl+Enter to send</div>
+            <pre id="cmd-output" class="cmd-output"></pre>
+            <div class="cmd-output-resize-divider" id="cmd-output-resize-divider" title="Drag to resize"></div>
+            <div class="saved-cmd-toolbar">
+                <input
+                    type="text"
+                    id="saved-cmd-search"
+                    class="fs-search"
+                    placeholder="Search..."
+                    autocomplete="off"
+                />
+                <span id="saved-cmd-status" class="wdconfig-status"></span>
+                <div class="field-group saved-cmd-name-group">
+                    <label for="saved-cmd-name">Name</label>
+                    <input
+                        type="text"
+                        id="saved-cmd-name"
+                        class="fs-field-input"
+                        placeholder="Saved command name"
+                        autocomplete="off"
+                    />
+                </div>
+                <div class="cmd-btn-row">
+                    <button class="cmd-btn" id="btn-cmd-clear-send" title="Clear the output box, then send">Clear &amp; Send</button>
+                    <button class="cmd-btn ok" id="btn-cmd-send">Send</button>
+                    <button class="cmd-btn" id="btn-save-saved-cmd">Save</button>
+                    <button class="cmd-btn" id="btn-delete-saved-cmd">Delete</button>
+                    <button class="cmd-btn" id="btn-cmd-clear">Clear All</button>
+                </div>
+            </div>
+            <div class="fs-list-panel">
+                <div id="saved-cmd-list" class="fs-list">
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="stats-modal" data-tab-panel="stats">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-body stats-body">
+                <div class="stats-controls">
+                    <div class="field-group stats-worker-field">
+                        <label for="stats-rig-select">Worker</label>
+                        <select id="stats-rig-select"></select>
+                    </div>
+                    <div class="field-group stats-algo-field">
+                        <label for="stats-algo-select">Algorithm</label>
+                        <select id="stats-algo-select">
+                            <option value="all" selected>-All-</option>
+                        </select>
+                    </div>
+                    <div class="field-group stats-hashrate-unit-field">
+                        <label for="stats-hashrate-unit-select">Hashrate Scale</label>
+                        <select id="stats-hashrate-unit-select">
+                            <option value="auto" selected>-Auto-</option>
+                            <option value="H/s">H/s</option>
+                            <option value="KH/s">kH/s</option>
+                            <option value="MH/s">MH/s</option>
+                            <option value="GH/s">GH/s</option>
+                            <option value="TH/s">TH/s</option>
+                            <option value="PH/s">PH/s</option>
+                        </select>
+                    </div>
+                    <div class="stats-controls-divider"></div>
+                    <div class="stats-controls-right">
+                        <div class="field-group">
+                            <label for="stats-days-input">Time Range (days)</label>
+                            <input type="number" id="stats-days-input" min="1" step="1" value="1" />
+                        </div>
+                        <div class="field-group">
+                            <label for="stats-start-date">Start Date</label>
+                            <input type="date" id="stats-start-date" />
+                        </div>
+                        <div class="field-group stats-load-btn-field">
+                            <label class="stats-load-btn-spacer" aria-hidden="true">&nbsp;</label>
+                            <button class="cmd-btn ok" id="btn-stats-load">Load</button>
+                        </div>
+                        <span id="stats-status" class="stats-status"></span>
+                    </div>
+                </div>
+                <div class="stats-charts">
+                    <div class="stats-chart-box stats-chart-wide">
+                        <div class="stats-chart-title">Hashrate</div>
+                        <canvas id="stats-chart-hashrate"></canvas>
+                    </div>
+                    <div class="stats-chart-box">
+                        <div class="stats-chart-title">GPU Power (W)</div>
+                        <canvas id="stats-chart-gpu-watts"></canvas>
+                    </div>
+                    <div class="stats-chart-box">
+                        <div class="stats-chart-title">GPU Temp (&deg;C)</div>
+                        <canvas id="stats-chart-gpu-temp"></canvas>
+                    </div>
+                    <div class="stats-chart-box">
+                        <div class="stats-chart-title">GPU Utilization (%)</div>
+                        <canvas id="stats-chart-gpu-util"></canvas>
+                    </div>
+                    <div class="stats-chart-box">
+                        <div class="stats-chart-title">CPU Temp (&deg;C)</div>
+                        <canvas id="stats-chart-cpu-temp"></canvas>
+                    </div>
+                    <div class="stats-chart-box">
+                        <div class="stats-chart-title">CPU Utilization (%)</div>
+                        <canvas id="stats-chart-cpu-util"></canvas>
+                    </div>
+                    <div class="stats-chart-box">
+                        <div class="stats-chart-title">Load Average</div>
+                        <canvas id="stats-chart-load"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="wallet-modal" data-tab-panel="wallets">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-body">
+                <div class="fs-editor-panel">
+                    <div class="fs-fields-panel" id="wallet-fields-panel">
+                        <div class="fs-fields-row full-width wallet-coin-pools-row">
+                            <div class="field-group wallet-coin-field">
+                                <label for="wallet-field-coin">Algo</label>
+                                <div class="wallet-algo-autocomplete">
+                                    <input type="text" id="wallet-field-coin" class="fs-field-input" autocomplete="off" />
+                                    <div id="wallet-algo-suggestions" class="fs-wallet-suggestions hidden"></div>
+                                </div>
+                            </div>
+                            <div class="field-group wallet-pools-field">
+                                <label for="wallet-field-pools">Pools <span class="input-help-inline">- double-click to remove</span></label>
+                                <div class="wallet-pools-row">
+                                    <select id="wallet-field-pools" class="fs-field-input wallet-pools-select" size="1"></select>
+                                    <button type="button" class="cmd-btn secondary" id="btn-add-wallet-pool" title="Add/edit pools for this wallet">✏️</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fs-fields-row full-width">
+                            <div class="field-group">
+                                <label for="wallet-field-address">Wallet Address</label>
+                                <input type="text" id="wallet-field-address" class="fs-field-input" autocomplete="off" />
+                            </div>
+                        </div>
+                        <div class="fs-fields-row full-width wallet-name-row">
+                            <div class="field-group">
+                                <label for="wallet-name">Wallet Name</label>
+                                <div class="wallet-name-autocomplete">
+                                    <input
+                                        type="text"
+                                        id="wallet-name"
+                                        class="fs-field-input"
+                                        placeholder="Wallet name (e.g. webwallet, desktop wallet)"
+                                        autocomplete="off"
+                                    />
+                                    <div id="wallet-name-suggestions" class="fs-wallet-suggestions hidden"></div>
+                                </div>
+                            </div>
+                            <div class="cmd-btn-row">
+                                <button class="cmd-btn" id="btn-save-wallet">Save</button>
+                                <button class="cmd-btn" id="btn-delete-wallet">Delete</button>
+                                <button class="cmd-btn" id="btn-clear-wallet">Clear</button>
+                            </div>
+                        </div>
+                        <div class="fs-fields-row full-width notes-row">
+                            <div class="field-group">
+                                <label for="wallet-field-notes">Notes / Links</label>
+                                <div class="notes-links-wrap">
+                                    <textarea id="wallet-field-notes" class="fs-field-textarea" placeholder="Notes, exchange links, anything else worth keeping with this wallet..." spellcheck="false"></textarea>
+                                    <div id="wallet-field-notes-overlay" class="notes-links-overlay" aria-hidden="true"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="wallet-list-toolbar">
+                    <div class="wallet-search-row">
+                        <select id="wallet-algo-filter" class="cmd-select" title="Filter the list to a single ALGO">
+                            <option value="">All algos</option>
+                        </select>
+                        <input
+                            type="text"
+                            id="wallet-search"
+                            class="fs-search"
+                            placeholder="Search..."
+                            autocomplete="off"
+                        />
+                    </div>
+                </div>
+                <div class="fs-list-panel">
+                    <div class="wallet-list-header">
+                        <span>Name</span>
+                        <span>Algo</span>
+                        <span>Address</span>
+                        <span>Pools</span>
+                    </div>
+                    <div id="wallet-list" class="fs-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="fs-modal" data-tab-panel="flightsheets">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">
+                    (<span id="fs-target-count">0</span> <span id="fs-target-label">workers</span> selected)
+                </span>
+            </div>
+            <div class="cmd-body">
+                <div class="fs-editor-panel">
+                    <div class="fs-fields-panel" id="fs-fields-panel">
+                        <div class="fs-fields-row">
+                            <div class="field-group field-half">
+                                <label for="fs-field-screen-name">Service</label>
+                                <select id="fs-field-screen-name" class="fs-field-input" title="Miner type - controls whether this flightsheet targets rig-gpu.json/GPU miner service, rig-cpu.json/CPU miner service, or rig-aux.json/AUX miner service on the rig">
+                                    <option value="gpu">gpu</option>
+                                    <option value="cpu">cpu</option>
+                                    <option value="aux">aux</option>
+                                </select>
+                            </div>
+                            <div class="field-group field-half">
+                                <label for="fs-field-miner">MINER</label>
+                                <div class="fs-miner-autocomplete">
+                                    <input type="text" id="fs-field-miner" class="fs-field-input" autocomplete="off" />
+                                    <div id="fs-miner-suggestions" class="fs-miner-suggestions hidden"></div>
+                                </div>
+                            </div>
+                            <div class="field-group field-half">
+                                <label for="fs-field-algo">ALGO</label>
+                                <div class="fs-algo-autocomplete">
+                                    <input type="text" id="fs-field-algo" class="fs-field-input" autocomplete="off" />
+                                    <div id="fs-algo-suggestions" class="fs-algo-suggestions hidden"></div>
+                                </div>
+                            </div>
+                            <div class="field-group field-double">
+                                <label for="fs-field-wallet">WALLET</label>
+                                <div class="fs-wallet-autocomplete">
+                                    <div id="fs-wallet-suggestions" class="fs-wallet-suggestions hidden"></div>
+                                    <input type="text" id="fs-field-wallet" class="fs-field-input" autocomplete="off" />
+                                    <button type="button" id="btn-save-fs-wallet" class="fs-pool-add-btn" title="Save to wallets">&#128190;</button>
+                                </div>
+                            </div>
+                            <div class="field-group field-half">
+                                <label for="fs-field-pass">PASS</label>
+                                <div class="fs-pass-autocomplete">
+                                    <input type="text" id="fs-field-pass" class="fs-field-input" value="x" autocomplete="off" />
+                                    <div id="fs-pass-suggestions" class="fs-pass-suggestions hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fs-fields-row">
+                            <div class="field-group field-double">
+                                <label for="fs-field-template">TEMPLATE <span class="input-help-inline">- miner wallet</span></label>
+                                <input type="text" id="fs-field-template" class="fs-field-input" autocomplete="off" placeholder="%WAL%.%WORKER_NAME%" />
+                            </div>
+                            <div class="field-group field-grow">
+                                <label for="fs-field-pool">POOL <span class="input-help-inline">- pool_urls list, only first pool is used for custom miner unless specified with %URL%[#]</span></label>
+                                <div class="fs-pool-autocomplete">
+                                    <input type="text" id="fs-field-pool" class="fs-field-input" autocomplete="off" />
+                                    <button type="button" id="btn-manage-pools" class="fs-pool-add-btn" title="Add/edit backup pools for failover">✏️</button>
+                                    <div id="fs-pool-suggestions" class="fs-pool-suggestions hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fs-fields-row full-width">
+                            <div class="field-group">
+                                <label for="fs-field-args">ARGS <span class="input-help-inline">- known miners: extra args appended to the fields above. Custom miners: args is the whole command - the fields above are only used if referenced with a %XX% token in args.</span></label>
+                                <input type="text" id="fs-field-args" class="fs-field-input" autocomplete="off" />
+                            </div>
+                        </div>
+                        <div class="fs-fields-row full-width">
+                            <div class="field-group fs-click-to-fill-group">
+                                <label>Click to insert into the active field:</label>
+                                <div class="fs-click-to-fill-tokens">
+                                    <span class="worker-name-token" id="wallet-template-token-wal" title="Resolves to this flightsheet's WALLET value">%WAL%</span>
+                                    <span class="worker-name-token" id="worker-name-token" title="Resolves to worker hostname">%WORKER_NAME%</span>
+                                    <span class="worker-name-token" id="wallet-worker-combo-token">%WAL%.%WORKER_NAME%</span>
+                                    <span class="worker-name-token" id="algo-value-token" title="Resolves to this flightsheet's ALGO value">%ALGO%</span>
+                                    <span class="worker-name-token" id="pass-value-token" title="Resolves to this flightsheet's PASS value">%PASS%</span>
+                                    <span class="worker-name-token" id="url-value-token" title="Resolves to this flightsheet's POOL value">%URL%</span>
+                                    <span class="worker-name-token" id="cpu-threads-token" title="# of system threads -1">%CPU_THREADS%</span>
+                                    <span class="worker-name-token" id="warthog-target-token" title="Inserts &#39;--warthog_verus_hr_target %WARTHOG_TARGET%&#39; - sets starting target for 32 and 24 thread cpu's">%WARTHOG_TARGET%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fs-fields-row">
+                            <div class="field-group field-half">
+                                <label for="fs-field-custom-miner" title="The miner binary's file name, as it ends up named after being downloaded/extracted from CUSTOM_MINER_URL - not an arbitrary label">CUSTOM_MINER <span class="input-help-inline">- binary</span></label>
+                                <input type="text" id="fs-field-custom-miner" class="fs-field-input" autocomplete="off" />
+                            </div>
+                            <div class="field-group field-grow">
+                                <label for="fs-field-custom-miner-url" title="Direct download URL for the miner - .zip and .tar(.gz) archives are supported and will be extracted automatically; a plain binary URL also works as-is">CUSTOM_MINER_URL <span class="input-help-inline">- download url</span></label>
+                                <input type="text" id="fs-field-custom-miner-url" class="fs-field-input" autocomplete="off" />
+                            </div>
+                        </div>
+                        <div class="fs-fields-row">
+                            <div class="field-group field-half">
+                                <label for="fs-field-target-image">TARGET_IMAGE</label>
+                                <input type="text" id="fs-field-target-image" class="fs-field-input" autocomplete="off" />
+                            </div>
+                            <div class="field-group field-half">
+                                <label for="fs-field-target-name">TARGET_NAME</label>
+                                <input type="text" id="fs-field-target-name" class="fs-field-input" autocomplete="off" />
+                            </div>
+                            <div class="field-group fs-coin-field fs-checkbox-push-right" title="Coin ticker for this flightsheet, e.g. XMR - used as-is when copying to clipboard, no guessing">
+                                <label for="fs-field-coin">COIN</label>
+                                <input type="text" id="fs-field-coin" class="fs-field-input" autocomplete="off" placeholder="XMR" />
+                            </div>
+                            <div class="field-group fs-copy-json-field">
+                                <label class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
+                                <button type="button" class="fs-copy-json-btn" id="btn-fs-copy-json" title="Copies current raw content to clipboard in HiveOS compatible flightsheet JSON">&#128203; To clipboard</button>
+                            </div>
+                            <label class="checkbox-label fs-checkbox-inline" title="SSL">
+                                <input type="checkbox" id="fs-field-ssl">
+                                <span class="checkbox-text">SSL</span>
+                            </label>
+                            <label class="checkbox-label fs-checkbox-inline" title="TLS">
+                                <input type="checkbox" id="fs-field-tls">
+                                <span class="checkbox-text">TLS</span>
+                            </label>
+                            <label class="checkbox-label fs-checkbox-inline">
+                                <input type="checkbox" id="fs-field-apply-oc">
+                                <span class="checkbox-text">APPLY_OC</span>
+                            </label>
+                            <label class="checkbox-label fs-checkbox-inline">
+                                <input type="checkbox" id="fs-field-reset-oc" checked>
+                                <span class="checkbox-text">RESET_OC</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="fs-raw-label-row">
+                        <label for="fs-raw" class="fs-raw-label">&#x25BC; Raw Content &#x25BC;</label>
+                        <span class="fs-raw-hint">Paste batch file or JSON from a flightsheet profile exported from various platforms, or just a list of pools - it will attempt to auto-convert into the fields above.</span>
+                    </div>
+                    <textarea
+                        id="fs-raw"
+                        class="fs-raw-shrunk"
+                        spellcheck="false"
+                    ></textarea>
+                </div>
+                <div class="fs-list-toolbar">
+                    <div class="fs-search-row">
+                        <input
+                            type="text"
+                            id="fs-search"
+                            class="fs-search"
+                            placeholder="Search..."
+                            autocomplete="off"
+                        />
+                        <select id="fs-miner-filter" class="cmd-select" title="Filter the list to a single MINER">
+                            <option value="">All miners</option>
+                        </select>
+                        <select id="fs-algo-filter" class="cmd-select" title="Filter the list to a single ALGO">
+                            <option value="">All algos</option>
+                        </select>
+                    </div>
+                    <div class="field-group fs-name-group">
+                        <label for="fs-name">Flightsheet Name</label>
+                        <input
+                            type="text"
+                            id="fs-name"
+                            class="fs-field-input"
+                            placeholder="Flightsheet name"
+                            autocomplete="off"
+                        />
+                    </div>
+                    <div class="cmd-btn-row">
+                        <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
+                            <input type="checkbox" id="confirm-fs" checked>
+                            <span class="checkbox-text">Confirm</span>
+                        </label>
+                        <button class="cmd-btn send-it" id="btn-send-it-fs" title="Send this flightsheet to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
+                        <button class="cmd-btn" id="btn-save-fs">Save</button>
+                        <button class="cmd-btn" id="btn-delete-fs">Delete</button>
+                        <button class="cmd-btn" id="btn-clear-fs">Clear</button>
+                    </div>
+                </div>
+                <div class="fs-list-panel">
+                    <div class="fs-list-header">
+                        <input type="checkbox" class="rig-select-checkbox" id="fs-select-all-checkbox" title="Select / unselect all visible flightsheets">
+                        <div class="fs-item-grid">
+                            <span class="fs-item-col fs-item-col-name">Flightsheet Name</span>
+                            <span class="fs-item-col fs-item-col-miner">Miner</span>
+                            <span class="fs-item-col fs-item-col-coin">Algo</span>
+                            <span class="fs-item-col fs-item-col-pool">Pool</span>
+                        </div>
+                    </div>
+                    <div id="fs-list" class="fs-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="oc-modal" data-tab-panel="overclocking">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">
+                    (<span id="oc-target-count">0</span> <span id="oc-target-label">workers</span> selected)
+                </span>
+            </div>
+            <div class="cmd-body">
+                <div class="fs-editor-panel">
+                    <div class="wdconfig-settings-panel" id="oc-settings-panel">
+                        <div class="settings-section">
+                            <div class="section-header">Per-Algorithm Overclock Settings</div>
+                        </div>
+                        <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
+                            <button class="cmd-btn" id="btn-oc-add-row">+ Add Algorithm</button>
+                        </div>
+                        <div class="wdconfig-table-wrap">
+                            <table class="wdconfig-table oc-table">
+                                <thead>
+                                    <tr>
+                                        <th title="Comma-separate multiple algo names to share this row's OC settings, e.g. keryxhash,keryx-miner,keryx-minerx">Algorithm</th>
+                                        <th title="0 = don't lock/skip">Lock Core</th>
+                                        <th>Core Offset</th>
+                                        <th title="0 = don't set/skip">Power Limit W</th>
+                                        <th title="0 = don't lock/skip">Lock Mem</th>
+                                        <th>Mem Offset</th>
+                                        <th title="A plain number sets a static fan %. A curve like 30:30,40:45,50:65,55:90,65:100 (temp:percent pairs) deploys/updates the fan-curve.service instead. Blank = don't touch fan for this algo. Note: the curve is global - applied once as a single fan-curve.service for the whole rig, not per algorithm.">Fan % or Curve <button type="button" id="oc-fan-curve-example-btn" title="Fill the active row's Fan field with an example fan curve (temp:percent pairs)">curve example</button></th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="oc-rows">
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="oc-fan-curve-note">Note: a fan curve is global, not per-algorithm - it's applied once as a single fan-curve.service for the whole rig, not re-applied each time the algo switches.</div>
+                    </div>
+                    <label for="oc-raw" class="fs-raw-label">&#x25BC; Raw Content &#x25BC;</label>
+                    <textarea
+                        id="oc-raw"
+                        class="fs-raw-shrunk"
+                        spellcheck="false"
+                    ></textarea>
+                </div>
+                <div class="oc-list-toolbar">
+                    <input
+                        type="text"
+                        id="oc-search"
+                        class="fs-search"
+                        placeholder="Search..."
+                        autocomplete="off"
+                    />
+                    <div class="field-group oc-name-group">
+                        <label for="oc-name">Overclock Name</label>
+                        <input
+                            type="text"
+                            id="oc-name"
+                            class="fs-field-input"
+                            placeholder="Overclock name"
+                            autocomplete="off"
+                        />
+                    </div>
+                    <div class="field-group oc-algo-apply-group">
+                        <label for="oc-algo-apply-select">Apply Algo</label>
+                        <select id="oc-algo-apply-select" class="cmd-select oc-algo-apply-select" title="Choosing an algo appends &quot;sudo /usr/local/bin/gpu_apply_ocs.sh &lt;algo&gt;&quot; to the bottom of Raw Content, so sending this profile also applies the OC settings for that algo immediately">
+                            <option value="">-save only-</option>
+                        </select>
+                    </div>
+                    <div class="cmd-btn-row">
+                        <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
+                            <input type="checkbox" id="confirm-oc" checked>
+                            <span class="checkbox-text">Confirm</span>
+                        </label>
+                        <button class="cmd-btn send-it" id="btn-send-it-oc" title="Send this overclock profile to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
+                        <button class="cmd-btn" id="btn-save-oc">Save</button>
+                        <button class="cmd-btn" id="btn-delete-oc">Delete</button>
+                        <button class="cmd-btn" id="btn-clear-oc">Clear</button>
+                    </div>
+                </div>
+                <div class="fs-list-panel">
+                    <div class="oc-list-header">
+                        <input type="checkbox" class="rig-select-checkbox" id="oc-select-all-checkbox" title="Select / unselect all visible overclock profiles">
+                        <div class="fs-item-grid">
+                            <span class="fs-item-col fs-item-col-name">Overclock Name</span>
+                            <span class="fs-item-col" title="Algo appended as 'sudo /usr/local/bin/gpu_apply_ocs.sh &lt;algo&gt;' at the bottom of this profile's Raw Content">Apply Algo</span>
+                            <span class="fs-item-col">Algo(s)</span>
+                        </div>
+                    </div>
+                    <div id="oc-list" class="fs-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="statuslog-modal" data-tab-panel="statuslog">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
+            <div class="cmd-body">
+                <div class="fs-list-panel">
+                    <select id="statuslog-rig-select" class="statuslog-rig-select">
+                        <option value="">All Workers</option>
+                    </select>
+                    <div id="statuslog-list" class="fs-list">
+                    </div>
+                </div>
+                <div class="fs-editor-panel">
+                    <textarea
+                        id="statuslog-details"
+                        class="statuslog-details"
+                        readonly
+                        placeholder="Select an entry to see its full details..."
+                    ></textarea>
+                </div>
+            </div>
+            <div class="cmd-footer">
+                <div class="cmd-btn-row">
+                    <span id="statuslog-status" class="wdconfig-status"></span>
+                    <button class="cmd-btn" id="btn-statuslog-refresh">Refresh</button>
+                    <button class="cmd-btn" id="btn-statuslog-clear" title="Deletes every entry currently visible in the list (respects the worker filter above) - asks for confirmation first">Clear</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="backups-modal" data-tab-panel="backups">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
+            <div class="cmd-body backups-body">
+                <div class="backups-top-row">
+                    <div class="backups-list-panel">
+                        <div class="backups-list-header">
+                            <label class="backups-select-all">
+                                <input type="checkbox" id="backups-select-all">
+                            </label>
+                            <span>File</span>
+                            <span>Items</span>
+                            <span>Size</span>
+                        </div>
+                        <div id="backups-list" class="fs-list"></div>
+                    </div>
+                    <div class="backups-top-hsizer" id="backups-top-hsizer" title="Drag to resize"></div>
+                    <div class="backups-actions">
+                        <div class="cmd-btn-row backups-actions-row">
+                            <button class="cmd-btn ok" id="btn-backups-backup" title="Push the selected file(s)' local rows up to their DynamoDB table">Backup</button>
+                            <button class="cmd-btn cancel" id="btn-backups-restore" title="Pull the selected file(s)' DynamoDB table down and replace the local data">Restore</button>
+                            <button class="cmd-btn danger" id="btn-backups-delete" title="Permanently delete the selected file(s)' data - uses the Local/DynamoDB toggle below to pick which side gets wiped">Delete</button>
+                            <label class="backups-missing-only-label" title="When restoring, keep existing local rows and only add rows that don't already exist - otherwise Restore replaces local data with what's in DynamoDB">
+                                <input type="checkbox" id="backups-restore-missing-only">
+                                Import missing entries only
+                            </label>
+                        </div>
+                        <div class="cmd-btn-row backups-actions-row">
+                            <button class="cmd-btn secondary" id="btn-backups-preview">Preview Items</button>
+                            <span class="backups-preview-source-toggle">
+                                <label>
+                                    <input type="radio" name="backups-preview-source" id="backups-preview-source-local" value="local" checked>
+                                    Local
+                                </label>
+                                <label>
+                                    <input type="radio" name="backups-preview-source" id="backups-preview-source-dynamo" value="dynamo">
+                                    DynamoDB
+                                </label>
+                            </span>
+                        </div>
+                        <div class="cmd-btn-row backups-actions-row">
+                            <button class="cmd-btn secondary" id="btn-backups-check-config">Check Config</button>
+                            <button class="cmd-btn secondary" id="btn-backups-test-connection">Test DB Connection</button>
+                            <button class="cmd-btn secondary" id="btn-backups-import-keys">Import Access Keys</button>
+                            <input type="file" id="backups-accesskeys-file-input" accept=".csv" style="display:none">
+                        </div>
+                        <div class="input-help backups-accesskeys-hint">Create an AWS IAM user with DynamoDB read/write/execute access, export its accessKeys.csv, then import it here.</div>
+                    </div>
+                </div>
+                <span id="backups-status" class="wdconfig-status"></span>
+                <div class="backups-vsizer" id="backups-vsizer" title="Drag to resize the preview area"></div>
+                <div class="backups-preview-panel" id="backups-preview-panel">
+                    <div id="backups-preview-list" class="fs-list backups-preview-list"></div>
+                    <div class="backups-hsizer" id="backups-hsizer" title="Drag to resize"></div>
+                    <textarea
+                        id="backups-preview-textarea"
+                        class="fs-pools-textarea backups-preview-textarea"
+                        readonly
+                        spellcheck="false"
+                        placeholder="Select file(s) above, click Preview Items, then click an item on the left to see its raw contents here."
+                    ></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="view-tab-panel hidden" id="refresh-modal" data-tab-panel="settings">
+        <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">
+                    (<span id="stats-settings-target-count">0</span> <span id="stats-settings-target-label">workers</span> selected)
+                </span>
+            </div>
+            <div class="cmd-body">
+            <div class="refresh-left-pane">
+              <div class="settings-col">
+                <div class="settings-section">
+                    <div class="section-header">Refresh Intervals</div>
+                    <div class="settings-row-horizontal settings-row-narrow">
+                        <div class="field-group interval-field">
+                            <label for="refresh-interval">Normal Interval (s)</label>
+                            <input
+                                type="number"
+                                id="refresh-interval"
+                                min="1"
+                                max="3600"
+                                step="1"
+                                value="10"
+                                placeholder="1-3600"
+                                title="Refresh interval when dashboard is active"
+                                class="interval-input"
+                            />
+                            <div class="input-help">dashboard active</div>
+                        </div>
+                        <div class="field-group interval-field">
+                            <label for="offline-ping-interval">Offline Ping (s)</label>
+                            <input
+                                type="number"
+                                id="offline-ping-interval"
+                                min="10"
+                                max="86400"
+                                step="5"
+                                value="3600"
+                                placeholder="60-86400"
+                                title="How often to check workers when dashboard is closed"
+                                class="interval-input"
+                            />
+                            <div class="input-help">dashboard closed</div>
+                        </div>
+                        <div class="field-group interval-field">
+                            <label for="offline-threshold">Offline Threshold (s)</label>
+                            <input
+                                type="number"
+                                id="offline-threshold"
+                                min="30"
+                                max="86400"
+                                step="5"
+                                value="3600"
+                                placeholder="300-86400"
+                                title="How long before sending 'worker offline' notifications"
+                                class="interval-input"
+                            />
+                            <div class="input-help">Before offline alerts</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="section-header">SMS Numbers</div>
+                    <div class="settings-row-horizontal settings-row-narrow">
+                        <div class="field-group phone-field">
+                            <label for="sms-primary-number">Primary Number</label>
+                            <input
+                                type="tel"
+                                id="sms-primary-number"
+                                placeholder="1234567890"
+                                title="Primary phone number for SMS alerts"
+                                class="phone-input"
+                            />
+                        </div>
+                        <div class="field-group phone-field">
+                            <label for="sms-secondary-number">Secondary Number</label>
+                            <input
+                                type="tel"
+                                id="sms-secondary-number"
+                                placeholder="1234567890"
+                                title="Secondary phone number for SMS alerts"
+                                class="phone-input"
+                            />
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section refresh-apply-row">
+                    <div class="settings-row-horizontal quick-actions-row">
+                        <button class="cmd-btn secondary" id="btn-refresh-now" title="Send refresh to all workers">⟳ Refresh Now</button>
+                        <button class="cmd-btn secondary" id="btn-offline-ping-now" title="Manually trigger offline ping">⏰ Ping Now</button>
+                        <button class="cmd-btn secondary" id="btn-test-notification" title="Send test notification">📧 Test Alert</button>
+                    </div>
+                </div>
+              </div>
+              <div class="settings-col">
+                <div class="settings-section">
+                    <div class="section-header">Notification Settings</div>
+                    <div class="settings-row-horizontal notif-row settings-row-narrow">
+                        <div class="notif-item">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="sms-primary-enabled">
+                                <span class="checkbox-text">Primary SMS</span>
+                            </label>
+                        </div>
+                        <div class="notif-item">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="sms-secondary-enabled">
+                                <span class="checkbox-text">Secondary SMS</span>
+                            </label>
+                        </div>
+                        <div class="notif-item">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="email-enabled" checked>
+                                <span class="checkbox-text">Email</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="section-header">Docker State Change <span class="wdconfig-section-header-hint">"Docker containers running"</span></div>
+                    <div class="settings-row-horizontal notif-row settings-row-narrow">
+                        <div class="notif-item">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="docker-sms-primary-enabled">
+                                <span class="checkbox-text">Primary SMS</span>
+                            </label>
+                        </div>
+                        <div class="notif-item">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="docker-sms-secondary-enabled">
+                                <span class="checkbox-text">Secondary SMS</span>
+                            </label>
+                        </div>
+                        <div class="notif-item">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="docker-email-enabled">
+                                <span class="checkbox-text">Email</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="section-header">
+                        Stats DB Settings
+                    </div>
+                    <div class="settings-row-horizontal settings-row-narrow stats-settings-row">
+                        <label class="checkbox-label" title="Stats DB Enabled">
+                            <input type="checkbox" id="stats-settings-enabled" checked>
+                        </label>
+                        <div class="field-group interval-field">
+                            <label for="stats-settings-interval">Interval (s)</label>
+                            <input
+                                type="number"
+                                id="stats-settings-interval"
+                                min="5"
+                                step="1"
+                                value="90"
+                                placeholder="90"
+                                title="How often each worker saves telemetry to its local stats DB"
+                                class="interval-input"
+                            />
+                        </div>
+                        <div class="field-group interval-field">
+                            <label for="stats-settings-max-days">Max Days</label>
+                            <input
+                                type="number"
+                                id="stats-settings-max-days"
+                                min="1"
+                                step="1"
+                                value="7"
+                                placeholder="7"
+                                title="How many days of local telemetry history each worker keeps before pruning old rows"
+                                class="interval-input"
+                            />
+                        </div>
+                    </div>
+                    <div class="input-help stats-settings-hint">Saves on interval, keep this many days.</div>
+                </div>
+              </div>
+            </div>
+            <div class="cmd-footer">
+                <div class="refresh-footer-status">
+                    <div class="status-row">
+                        <span class="status-label">Active</span>
+                        <span class="status-value" id="current-connections">0</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Workers</span>
+                        <span class="status-value" id="rigs-monitored">0</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Offline</span>
+                        <span class="status-value" id="rigs-offline">0</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Last Notification</span>
+                        <span class="status-value" id="last-notification">Never</span>
+                    </div>
+                </div>
+                <div class="footer-buttons-right">
+                    <button class="cmd-btn ok" id="btn-refresh-save">Apply Notifications</button>
+                    <button class="cmd-btn secondary" id="btn-apply-stats-settings" title="Apply to selected workers">Apply Stats</button>
+                </div>
+            </div>
+            <div class="settings-section refresh-advanced-settings-full">
+                <div class="section-header">Advanced Server Settings</div>
+                <div class="settings-row-horizontal settings-row-narrow">
+                    <div class="field-group interval-field">
+                        <label for="ws-push-min-interval">WS Push Min Interval (s)</label>
+                        <input
+                            type="number"
+                            id="ws-push-min-interval"
+                            min="0.1"
+                            max="10"
+                            step="0.1"
+                            value="1.2"
+                            placeholder="0.1-10"
+                            title="Minimum time between WebSocket broadcasts to the dashboard. Also how long the server waits after requesting a refresh before broadcasting, to give workers a chance to reply first."
+                            class="interval-input"
+                        />
+                        <div class="input-help">Min time between pushes</div>
+                    </div>
+                    <div class="field-group interval-field">
+                        <label for="missed-refresh-threshold">Missed Refresh Threshold</label>
+                        <input
+                            type="number"
+                            id="missed-refresh-threshold"
+                            min="1"
+                            max="10"
+                            step="1"
+                            value="2"
+                            placeholder="1-10"
+                            title="Consecutive missed refreshes before a worker is marked offline while the dashboard is open"
+                            class="interval-input"
+                        />
+                        <div class="input-help">Misses before offline</div>
+                    </div>
+                </div>
+                <div class="settings-row-horizontal quick-actions-row">
+                    <button class="cmd-btn secondary" id="btn-save-advanced-server-settings" title="Save advanced server timing settings">Save Advanced Settings</button>
+                    <span id="advanced-settings-status" class="stats-status"></span>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

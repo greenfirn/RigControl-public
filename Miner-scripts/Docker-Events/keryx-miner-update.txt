@@ -1,0 +1,44 @@
+** version update: 
+
+# make a copy of models if needed
+
+sudo mkdir /opt/miners/temp
+sudo mv -v /opt/miners/keryx-miner/current/models/* /opt/miners/temp/
+
+# start flightsheet with new version, wait for miner to be downloaded, show version in popout
+# stop miner, copy back models
+
+sudo rm -fr /opt/miners/keryx-miner/current/models/*
+sudo cp -rv /opt/miners/temp/* /opt/miners/keryx-miner/current/models/
+
+# start miner
+
+**
+
+start flightsheet with new url, stop after it starts downloading model...
+
+download new model to windows pc
+
+# windows cmd window copy model from windows pc to rigs
+scp C:\Users\Username\Downloads\GLM-4-9B-0414.zip user@10.10.0.101:/home/user/
+
+# remove partial downloaded model files
+sudo rm -rv /opt/miners/keryx-miner/current/models/*
+
+# unzip model
+sudo unzip /home/user/GLM-4-9B-0414.zip -d /opt/miners/keryx-miner/current/models/
+
+# make backup copy
+sudo mkdir /opt/miners/temp
+sudo unzip /home/user/GLM-4-9B-0414.zip -d /opt/miners/temp/
+
+# check it extracted
+sudo ls -lh /opt/miners/keryx-miner/current/models/
+
+# check model size
+sudo du -sh /opt/miners/keryx-miner/current/models/GLM-4-9B-0414
+
+# remove zip
+sudo rm -v /home/user/GLM-4-9B-0414.zip
+
+restart miner

@@ -1,0 +1,70 @@
+#{
+    # Disable automatic HTTPS globally
+#    auto_https off
+#}
+########################################
+# PUBLIC — HTTPS + AUTH
+########################################
+{$CADDY_DOMAIN} {
+    # 302 instead of 308 - permanent redirects get cached very
+    # aggressively by browsers (sometimes surviving a normal reload),
+    # 308 is meant for URLs that will legitimately never change again.
+    redir /dashboard /dashboard/ 302
+
+    handle /dashboard/* {
+        basic_auth {
+            {$CADDY_AUTH_USER} {$CADDY_AUTH_HASH}
+        }
+        reverse_proxy 127.0.0.1:8765
+
+        # Belt-and-suspenders on top of the no-cache headers
+        # rigcontrol_dashboard_server.py already sends (NoCacheStaticFiles /
+        # serve_root) - forces every response through this remote/public
+        # path to be revalidated, regardless of what the backend sent or
+        # whether anything in between altered it. Fixes: dashboard
+        # renders unstyled/broken after a plain refresh over the remote
+        # (Caddy) path, only a hard reload picks up current app.css/app.js.
+        header {
+            Cache-Control "no-cache, no-store, must-revalidate"
+            Pragma "no-cache"
+            Expires "0"
+        }
+    }
+
+    handle /favicon.ico {
+        reverse_proxy 127.0.0.1:8765
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8123
+    }
+
+    tls {$CADDY_TLS_EMAIL}
+}
+########################################
+# LOCAL — HTTP ONLY, NO AUTH
+########################################
+:8081 {
+    ####################################
+    # Allow LAN only
+    ####################################
+    @lan_only {
+        remote_ip 10.10.0.0/24
+        remote_ip 10.20.0.0/24
+        remote_ip 192.168.20.0/24
+        remote_ip 192.168.0.0/24
+    }
+    ####################################
+    # RigControl (LOCAL, STRIP)
+    ####################################
+    handle @lan_only {
+        #uri strip_prefix /dashboard
+        reverse_proxy 127.0.0.1:8765
+    }
+    ####################################
+    # Drop everything else
+    ####################################
+    handle {
+        respond "Forbidden" 403
+    }
+}

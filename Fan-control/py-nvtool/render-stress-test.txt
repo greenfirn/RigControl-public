@@ -1,0 +1,27 @@
+# Create the GPU-enabling Python script (use this exact content)
+cat > enable_gpu.py << 'EOF'
+import bpy
+
+# Set render engine to Cycles
+bpy.context.scene.render.engine = 'CYCLES'
+
+# Enable GPU rendering
+bpy.context.scene.cycles.device = 'GPU'
+
+# Get and enable CUDA devices
+preferences = bpy.context.preferences.addons['cycles'].preferences
+preferences.compute_device_type = 'CUDA'
+preferences.get_devices()
+
+for device in preferences.devices:
+    if device.type == 'CUDA':
+        device.use = True
+        print(f"Enabled GPU: {device.name}")
+
+print("GPU rendering enabled!")
+EOF
+
+sudo docker run --runtime=nvidia --rm \
+  -v "$(pwd)":/workspace \
+  vogete/blender-cuda \
+  /workspace/bmw27/bmw27_gpu.blend -E CYCLES -t 0 -P /workspace/enable_gpu.py -o /workspace/render_ -F PNG -x 1 -s 1 -e 100 -a

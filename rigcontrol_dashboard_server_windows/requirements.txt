@@ -1,0 +1,7 @@
+aiomqtt>=2.4,<3.0
+python-dotenv
+fastapi
+uvicorn[standard]
+boto3
+twilio>=7.0.0
+python-multipart

@@ -1,0 +1,23 @@
+sudo mkdir /home/user/ha-docker/mosquitto/config/conf.d/
+
+sudo nano /home/user/ha-docker/mosquitto/config/conf.d/bridge-windows.conf
+
+connection win-mqtt
+address 10.20.0.100:1883
+clientid pi-bridge
+
+topic rigcloud/# both 0
+
+cleansession false
+keepalive_interval 30
+
+remote_username admin
+remote_password YOUR_PASSWORD
+
+
+
+sudo nano /home/user/ha-docker/mosquitto/config/mosquitto.conf
+
+include_dir /mosquitto/config/conf.d
+
+docker restart mosquitto

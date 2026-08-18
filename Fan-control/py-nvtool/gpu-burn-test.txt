@@ -1,0 +1,10 @@
+sudo docker run --gpus all --rm oguzpastirmaci/gpu-burn 300
+
+# 10 minutes (600 seconds)
+sudo docker run --gpus all --rm oguzpastirmaci/gpu-burn 600
+
+# 30 minutes (1800 seconds)
+sudo docker run --gpus all --rm oguzpastirmaci/gpu-burn 1800
+
+# 1 hour (3600 seconds)
+sudo docker run --gpus all --rm oguzpastirmaci/gpu-burn 3600

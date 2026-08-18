@@ -1,0 +1,35 @@
+{
+  "broadcast_interval": 10.0,
+  "offline_ping_interval": 15.0,
+  "offline_threshold": 60.0,
+  "notification_settings": {
+    "email_enabled": true,
+    "sms_primary_enabled": false,
+    "sms_secondary_enabled": false,
+    "sms_primary_number": "1234567890",
+    "sms_secondary_number": "",
+    "docker_email_enabled": true,
+    "docker_sms_primary_enabled": false,
+    "docker_sms_secondary_enabled": false
+  },
+  "quick_actions": {
+    "a": "journalctl -u docker_events_gpu.service -n 30 --no-pager",
+    "b": "sudo cp -v /home/user/index.html /home/user/ha-docker/rigcontrol-ws/static/\n#sudo cp -v /home/user/app.css /home/user/ha-docker/rigcontrol-ws/static/css/\n#sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/ha-docker/rigcontrol-ws/\ncd /home/user/ha-docker/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws",
+    "c": "sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/ha-docker/rigcontrol-ws/\nsudo cp -v /home/user/index.html /home/user/ha-docker/rigcontrol-ws/static/\nsudo cp -v /home/user/app.js /home/user/ha-docker/rigcontrol-ws/static/js/\nsudo cp -v /home/user/app.css /home/user/ha-docker/rigcontrol-ws/static/css/\ncd /home/user/ha-docker/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws"
+  },
+  "telemetry_visible_groups": [
+    "cpu_temp",
+    "cpu_usage",
+    "load",
+    "memory",
+    "uptime",
+    "gpu",
+    "miner",
+    "docker",
+    "cpu_service",
+    "gpu_service",
+    "aux_service",
+    "watchdog_service"
+  ],
+  "last_updated": 1786165292.0476043
+}
