@@ -88,7 +88,7 @@ echo "========================================"
 # PID-BASED KILL FUNCTION
 # ---------------------------------------------------------
 kill_by_pid() {
-    local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
     
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
@@ -136,7 +136,7 @@ stop_miner() {
         sleep 5
         
         # 2. CHECK: If miner process still exists after clean quit
-        local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             
@@ -180,13 +180,13 @@ stop_miner() {
         fi
         
         # Clean PID file if still exists
-        rm -f "/tmp/${SCREEN_NAME}_miner.pid"
+        rm -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid"
         
     else
         echo "[$(date)] No $SCREEN_NAME screen session found."
         
         # Check if PID file exists (orphaned process)
-        local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -223,8 +223,8 @@ if screen -list | grep -q "$SCREEN_NAME"; then
     echo "Miner is currently running in screen session: $SCREEN_NAME"
     
     # Check for PID file
-    if [[ -f "/tmp/${SCREEN_NAME}_miner.pid" ]]; then
-        miner_pid=$(cat "/tmp/${SCREEN_NAME}_miner.pid")
+    if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
+        miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
             echo "Active PID: $miner_pid"
         fi

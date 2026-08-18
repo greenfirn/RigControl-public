@@ -249,7 +249,7 @@ check_api_health() {
 }
 
 kill_by_pid() {
-    local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
 
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
@@ -364,7 +364,7 @@ start_miner() {
     if screen -list | grep -q "$SCREEN_NAME"; then
         echo "$(date): Screen session exists for $SCREEN_NAME - checking if miner is alive..."
 
-        local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
 
@@ -410,8 +410,8 @@ start_miner() {
         screen -fn -dmS "$SCREEN_NAME" bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
-             echo "$$" > "'"/tmp/${SCREEN_NAME}_miner.pid"'"; \
-             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/tmp/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
              '"$START_CMD"''
     else
         if [[ "$API_PORT" -gt 0 ]]; then
@@ -420,14 +420,14 @@ start_miner() {
             echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
         fi
 
-        LOG_FILE="/tmp/${SCREEN_NAME}_miner.log"
+        LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
         rm -f "$LOG_FILE"
 
         screen -fn -dmS "$SCREEN_NAME" bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
-             echo "$$" > "'"/tmp/${SCREEN_NAME}_miner.pid"'"; \
-             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/tmp/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
              ( while true; do \
                  sleep '"$LOG_CHECK_INTERVAL"'; \
                  sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
@@ -443,8 +443,8 @@ start_miner() {
     if screen -list | grep -q "$SCREEN_NAME"; then
         echo "$(date): Miner started in screen session: $SCREEN_NAME"
 
-        if [[ -f "/tmp/${SCREEN_NAME}_miner.pid" ]]; then
-            local miner_pid=$(cat "/tmp/${SCREEN_NAME}_miner.pid")
+        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
             echo "$(date): Miner process PID: $miner_pid"
         fi
 
@@ -490,7 +490,7 @@ stop_miner() {
     echo "$(date): Waiting 10 seconds for miner cleanup..."
     sleep 10
 
-    local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
 

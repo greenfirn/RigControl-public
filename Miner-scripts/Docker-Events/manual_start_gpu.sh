@@ -280,7 +280,7 @@ start_miner() {
     if screen -list | grep -q "$SCREEN_NAME"; then
         echo "[$(date)] Screen session exists for $SCREEN_NAME - checking if miner is alive..."
         
-        local pid_file="/tmp/${SCREEN_NAME}_miner.pid"
+        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             
@@ -329,8 +329,8 @@ start_miner() {
     screen -dmS "$SCREEN_NAME" bash -c \
         'echo "Miner starting at $(date)"; \
          echo "API: '"$API_HOST:$API_PORT"'"; \
-         echo "$$" > "'"/tmp/${SCREEN_NAME}_miner.pid"'"; \
-         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/tmp/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+         echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
          '"$START_CMD"
     
     # Wait for PID file creation
@@ -340,8 +340,8 @@ start_miner() {
     if screen -list | grep -q "$SCREEN_NAME"; then
         echo "[$(date)] Miner started in screen session: $SCREEN_NAME"
         
-        if [[ -f "/tmp/${SCREEN_NAME}_miner.pid" ]]; then
-            local miner_pid=$(cat "/tmp/${SCREEN_NAME}_miner.pid")
+        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
             echo "[$(date)] Miner process PID: $miner_pid"
         fi
         
@@ -376,8 +376,8 @@ start_miner() {
     else
         echo "[$(date)] ERROR: Failed to start screen session!"
         
-        if [[ -f "/tmp/${SCREEN_NAME}_miner.pid" ]]; then
-            local miner_pid=$(cat "/tmp/${SCREEN_NAME}_miner.pid")
+        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
             echo "[$(date)] Found PID file with PID: $miner_pid"
             
             if ps -p "$miner_pid" > /dev/null 2>&1; then
