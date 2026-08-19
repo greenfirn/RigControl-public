@@ -881,18 +881,7 @@ const LOGS_TYPE_LABELS = {
     "gpu.api": "GPU API call",
     "aux.api": "AUX API call",
 };
-// Types where the "Lines" field doesn't apply (screen hardcopy dumps the
-// whole visible terminal buffer, and an API call returns one JSON document -
-// neither is a tail'd/journalctl'd line count).
 const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api"]);
-// Sent through the same raw-execution path as the existing Send Cmd box
-// (rigcontrol_cmd.sh's default `*` case: bash -c "$RAW_CMD") - nothing new
-// to deploy on the rig side. $CPU_SERVICE_NAME / $GPU_SERVICE_NAME /
-// $AUX_SERVICE_NAME are already exported into that process's environment
-// by rigcontrol_agent.sh, so they resolve correctly here. Screen sessions
-// are named "cpu" / "gpu" / "aux" (see SCREEN_NAME in the docker_events
-// launcher) - hardcopy dumps the currently visible terminal buffer for
-// that screen to a temp file, which we then cat back.
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
     "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
@@ -903,11 +892,6 @@ const LOGS_COMMAND_BUILDERS = {
     "cpu.snap": () => `screen -S cpu -X hardcopy /tmp/rigcontrol_cpu_snap.txt && cat /tmp/rigcontrol_cpu_snap.txt`,
     "gpu.snap": () => `screen -S gpu -X hardcopy /tmp/rigcontrol_gpu_snap.txt && cat /tmp/rigcontrol_gpu_snap.txt`,
     "aux.snap": () => `screen -S aux -X hardcopy /tmp/rigcontrol_aux_snap.txt && cat /tmp/rigcontrol_aux_snap.txt`,
-    // These are structured commands (not raw shell) - rigcontrol_agent.sh
-    // intercepts them, resolves the actual running miner's stats-API
-    // endpoint via resolve_active_miner_api() in rigcontrol_telemetry.sh,
-    // and hands it to rigcontrol_cmd.sh's cpu.api/gpu.api/aux.api case,
-    // which fetches it and pretty-prints the JSON (or raw text fallback).
     "cpu.api": () => "cpu.api",
     "gpu.api": () => "gpu.api",
     "aux.api": () => "aux.api",

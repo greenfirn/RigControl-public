@@ -7,14 +7,8 @@ GPU_SERVICE="${GPU_SERVICE_NAME:-docker_events_gpu.service}"
 CPU_SERVICE="${CPU_SERVICE_NAME:-docker_events_cpu.service}"
 AUX_SERVICE="${AUX_SERVICE_NAME:-docker_events_aux.service}"
 WATCHDOG_SERVICE="${WATCHDOG_SERVICE_NAME:-rigcontrol_watchdog.service}"
-# Workers tab -> Logs -> API call. rigcontrol_agent.sh has already resolved
-# the actual running miner's stats-API endpoint (see resolve_active_miner_api()
-# in rigcontrol_telemetry.sh) and passed it in via <PREFIX>_API_* env vars -
-# this just fetches it and pretty-prints the response (jq, falling back to
-# python3's json.tool, falling back to raw text for non-JSON APIs like
-# TeamRedMiner's cgminer protocol).
 rc_miner_api_fetch() {
-    local prefix="$1"   # CPU | GPU | AUX
+    local prefix="$1"
     local method_var="${prefix}_API_METHOD"
     local url_var="${prefix}_API_URL"
     local urlfb_var="${prefix}_API_URL_FALLBACK"
@@ -31,14 +25,12 @@ rc_miner_api_fetch() {
     local tcp_payload="${!tcppayload_var:-}"
     local miner="${!miner_var:-}"
     local reason="${!reason_var:-}"
-
     if [[ "$method" != "http" && "$method" != "tcp" ]]; then
         echo "No active miner API available for $prefix."
         [[ -n "$reason" ]] && echo "$reason"
         return 1
     fi
     [[ -n "$miner" ]] && echo "[$prefix] miner: $miner"
-
     local body=""
     if [[ "$method" == "tcp" ]]; then
         body=$(timeout 4 bash -c '
@@ -52,7 +44,6 @@ rc_miner_api_fetch() {
             body=$(curl -s -m 4 "$url_fb" 2>/dev/null) || true
         fi
     fi
-
     if [[ -z "$body" ]]; then
         echo "No response from the miner's API."
         return 1

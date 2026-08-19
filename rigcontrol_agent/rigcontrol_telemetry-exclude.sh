@@ -1801,12 +1801,7 @@ def _read_agent_conf_val(key):
         _agent_conf_cache["data"] = data
     return _agent_conf_cache["data"].get(key, "")
 def _find_slot_miner_pid(slot):
-    """Finds the PID of the actual miner process running inside the detached
-    `screen -S <slot>` session (slot is "cpu"/"gpu"/"aux" - see SCREEN_NAME
-    in the docker_events launcher), walking its process tree a few
-    generations deep past the wrapper shell/pipe (screen -> bash -c
-    "$START_CMD | sed | tee"). Returns (pid, full_cmdline), or (None, None)
-    if the session or a plausible miner process inside it isn't found."""
+    """Finds the PID/cmdline of the miner process running inside the detached `screen -S <slot>` session (slot is "cpu"/"gpu"/"aux"), or (None, None) if not found."""
     try:
         result = subprocess.run(["screen", "-list"], capture_output=True, text=True, timeout=2)
     except Exception:
@@ -1849,17 +1844,7 @@ def _find_slot_miner_pid(slot):
         frontier = next_frontier
     return None, None
 def resolve_active_miner_api(slot):
-    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is
-    actually running under the given slot's screen session right now
-    (slot is "cpu"/"gpu"/"aux"), reusing the exact same default-port
-    env-var conventions as the collect_*_stats() functions above so there's
-    one source of truth for "what port does miner X's API live on".
-    Used by rigcontrol_agent.sh's handle_command() to hand a ready-to-fetch
-    endpoint to rigcontrol_cmd.sh for the Workers tab -> Logs -> API call
-    option, instead of re-deriving miner ports in bash. Returns a dict:
-    {"method": "http", "url": ..., "url_fallback": ..., "miner": ...} /
-    {"method": "tcp", "host": ..., "port": ..., "payload": ..., "miner": ...} /
-    {"method": "none", "reason": ...}."""
+    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is actually running under the given slot ("cpu"/"gpu"/"aux"), reusing the collect_*_stats() port conventions. Returns {"method": "http"/"tcp"/"none", ...}."""
     pid, cmdline = _find_slot_miner_pid(slot)
     if not cmdline:
         return {"method": "none", "reason": f"no active miner process found under the '{slot}' screen session"}
@@ -1911,8 +1896,6 @@ def resolve_active_miner_api(slot):
         return {"method": "http", "url": f"http://127.0.0.1:{port}/summary", "miner": "peakminer"}
     if "teamredminer" in lc:
         return {"method": "tcp", "host": "127.0.0.1", "port": 4028, "payload": "summary\n", "miner": "teamredminer"}
-    # Unknown/custom binary - same <NAME>_API_HOST/_PORT convention already
-    # used by collect_named_custom_miner_stats() below.
     key = _sanitize_miner_key(bin_name)
     api_host = _read_agent_conf_val(f"{key}_API_HOST") or os.environ.get(f"{key}_API_HOST", "").strip()
     api_port = _read_agent_conf_val(f"{key}_API_PORT") or os.environ.get(f"{key}_API_PORT", "").strip()

@@ -465,11 +465,6 @@ async def handle_command(raw, mqtt):
         visible_groups = data.get("visible_groups")
         await publish_status(mqtt, "refresh-request", visible_groups=visible_groups)
         return
-    # Workers tab -> Logs -> API call: resolve the actual running miner's
-    # stats-API endpoint here (reusing telemetry's own port/config logic -
-    # one source of truth for "what port does miner X's API live on") and
-    # hand it to rigcontrol_cmd.sh via env vars, instead of re-deriving
-    # miner ports a second time in bash.
     extra_env = {}
     first_line = command.strip().splitlines()[0].strip() if command.strip() else ""
     if first_line in ("cpu.api", "gpu.api", "aux.api"):

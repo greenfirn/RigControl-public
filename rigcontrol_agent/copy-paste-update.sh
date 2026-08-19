@@ -1819,12 +1819,7 @@ def _read_agent_conf_val(key):
         _agent_conf_cache["data"] = data
     return _agent_conf_cache["data"].get(key, "")
 def _find_slot_miner_pid(slot):
-    """Finds the PID of the actual miner process running inside the detached
-    `screen -S <slot>` session (slot is "cpu"/"gpu"/"aux" - see SCREEN_NAME
-    in the docker_events launcher), walking its process tree a few
-    generations deep past the wrapper shell/pipe (screen -> bash -c
-    "$START_CMD | sed | tee"). Returns (pid, full_cmdline), or (None, None)
-    if the session or a plausible miner process inside it isn't found."""
+    """Finds the PID/cmdline of the miner process running inside the detached `screen -S <slot>` session (slot is "cpu"/"gpu"/"aux"), or (None, None) if not found."""
     try:
         result = subprocess.run(["screen", "-list"], capture_output=True, text=True, timeout=2)
     except Exception:
@@ -1867,17 +1862,7 @@ def _find_slot_miner_pid(slot):
         frontier = next_frontier
     return None, None
 def resolve_active_miner_api(slot):
-    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is
-    actually running under the given slot's screen session right now
-    (slot is "cpu"/"gpu"/"aux"), reusing the exact same default-port
-    env-var conventions as the collect_*_stats() functions above so there's
-    one source of truth for "what port does miner X's API live on".
-    Used by rigcontrol_agent.sh's handle_command() to hand a ready-to-fetch
-    endpoint to rigcontrol_cmd.sh for the Workers tab -> Logs -> API call
-    option, instead of re-deriving miner ports in bash. Returns a dict:
-    {"method": "http", "url": ..., "url_fallback": ..., "miner": ...} /
-    {"method": "tcp", "host": ..., "port": ..., "payload": ..., "miner": ...} /
-    {"method": "none", "reason": ...}."""
+    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is actually running under the given slot ("cpu"/"gpu"/"aux"), reusing the collect_*_stats() port conventions. Returns {"method": "http"/"tcp"/"none", ...}."""
     pid, cmdline = _find_slot_miner_pid(slot)
     if not cmdline:
         return {"method": "none", "reason": f"no active miner process found under the '{slot}' screen session"}
@@ -1929,8 +1914,6 @@ def resolve_active_miner_api(slot):
         return {"method": "http", "url": f"http://127.0.0.1:{port}/summary", "miner": "peakminer"}
     if "teamredminer" in lc:
         return {"method": "tcp", "host": "127.0.0.1", "port": 4028, "payload": "summary\n", "miner": "teamredminer"}
-    # Unknown/custom binary - same <NAME>_API_HOST/_PORT convention already
-    # used by collect_named_custom_miner_stats() below.
     key = _sanitize_miner_key(bin_name)
     api_host = _read_agent_conf_val(f"{key}_API_HOST") or os.environ.get(f"{key}_API_HOST", "").strip()
     api_port = _read_agent_conf_val(f"{key}_API_PORT") or os.environ.get(f"{key}_API_PORT", "").strip()
@@ -2153,14 +2136,8 @@ GPU_SERVICE="${GPU_SERVICE_NAME:-docker_events_gpu.service}"
 CPU_SERVICE="${CPU_SERVICE_NAME:-docker_events_cpu.service}"
 AUX_SERVICE="${AUX_SERVICE_NAME:-docker_events_aux.service}"
 WATCHDOG_SERVICE="${WATCHDOG_SERVICE_NAME:-rigcontrol_watchdog.service}"
-# Workers tab -> Logs -> API call. rigcontrol_agent.sh has already resolved
-# the actual running miner's stats-API endpoint (see resolve_active_miner_api()
-# in rigcontrol_telemetry.sh) and passed it in via <PREFIX>_API_* env vars -
-# this just fetches it and pretty-prints the response (jq, falling back to
-# python3's json.tool, falling back to raw text for non-JSON APIs like
-# TeamRedMiner's cgminer protocol).
 rc_miner_api_fetch() {
-    local prefix="$1"   # CPU | GPU | AUX
+    local prefix="$1"
     local method_var="${prefix}_API_METHOD"
     local url_var="${prefix}_API_URL"
     local urlfb_var="${prefix}_API_URL_FALLBACK"
@@ -2177,14 +2154,12 @@ rc_miner_api_fetch() {
     local tcp_payload="${!tcppayload_var:-}"
     local miner="${!miner_var:-}"
     local reason="${!reason_var:-}"
-
     if [[ "$method" != "http" && "$method" != "tcp" ]]; then
         echo "No active miner API available for $prefix."
         [[ -n "$reason" ]] && echo "$reason"
         return 1
     fi
     [[ -n "$miner" ]] && echo "[$prefix] miner: $miner"
-
     local body=""
     if [[ "$method" == "tcp" ]]; then
         body=$(timeout 4 bash -c '
@@ -2198,7 +2173,6 @@ rc_miner_api_fetch() {
             body=$(curl -s -m 4 "$url_fb" 2>/dev/null) || true
         fi
     fi
-
     if [[ -z "$body" ]]; then
         echo "No response from the miner's API."
         return 1
@@ -2787,11 +2761,6 @@ async def handle_command(raw, mqtt):
         visible_groups = data.get("visible_groups")
         await publish_status(mqtt, "refresh-request", visible_groups=visible_groups)
         return
-    # Workers tab -> Logs -> API call: resolve the actual running miner's
-    # stats-API endpoint here (reusing telemetry's own port/config logic -
-    # one source of truth for "what port does miner X's API live on") and
-    # hand it to rigcontrol_cmd.sh via env vars, instead of re-deriving
-    # miner ports a second time in bash.
     extra_env = {}
     first_line = command.strip().splitlines()[0].strip() if command.strip() else ""
     if first_line in ("cpu.api", "gpu.api", "aux.api"):
