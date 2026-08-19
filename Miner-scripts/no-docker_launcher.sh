@@ -6,6 +6,7 @@ shopt -s inherit_errexit
 SHUTDOWN_REQUESTED=0
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
+ALWAYS_LOGS=true
 # SIGNAL HANDLER
 handle_signal() {
     local sig=$1
@@ -184,6 +185,7 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
+# Slot is fixed by which service instance this is - not user-configurable
 case "$OC_FILE" in
     *rig-gpu*) SCREEN_NAME="gpu" ;;
     *rig-cpu*) SCREEN_NAME="cpu" ;;
@@ -197,38 +199,25 @@ check_api_health() {
     # just return healthy...
     return 0
 }
-# PID-BASED ALIVE CHECK / KILL - no screen session in this variant
-is_miner_alive() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    [[ -f "$pid_file" ]] || return 1
-    local pid
-    pid=$(cat "$pid_file" 2>/dev/null)
-    [[ -n "$pid" ]] || return 1
-    ps -p "$pid" > /dev/null 2>&1
-}
+# PID-BASED KILL - Backup for crashed miners
 kill_by_pid() {
     local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
-            echo "$(date): Sending Ctrl+C (SIGINT) to miner process group (PGID: $miner_pid)..."
-            kill -2 -- "-$miner_pid" 2>/dev/null
-            local waited=0
-            while [[ $waited -lt 10 ]]; do
-                if ! ps -p "$miner_pid" > /dev/null 2>&1; then
-                    echo "$(date): Miner exited gracefully after ${waited}s"
-                    break
-                fi
-                sleep 1
-                ((waited++))
-            done
+            echo "$(date): WARNING: Miner process still alive after screen quit - forcing kill (PID: $miner_pid)..."
+            # Send SIGTERM first (graceful)
+            kill -15 "$miner_pid" 2>/dev/null
+            sleep 2
+            # Force kill if still running
             if ps -p "$miner_pid" > /dev/null 2>&1; then
-                echo "$(date): Miner not responding to SIGINT after 10s - sending SIGKILL..."
-                kill -9 -- "-$miner_pid" 2>/dev/null
+                echo "$(date): Miner not responding to SIGTERM - sending SIGKILL..."
+                kill -9 "$miner_pid" 2>/dev/null
                 sleep 1
-                pkill -P "$miner_pid" 2>/dev/null 2>&1 || true
-                echo "$(date): Miner process group $miner_pid terminated (forcefully)"
             fi
+            # Kill any child processes
+            pkill -P "$miner_pid" 2>/dev/null 2>&1 || true
+            echo "$(date): Miner process $miner_pid terminated (forcefully)"
         fi
         # Clean up PID file
         rm -f "$pid_file"
@@ -237,18 +226,30 @@ kill_by_pid() {
 # MINER CONTROL FUNCTIONS
 # Function to start miner
 start_miner() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    local LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
     # Check if miner is already running
-    if is_miner_alive; then
-        echo "$(date): Miner already running for $SCREEN_NAME (PID: $(cat "$pid_file"))"
-        echo "$(date): Miner output goes to this service's journal (journalctl -f), and to $LOG_FILE"
-        return 0
-    elif [[ -f "$pid_file" ]]; then
-        echo "$(date): Stale PID file found for $SCREEN_NAME - cleaning up..."
-        stop_miner || true
-        echo "$(date): Starting fresh miner after cleanup..."
+    if screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): Screen session exists for $SCREEN_NAME - checking if miner is alive..."
+        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+        if [[ -f "$pid_file" ]]; then
+            local miner_pid=$(cat "$pid_file")
+            if ps -p "$miner_pid" > /dev/null 2>&1; then
+                echo "$(date): Miner already running in screen session: $SCREEN_NAME"
+                echo "$(date): To view: sudo screen -r $SCREEN_NAME"
+                return 0  # Exit early - miner is already running
+            else
+                echo "$(date): Miner process is dead but screen session exists - cleaning up..."
+                stop_miner
+                echo "$(date): Starting fresh miner after cleanup..."
+                # Continue to start fresh miner
+            fi
+        else
+            echo "$(date): Screen session exists but no PID file found - cleaning up..."
+            stop_miner
+            echo "$(date): Starting fresh miner after cleanup..."
+            # Continue to start fresh miner
+        fi
     fi
+    # Start fresh miner
     # Apply GPU OC's if configured
     if [[ "${APPLY_OC,,}" == "true" ]]; then
         OC_TARGET="${ALGO:-}"
@@ -272,11 +273,14 @@ start_miner() {
     fi
     # Create PID file directory
     mkdir -p /run/rigcontrol
+    # Start in screen session
+    LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
     rm -f "$LOG_FILE"  # delete log on each fresh start
-    setsid bash -c \
+    screen -fn -dmS "$SCREEN_NAME" bash -c \
         'echo "Miner starting at $(date)"; \
          echo "API: '"$API_HOST:$API_PORT"'"; \
-         trap '\''echo "Miner exiting at $(date)"; rm -f "'"$pid_file"'"'\'' EXIT; \
+         echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
          ( while true; do \
              sleep '"$LOG_CHECK_INTERVAL"'; \
              sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
@@ -284,15 +288,16 @@ start_miner() {
                  tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
              fi; \
            done ) & \
-         '"$START_CMD"' 2>&1 | tee -a "'"$LOG_FILE"'"' \
-        < /dev/null &
-    echo $! > "$pid_file"
-    # Wait a moment for the process to come up
+         '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
+    # Wait a moment for PID file creation
     sleep 2
     # Verify startup
-    if is_miner_alive; then
-        local miner_pid=$(cat "$pid_file")
-        echo "$(date): Miner started (PID: $miner_pid)"
+    if screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): Miner started in screen session: $SCREEN_NAME"
+        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
+            echo "$(date): Miner process PID: $miner_pid"
+        fi
         # Wait for API to come up if enabled
         if [[ "$API_PORT" -gt 0 ]]; then
             echo "$(date): Waiting for API to start (max 30 seconds)..."
@@ -311,44 +316,60 @@ start_miner() {
             fi
         fi
         echo "$(date): ARGS/OCS: $ARGS"
-        echo "$(date): To view miner output: journalctl -f, or tail -f $LOG_FILE"
+        echo "$(date): To view miner output: sudo screen -r $SCREEN_NAME"
         return 0
     else
-        echo "$(date): ERROR: Failed to start miner process!"
+        echo "$(date): ERROR: Failed to start screen session!"
         return 1
     fi
 }
 # Function to stop miner (clean closure first)
 stop_miner() {
     echo "$(date): Stopping $SCREEN_NAME miner..."
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    if ! is_miner_alive; then
-        echo "$(date): No running $SCREEN_NAME process found - nothing to stop."
-        rm -f "$pid_file"
+    # Check if screen session exists at all
+    if ! screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): No $SCREEN_NAME screen session found - nothing to stop."
         return 0
     fi
-    local miner_pid=$(cat "$pid_file")
-    kill_by_pid
-    # Reset GPU if configured
+    # 1. FIRST ATTEMPT: Clean screen quit (let miner cleanup)
+    echo "$(date): Sending clean quit to screen session..."
+    screen -S "$SCREEN_NAME" -X quit
+    echo "$(date): Waiting 10 seconds for miner cleanup..."
+    sleep 10
+    # 2. CHECK: If miner process still exists after clean quit
+    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    if [[ -f "$pid_file" ]]; then
+        local miner_pid=$(cat "$pid_file")
+        if ps -p "$miner_pid" > /dev/null 2>&1; then
+            echo "$(date): Miner still running after screen quit - using force cleanup..."
+            kill_by_pid
+        else
+            echo "$(date): Miner exited cleanly after screen quit."
+            rm -f "$pid_file"
+        fi
+    fi
+    # 3. CLEANUP: Any leftover screen processes
+    local screen_pids=$(pgrep -f "SCREEN.*$SCREEN_NAME" 2>/dev/null || true)
+    if [[ -n "$screen_pids" ]]; then
+        echo "$(date): Cleaning up leftover screen processes..."
+        kill -15 $screen_pids 2>/dev/null
+        sleep 2
+        kill -9 $screen_pids 2>/dev/null 2>&1 || true
+    fi
+    # 4. Reset GPU if configured
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "$(date): Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
-    # Final verification
+    # 5. Final verification
     echo "$(date): Verifying cleanup..."
-    if ps -p "$miner_pid" > /dev/null 2>&1; then
-        echo "$(date): WARNING: Miner process still exists! Waiting 5s before retrying kill_by_pid..."
-        sleep 5
-        kill_by_pid
-        if ps -p "$miner_pid" > /dev/null 2>&1; then
-            echo "$(date): WARNING: Miner process still exists after retry!"
-            return 1
-        else
-            echo "$(date): Miner process cleaned up successfully after retry."
-        fi
+    if screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): WARNING: Screen session still exists!"
+        return 1
     else
-        echo "$(date): Miner process cleaned up successfully."
+        echo "$(date): Screen session cleaned up successfully."
     fi
+    # Clean PID file if still exists
     rm -f "$pid_file"
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
@@ -409,8 +430,6 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo systemctl daemon-reload
-# -- write AUX service --
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
 Description=AUX Miner Launcher
