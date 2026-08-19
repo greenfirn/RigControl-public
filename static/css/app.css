@@ -1110,6 +1110,9 @@ h1 {
 .logs-lines-field input {
     width: 70px;
 }
+.logs-lines-field-disabled {
+    opacity: 0.45;
+}
 .logs-toolbar-sep {
     width: 1px;
     align-self: stretch;

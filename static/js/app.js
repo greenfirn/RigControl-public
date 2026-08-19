@@ -874,12 +874,21 @@ const LOGS_TYPE_LABELS = {
     "cpu.svclog": "CPU service log",
     "gpu.svclog": "GPU service log",
     "aux.svclog": "AUX service log",
+    "cpu.snap": "CPU screen snapshot",
+    "gpu.snap": "GPU screen snapshot",
+    "aux.snap": "AUX screen snapshot",
 };
+// Types where the "Lines" field doesn't apply (screen hardcopy dumps the
+// whole visible terminal buffer, not a tail'd/journalctl'd line count).
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap"]);
 // Sent through the same raw-execution path as the existing Send Cmd box
 // (rigcontrol_cmd.sh's default `*` case: bash -c "$RAW_CMD") - nothing new
 // to deploy on the rig side. $CPU_SERVICE_NAME / $GPU_SERVICE_NAME /
 // $AUX_SERVICE_NAME are already exported into that process's environment
-// by rigcontrol_agent.sh, so they resolve correctly here.
+// by rigcontrol_agent.sh, so they resolve correctly here. Screen sessions
+// are named "cpu" / "gpu" / "aux" (see SCREEN_NAME in the docker_events
+// launcher) - hardcopy dumps the currently visible terminal buffer for
+// that screen to a temp file, which we then cat back.
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
     "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
@@ -887,6 +896,9 @@ const LOGS_COMMAND_BUILDERS = {
     "cpu.svclog": (n) => `journalctl -u "$CPU_SERVICE_NAME" -n ${n} --no-pager`,
     "gpu.svclog": (n) => `journalctl -u "$GPU_SERVICE_NAME" -n ${n} --no-pager`,
     "aux.svclog": (n) => `journalctl -u "$AUX_SERVICE_NAME" -n ${n} --no-pager`,
+    "cpu.snap": () => `screen -S cpu -X hardcopy /tmp/rigcontrol_cpu_snap.txt && cat /tmp/rigcontrol_cpu_snap.txt`,
+    "gpu.snap": () => `screen -S gpu -X hardcopy /tmp/rigcontrol_gpu_snap.txt && cat /tmp/rigcontrol_gpu_snap.txt`,
+    "aux.snap": () => `screen -S aux -X hardcopy /tmp/rigcontrol_aux_snap.txt && cat /tmp/rigcontrol_aux_snap.txt`,
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
@@ -4597,6 +4609,14 @@ function adjustLogsInterval(delta) {
         startLogsAutoRefresh();
     }
 }
+function updateLogsLinesFieldVisibility() {
+    const type = document.getElementById("logs-type-select")?.value;
+    const linesInput = document.getElementById("logs-lines-input");
+    const linesField = linesInput?.closest(".logs-lines-field");
+    const disable = LOGS_TYPES_WITHOUT_LINES.has(type);
+    if (linesInput) linesInput.disabled = disable;
+    if (linesField) linesField.classList.toggle("logs-lines-field-disabled", disable);
+}
 function restoreLogsPrefs() {
     const typeSel = document.getElementById("logs-type-select");
     const linesInput = document.getElementById("logs-lines-input");
@@ -4613,6 +4633,7 @@ function restoreLogsPrefs() {
     if (localStorage.getItem("rigcontrol_logs_auto") === "1" && autoCb) {
         autoCb.checked = true;
     }
+    updateLogsLinesFieldVisibility();
 }
 function getSavedCommandName() {
     const el = document.getElementById("saved-cmd-name");
@@ -10418,6 +10439,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-logs-refresh")?.addEventListener("click", fetchLogs);
     document.getElementById("logs-type-select")?.addEventListener("change", (e) => {
         localStorage.setItem("rigcontrol_logs_type", e.target.value);
+        updateLogsLinesFieldVisibility();
         fetchLogs();
     });
     document.getElementById("logs-lines-input")?.addEventListener("change", (e) => {
