@@ -1949,6 +1949,35 @@ function setupCmdModalSizeSaving() {
     });
     observer.observe(modal);
 }
+const LOGS_MODAL_SIZE_KEY = "rigcontrol_logs_modal_size";
+function restoreLogsModalSize() {
+    const modal = document.getElementById("logs-modal");
+    if (!modal) return;
+    try {
+        const raw = localStorage.getItem(LOGS_MODAL_SIZE_KEY);
+        const saved = raw ? JSON.parse(raw) : null;
+        if (saved && saved.width) modal.style.width = saved.width;
+        if (saved && saved.height) modal.style.height = saved.height;
+    } catch (err) {
+        console.error("Failed to parse saved Logs panel size, ignoring it", err);
+    }
+}
+function setupLogsModalSizeSaving() {
+    const modal = document.getElementById("logs-modal");
+    if (!modal || typeof ResizeObserver === "undefined") return;
+    let saveTimer = null;
+    const observer = new ResizeObserver(() => {
+        if (modal.classList.contains("hidden")) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            localStorage.setItem(LOGS_MODAL_SIZE_KEY, JSON.stringify({
+                width: modal.style.width || `${modal.offsetWidth}px`,
+                height: modal.style.height || `${modal.offsetHeight}px`,
+            }));
+        }, 300);
+    });
+    observer.observe(modal);
+}
 function restoreResizableDialogWidth(containerId, storageKey) {
     const dialog = document.querySelector(`#${containerId} .cmd-dialog`);
     if (!dialog) return;
@@ -4534,7 +4563,7 @@ function fetchLogs() {
 function startLogsAutoRefresh() {
     stopLogsAutoRefresh();
     let secs = parseInt(document.getElementById("logs-interval-input")?.value, 10);
-    if (!Number.isFinite(secs) || secs < 2) secs = 5;
+    if (!Number.isFinite(secs) || secs < 2) secs = 10;
     logsAutoRefreshTimer = setInterval(() => {
         if (!isLogsModuleVisible()) {
             stopLogsAutoRefresh();
@@ -4560,7 +4589,7 @@ function handleLogsAutoRefreshToggle() {
 function adjustLogsInterval(delta) {
     const input = document.getElementById("logs-interval-input");
     if (!input) return;
-    const cur = parseInt(input.value, 10) || 5;
+    const cur = parseInt(input.value, 10) || 10;
     const next = Math.max(2, Math.min(300, cur + delta));
     input.value = next;
     localStorage.setItem("rigcontrol_logs_interval", String(next));
@@ -10345,6 +10374,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupCmdOutputResizeSaving();
     restoreCmdModalSize();
     setupCmdModalSizeSaving();
+    restoreLogsModalSize();
+    setupLogsModalSizeSaving();
     const RESIZABLE_TAB_MODALS = [
         ["stats-modal", "rigcontrol_stats_modal_width"],
         ["wallet-modal", "rigcontrol_wallet_modal_width"],
