@@ -5,7 +5,7 @@ REM + Dockerfile "%REPO%\rigcontrol_dashboard_server_pi\rigcontrol-ws\Dockerfile
 REM script from the RigControl repo working tree to the Pi, then runs
 REM the deploy script remotely to install + rebuild.
 
-set REPO=C:\Users\Bradon\Documents\GitHub\RigControl
+set REPO=C:\Users\%USERNAME%\Documents\GitHub\RigControl
 set PI=user@10.10.0.10
 
 echo ==== Copying to Pi staging (/home/user/) - one password prompt ====

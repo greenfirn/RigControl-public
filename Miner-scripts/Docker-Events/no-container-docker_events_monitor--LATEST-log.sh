@@ -309,7 +309,7 @@ start_miner() {
     echo "$(date): Starting $SCREEN_NAME..."
     echo "$(date): API: $API_HOST:$API_PORT"
     echo "$(date): Command: $START_CMD"
-    mkdir -p /tmp/miner_pids
+    mkdir -p /run/rigcontrol
     if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
         echo "$(date): Known miner with API - starting without log file (nothing reads it)"
         screen -fn -dmS "$SCREEN_NAME" bash -c \

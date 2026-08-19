@@ -380,7 +380,7 @@ start_miner() {
     echo "$(date): API: $API_HOST:$API_PORT"
     echo "$(date): Command: $START_CMD"
     # Create PID file directory
-    mkdir -p /tmp/miner_pids
+    mkdir -p /run/rigcontrol
     if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
         echo "$(date): Known miner with API - starting without log file (nothing reads it)"
         # Start in screen session

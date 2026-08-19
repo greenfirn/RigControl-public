@@ -14,7 +14,7 @@ STATS_DB_INTERVAL_SECONDS=90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 AUX_SERVICE_NAME=keryxd.service
 CUSTOM_MINER_BIN_AUX=/opt/miners/keryx-node/keryxd
-KERYXD_LOG_PATH=/tmp/keryxd.log
+KERYXD_LOG_PATH=/run/rigcontrol/keryxd.log
 KERYXD_LOG_STYLE=blocks
 EOF
 sudo systemctl restart rigcontrol-agent.service

@@ -247,7 +247,7 @@ start_miner() {
     echo "[$(date)] API: $API_HOST:$API_PORT"
     echo "[$(date)] Full Command: $START_CMD"
     # Create PID file directory
-    mkdir -p /tmp/miner_pids
+    mkdir -p /run/rigcontrol
     # Start in screen session with PID tracking
     screen -dmS "$SCREEN_NAME" bash -c \
         'echo "Miner starting at $(date)"; \

@@ -8,11 +8,12 @@ echo "========================================"
 # HARDCODED CONFIGURATION
 echo "[init] Loading configuration..."
 # Hardcoded paths
-MINER_CONF="/home/user/miner.conf"
-API_CONF="/home/user/api.conf"
-CFG_FILE="/home/user/rig-gpu.conf"
-BASE_DIR="/home/user/miners"
+MINER_CONF="/etc/rigcontrol/miner.conf"
+API_CONF="/etc/rigcontrol/api.conf"
+CFG_FILE="/etc/rigcontrol/rig-gpu.conf"
+BASE_DIR="/opt/miners"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RIG_GPU_JSON="${CFG_FILE%.conf}.json"
 # Load miner paths environment
 if [[ -f "$BASE_DIR/miner_paths.env" ]]; then
     echo "[init] Loading miner paths from: $BASE_DIR/miner_paths.env"
@@ -22,8 +23,8 @@ else
     echo "[init] Miner binary locations may not be set correctly"
 fi
 # Check config files exist
-[[ -f "$CFG_FILE" ]] || {
-    echo "Missing rig config: $CFG_FILE"
+[[ -f "$CFG_FILE" || -f "$RIG_GPU_JSON" ]] || {
+    echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 }
 [[ -f "$MINER_CONF" ]] || {
