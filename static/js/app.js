@@ -874,9 +874,6 @@ const LOGS_TYPE_LABELS = {
     "cpu.svclog": "CPU service log",
     "gpu.svclog": "GPU service log",
     "aux.svclog": "AUX service log",
-    "cpu.snap": "CPU screen snapshot",
-    "gpu.snap": "GPU screen snapshot",
-    "aux.snap": "AUX screen snapshot",
     "cpu.api": "CPU API call",
     "gpu.api": "GPU API call",
     "aux.api": "AUX API call",
@@ -892,7 +889,7 @@ const LOGS_TYPE_LABELS = {
     "sys.df": "Disk usage (df -h)",
     "sys.top": "Processes (ps, by CPU)",
 };
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
     "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
@@ -900,9 +897,6 @@ const LOGS_COMMAND_BUILDERS = {
     "cpu.svclog": (n) => `journalctl -u "$CPU_SERVICE_NAME" -n ${n} --no-pager`,
     "gpu.svclog": (n) => `journalctl -u "$GPU_SERVICE_NAME" -n ${n} --no-pager`,
     "aux.svclog": (n) => `journalctl -u "$AUX_SERVICE_NAME" -n ${n} --no-pager`,
-    "cpu.snap": () => `screen -S cpu -X hardcopy /tmp/rigcontrol_cpu_snap.txt && cat /tmp/rigcontrol_cpu_snap.txt`,
-    "gpu.snap": () => `screen -S gpu -X hardcopy /tmp/rigcontrol_gpu_snap.txt && cat /tmp/rigcontrol_gpu_snap.txt`,
-    "aux.snap": () => `screen -S aux -X hardcopy /tmp/rigcontrol_aux_snap.txt && cat /tmp/rigcontrol_aux_snap.txt`,
     "cpu.api": () => "cpu.api",
     "gpu.api": () => "gpu.api",
     "aux.api": () => "aux.api",
