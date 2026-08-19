@@ -13,7 +13,10 @@ API_CONF="/etc/rigcontrol/api.conf"
 CFG_FILE="/etc/rigcontrol/rig-gpu.conf"
 BASE_DIR="/opt/miners"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RIG_GPU_JSON="${CFG_FILE%.conf}.json"
+case "$CFG_FILE" in
+    *.json) RIG_GPU_JSON="$CFG_FILE" ;;
+    *) RIG_GPU_JSON="${CFG_FILE%.conf}.json" ;;
+esac
 # Load miner paths environment
 if [[ -f "$BASE_DIR/miner_paths.env" ]]; then
     echo "[init] Loading miner paths from: $BASE_DIR/miner_paths.env"
@@ -40,14 +43,8 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-# Load from rig.conf
-SCREEN_NAME=$(get_rig_conf "SCREEN_NAME" "0")
-# Remove quotes if present
-SCREEN_NAME="${SCREEN_NAME//\"/}"
-# If SCREEN_NAME is empty (""), ignore and use miner name
-if [[ -z "$SCREEN_NAME" ]]; then
-    SCREEN_NAME="gpu"
-fi
+# Slot is fixed by which service instance this is - not user-configurable
+SCREEN_NAME="gpu"
 # Get OC settings from rig.conf
 RESET_OC=$(get_rig_conf "RESET_OC" "0")
 # Remove quotes if present

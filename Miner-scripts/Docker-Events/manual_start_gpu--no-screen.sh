@@ -21,7 +21,10 @@ echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 mkdir -p "$BASE_DIR"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
-RIG_GPU_JSON="${CFG_FILE%.conf}.json"
+case "$CFG_FILE" in
+    *.json) RIG_GPU_JSON="$CFG_FILE" ;;
+    *) RIG_GPU_JSON="${CFG_FILE%.conf}.json" ;;
+esac
 if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
@@ -177,15 +180,8 @@ POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
 if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
-# Load from rig.conf
-SCREEN_NAME=$(get_rig_conf "SCREEN_NAME" "0")
-if [[ -z "$SCREEN_NAME" ]]; then
-    case "$CFG_FILE" in
-        *rig-gpu*) SCREEN_NAME="gpu" ;;
-        *rig-cpu*) SCREEN_NAME="cpu" ;;
-        *rig-aux*) SCREEN_NAME="aux" ;;
-    esac
-fi
+# Slot is fixed by which service instance this is - not user-configurable
+SCREEN_NAME="gpu"
 echo "========================================"
 echo "STARTUP CONFIGURATION SUMMARY"
 echo "========================================"

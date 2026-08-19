@@ -1,4 +1,6 @@
-if [[ -n "$CFG_FILE" ]]; then
+if [[ "$CFG_FILE" == *.json ]]; then
+    RIG_GPU_JSON="$CFG_FILE"
+elif [[ -n "$CFG_FILE" ]]; then
     RIG_GPU_JSON="${CFG_FILE%.conf}.json"
 else
     RIG_GPU_JSON="/etc/rigcontrol/rig-gpu.json"

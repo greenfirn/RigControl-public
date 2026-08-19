@@ -33,7 +33,10 @@ mkdir -p "$BASE_DIR"
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
-RIG_GPU_JSON="${CFG_FILE%.conf}.json"
+case "$CFG_FILE" in
+    *.json) RIG_GPU_JSON="$CFG_FILE" ;;
+    *) RIG_GPU_JSON="${CFG_FILE%.conf}.json" ;;
+esac
 if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
@@ -181,14 +184,11 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
-SCREEN_NAME=$(get_rig_conf "SCREEN_NAME" "0")
-if [[ -z "$SCREEN_NAME" ]]; then
-    case "$OC_FILE" in
-        *rig-gpu*) SCREEN_NAME="gpu" ;;
-        *rig-cpu*) SCREEN_NAME="cpu" ;;
-        *rig-aux*) SCREEN_NAME="aux" ;;
-    esac
-fi
+case "$OC_FILE" in
+    *rig-gpu*) SCREEN_NAME="gpu" ;;
+    *rig-cpu*) SCREEN_NAME="cpu" ;;
+    *rig-aux*) SCREEN_NAME="aux" ;;
+esac
 # API HEALTH CHECK FUNCTION
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
@@ -373,7 +373,7 @@ Description=GPU Miner Launcher
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-gpu.conf"
+Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
 Environment="POWER_LIMIT="
 ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
@@ -396,7 +396,7 @@ Description=CPU Miner Launcher
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-cpu.conf"
+Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
@@ -417,7 +417,7 @@ Description=AUX Miner Launcher
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-aux.conf"
+Environment="OC_FILE=/etc/rigcontrol/rig-aux.json"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always

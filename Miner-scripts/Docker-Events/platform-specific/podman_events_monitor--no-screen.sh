@@ -31,7 +31,10 @@ mkdir -p "$BASE_DIR"
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
-RIG_GPU_JSON="${CFG_FILE%.conf}.json"
+case "$CFG_FILE" in
+    *.json) RIG_GPU_JSON="$CFG_FILE" ;;
+    *) RIG_GPU_JSON="${CFG_FILE%.conf}.json" ;;
+esac
 if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
@@ -182,14 +185,11 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
-SCREEN_NAME=$(get_rig_conf "SCREEN_NAME" "0")
-if [[ -z "$SCREEN_NAME" ]]; then
-    case "$OC_FILE" in
-        *rig-gpu*) SCREEN_NAME="gpu" ;;
-        *rig-cpu*) SCREEN_NAME="cpu" ;;
-        *rig-aux*) SCREEN_NAME="aux" ;;
-    esac
-fi
+case "$OC_FILE" in
+    *rig-gpu*) SCREEN_NAME="gpu" ;;
+    *rig-cpu*) SCREEN_NAME="cpu" ;;
+    *rig-aux*) SCREEN_NAME="aux" ;;
+esac
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
         return 0
@@ -546,7 +546,7 @@ Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-cpu.conf"
+Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
 Environment="IDLE_CONFIRM_LOOPS=7"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
@@ -570,7 +570,7 @@ Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-gpu.conf"
+Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
 Environment="IDLE_CONFIRM_LOOPS=7"
 Environment="POWER_LIMIT="
 ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
@@ -586,11 +586,36 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
+sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
+[Unit]
+Description=Docker Events AUX Miner Monitor
+After=docker.service
+Requires=docker.service
+[Service]
+Type=simple
+User=root
+Environment="OC_FILE=/etc/rigcontrol/rig-aux.json"
+Environment="IDLE_CONFIRM_LOOPS=7"
+ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
+ExecStart=/usr/local/bin/docker_events_universal.sh
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SendSIGKILL=no
+[Install]
+WantedBy=multi-user.target
+EOF
 sudo systemctl daemon-reload
 sudo systemctl restart docker_events_cpu.service
 sudo systemctl restart docker_events_gpu.service
+sudo systemctl restart docker_events_aux.service
 sudo systemctl enable docker_events_cpu.service
 sudo systemctl enable docker_events_gpu.service
+sudo systemctl enable docker_events_aux.service
 # follow logs
 sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_gpu.service -f
+sudo journalctl -u docker_events_aux.service -f

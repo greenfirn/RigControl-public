@@ -1,6 +1,8 @@
 sudo mkdir -v /usr/local/bin/lib
 sudo tee /usr/local/bin/lib/00-get_rig_conf.sh > /dev/null <<'EOF'
-if [[ -n "$CFG_FILE" ]]; then
+if [[ "$CFG_FILE" == *.json ]]; then
+    RIG_GPU_JSON="$CFG_FILE"
+elif [[ -n "$CFG_FILE" ]]; then
     RIG_GPU_JSON="${CFG_FILE%.conf}.json"
 else
     RIG_GPU_JSON="/etc/rigcontrol/rig-gpu.json"
