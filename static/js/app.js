@@ -768,7 +768,7 @@ const FS_FIELD_DEFAULTS = {
     "fs-field-coin": "",
     "fs-field-target-image": "",
     "fs-field-target-name": "",
-    "fs-field-screen-name": "gpu",
+    "fs-field-service-type": "gpu",
     "fs-field-custom-miner-url": "",
     "fs-field-custom-miner": "",
     "fs-field-miner": "",
@@ -791,7 +791,7 @@ const FS_RAW_KEY_MAP = {
     "TARGET_NAME": { id: "fs-field-target-name", type: "text" },
     "RESET_OC": { id: "fs-field-reset-oc", type: "checkbox" },
     "APPLY_OC": { id: "fs-field-apply-oc", type: "checkbox" },
-    "SCREEN_NAME": { id: "fs-field-screen-name", type: "text" },
+    "SERVICE_TYPE": { id: "fs-field-service-type", type: "text" },
     "CUSTOM_MINER_URL": { id: "fs-field-custom-miner-url", type: "text" },
     "CUSTOM_MINER": { id: "fs-field-custom-miner", type: "text" },
     "MINER": { id: "fs-field-miner", type: "text" },
@@ -804,7 +804,7 @@ const FS_RAW_KEY_MAP = {
 };
 const FS_FIELD_ID_TO_KEY = {};
 const FS_KEY_ORDER = [
-    "SCREEN_NAME", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC",
+    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC",
     "MINER", "ALGO", "PASS", "POOL", "WALLET", "TEMPLATE", "ARGS",
     "CUSTOM_MINER", "CUSTOM_MINER_URL"
 ];
@@ -6011,7 +6011,7 @@ function clearFsFields() {
     for (const id of Object.keys(FS_FIELD_DEFAULTS)) {
         const el = document.getElementById(id);
         if (!el) continue;
-        el.value = id === "fs-field-screen-name" ? "gpu" : "";
+        el.value = id === "fs-field-service-type" ? "gpu" : "";
     }
     for (const id of Object.keys(FS_CHECKBOX_FIELD_DEFAULTS)) {
         const el = document.getElementById(id);
@@ -6133,7 +6133,7 @@ function collectFsFieldValues() {
     const val = (id) => document.getElementById(id)?.value ?? "";
     const boolVal = (id) => (document.getElementById(id)?.checked ? "true" : "false");
     return {
-        SCREEN_NAME: val("fs-field-screen-name"),
+        SERVICE_TYPE: val("fs-field-service-type"),
         COIN: val("fs-field-coin"),
         TARGET_IMAGE: val("fs-field-target-image"),
         TARGET_NAME: val("fs-field-target-name"),
@@ -6825,7 +6825,7 @@ function buildFsBlock(mode) {
 }
 function buildFsDualBlock() {
     const fsCfg = TEMPLATES_CONFIG.flightsheet;
-    const activeService = (document.getElementById("fs-field-screen-name")?.value || "").trim().toLowerCase() === "cpu" ? "cpu" : "gpu";
+    const activeService = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase() === "cpu" ? "cpu" : "gpu";
     const otherService = activeService === "cpu" ? "gpu" : "cpu";
     const activeTemplate = activeService === "cpu" ? fsCfg.cpu_template : fsCfg.gpu_template;
     const activeBlock = fillPlaceholders(activeTemplate, {
@@ -6961,8 +6961,8 @@ function addCoinTickerForClipboard(items) {
     });
 }
 function buildFsCombinedJson() {
-    const screenName = (document.getElementById("fs-field-screen-name")?.value || "").trim().toLowerCase();
-    const activeService = screenName === "cpu" ? "cpu" : screenName === "aux" ? "aux" : "gpu";
+    const serviceType = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase();
+    const activeService = serviceType === "cpu" ? "cpu" : serviceType === "aux" ? "aux" : "gpu";
     const activeItem = buildRigGpuItemObject(collectFsFieldValues(), snapshotFsLiveStash());
     if (activeService === "aux") {
         const withPoolSlugAux = addPoolSlugForClipboard([activeItem]);
@@ -7028,17 +7028,17 @@ async function copyFsCombinedJsonToClipboard() {
 function handleFsServiceSwitch(newServiceRaw) {
     const rawNewService = (newServiceRaw || "").trim().toLowerCase();
     if (rawNewService === "aux") {
-        const priorService = (document.getElementById("fs-field-screen-name")?.value || "").trim().toLowerCase() === "cpu" ? "cpu" : "gpu";
+        const priorService = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase() === "cpu" ? "cpu" : "gpu";
         const priorValues = collectFsFieldValuesWithExtras();
-        priorValues.SCREEN_NAME = priorService;
+        priorValues.SERVICE_TYPE = priorService;
         fsDualModeSlots[priorService] = {
             stash: snapshotFsLiveStash(),
             values: priorValues,
         };
         fsDualModeActive = false;
         clearFsFields();
-        const screenNameElAux = document.getElementById("fs-field-screen-name");
-        if (screenNameElAux) screenNameElAux.value = "aux";
+        const serviceTypeElAux = document.getElementById("fs-field-service-type");
+        if (serviceTypeElAux) serviceTypeElAux.value = "aux";
         const rawElAux = document.getElementById("fs-raw");
         if (rawElAux) {
             rawElAux.value = buildFsBlock("aux");
@@ -7049,7 +7049,7 @@ function handleFsServiceSwitch(newServiceRaw) {
     const newService = rawNewService === "cpu" ? "cpu" : "gpu";
     const oldService = newService === "cpu" ? "gpu" : "cpu";
     const oldValues = collectFsFieldValuesWithExtras();
-    oldValues.SCREEN_NAME = oldService;
+    oldValues.SERVICE_TYPE = oldService;
     fsDualModeSlots[oldService] = {
         stash: snapshotFsLiveStash(),
         values: oldValues,
@@ -7061,8 +7061,8 @@ function handleFsServiceSwitch(newServiceRaw) {
         refreshFsPoolFieldDisplay();
         updateManagePoolsBtnLabel();
     }
-    const screenNameEl = document.getElementById("fs-field-screen-name");
-    if (screenNameEl) screenNameEl.value = newService;
+    const serviceTypeEl = document.getElementById("fs-field-service-type");
+    if (serviceTypeEl) serviceTypeEl.value = newService;
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
         rawEl.value = buildFsDualBlock();
@@ -7093,7 +7093,7 @@ function injectMinerTlsFlag(minerName, poolSsl, args) {
 }
 function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     const values = fsFieldsFromRigGpuJsonItem(jsonItem);
-    values.SCREEN_NAME = classifyFsItemService(jsonItem, rawTextHint);
+    values.SERVICE_TYPE = classifyFsItemService(jsonItem, rawTextHint);
     const tlsFromArgsPreview = /(^|\s)--tls(\s|$)/.test(values.ARGS || "");
     {
         const mcForStash = jsonItem.miner_config || {};
@@ -7229,7 +7229,7 @@ function populateFsFieldsFromRaw(rawText) {
         if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
             const rawEl = document.getElementById("fs-raw");
             if (rawEl) {
-                rawEl.value = fsDualModeActive ? buildFsDualBlock() : buildFsBlock(activeValues.SCREEN_NAME);
+                rawEl.value = fsDualModeActive ? buildFsDualBlock() : buildFsBlock(activeValues.SERVICE_TYPE);
                 autoResizeFsRaw();
             }
         }
@@ -7283,7 +7283,7 @@ function updateRawFromFieldChange(target) {
         return;
     }
     if (fsDualModeActive) {
-        if (target.id === "fs-field-screen-name") {
+        if (target.id === "fs-field-service-type") {
             handleFsServiceSwitch(target.value);
         } else {
             rawEl.value = buildFsDualBlock();
@@ -7299,7 +7299,7 @@ function updateRawFromFieldChange(target) {
             /(<<'EOF'\n)[\s\S]*?(\nEOF\n)/,
             (_full, pre, post) => `${pre}${newBody}${post}`
         );
-        if (target.id === "fs-field-screen-name") {
+        if (target.id === "fs-field-service-type") {
             const rawMode = (target.value || "").trim().toLowerCase();
             const mode = ["cpu", "gpu", "aux"].includes(rawMode) ? rawMode : "gpu";
             const currentMode = ["cpu", "gpu", "aux"].find((m) => new RegExp(`rig-${m}\\.json`).test(rawEl.value))
@@ -7325,8 +7325,8 @@ function updateRawFromFieldChange(target) {
     autoResizeFsRaw();
 }
 function syncFsRawFromFields() {
-    const screenName = (document.getElementById("fs-field-screen-name")?.value || "").trim().toLowerCase();
-    const mode = screenName === "cpu" ? "cpu" : screenName === "aux" ? "aux" : "gpu";
+    const serviceType = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase();
+    const mode = serviceType === "cpu" ? "cpu" : serviceType === "aux" ? "aux" : "gpu";
     document.getElementById("fs-raw").value = buildFsBlock(mode);
     autoResizeFsRaw();
 }
