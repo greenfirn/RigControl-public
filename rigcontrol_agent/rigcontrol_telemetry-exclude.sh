@@ -10,6 +10,7 @@ import socket
 import re
 import shlex
 import requests
+import threading
 gpu_present  = False
 gpu_type     = "None"
 _gpu_detected = False
@@ -681,20 +682,23 @@ _MINER_PROCESS_MAP = {
     "t-rex":        "trex",
     "peakminer":    "peakminer",
 }
+_BUILTIN_MINER_PROCESS_MAP = dict(_MINER_PROCESS_MAP)
 _CUSTOM_MINER_PROCESS_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "").strip().lower()
 if _CUSTOM_MINER_PROCESS_NAME:
     _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
+_custom_miner_lock = threading.Lock()
 def set_custom_miner_process_name(name):
-    """Sets/replaces the custom-miner process name after module import, since rigcontrol-agent.conf loads after this module does; safe to call more than once."""
+    """Sets/replaces the custom-miner process name after module import, since rigcontrol-agent.conf loads after this module does; safe to call more than once, and safe to call while detect_running_miners() is reading the same state on another thread (both take _custom_miner_lock) so a re-resolve can never be read half-applied."""
     global _CUSTOM_MINER_PROCESS_NAME, _MINER_PROCESS_MAP
-    if _CUSTOM_MINER_PROCESS_NAME:
-        _MINER_PROCESS_MAP = {
-            k: v for k, v in _MINER_PROCESS_MAP.items()
-            if not (k == _CUSTOM_MINER_PROCESS_NAME and v == "custom_log")
-        }
-    _CUSTOM_MINER_PROCESS_NAME = (name or "").strip().lower()
-    if _CUSTOM_MINER_PROCESS_NAME:
-        _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
+    with _custom_miner_lock:
+        if _CUSTOM_MINER_PROCESS_NAME:
+            _MINER_PROCESS_MAP = {
+                k: v for k, v in _MINER_PROCESS_MAP.items()
+                if not (k == _CUSTOM_MINER_PROCESS_NAME and v == "custom_log")
+            }
+        _CUSTOM_MINER_PROCESS_NAME = (name or "").strip().lower()
+        if _CUSTOM_MINER_PROCESS_NAME:
+            _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
 _MINER_DOCKER_MAP = {
     "xmrig":        "xmrig",
     "lolminer":     "lolminer",
@@ -756,18 +760,20 @@ def detect_running_miners():
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
-        grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
-                         "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
-        if _CUSTOM_MINER_PROCESS_NAME:
-            grep_pattern += "|" + re.escape(_CUSTOM_MINER_PROCESS_NAME)
-        grep_pattern += ")"
+        with _custom_miner_lock:
+            grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
+                             "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
+            if _CUSTOM_MINER_PROCESS_NAME:
+                grep_pattern += "|" + re.escape(_CUSTOM_MINER_PROCESS_NAME)
+            grep_pattern += ")"
+            miner_process_map_snapshot = dict(_MINER_PROCESS_MAP)
         result = subprocess.run(
             ["bash", "-c", f"ps aux | grep -E {shlex.quote(grep_pattern)} | grep -v grep"],
             capture_output=True, text=True, timeout=2
         )
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
-                for proc_name, miner_name in _MINER_PROCESS_MAP.items():
+                for proc_name, miner_name in miner_process_map_snapshot.items():
                     if proc_name in line.lower():
                         found[miner_name] = True
                         break
