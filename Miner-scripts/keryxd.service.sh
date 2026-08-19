@@ -94,6 +94,7 @@ network mainnet
 connect localhost
 rpc get-block-dag-info
 
+# Update / Test
 
 #stop the node
 sudo systemctl stop keryxd.service

@@ -86,7 +86,7 @@ sudo unzip GLM-4-9B-0414.zip -d /opt/miners/keryx-miner/models/
 # show extracted
 sudo ls -lh /opt/miners/keryx-miner/models/
 
-
+# Update / Test
 
 sudo mkdir -p /opt/miners/keryx-miner
 
