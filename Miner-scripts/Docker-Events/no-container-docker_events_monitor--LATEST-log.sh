@@ -9,13 +9,13 @@ SHUTDOWN_REQUESTED=0
 : "${IDLE_CONFIRM_LOOPS:=3}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
-ALWAYS_LOGS=true
+: "${ALWAYS_LOGS:=true}"
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
     SHUTDOWN_REQUESTED=1
     echo "$(date): Stopping miner if running..."
-    stop_miner
+    stop_miner || true
     exit 0
 }
 trap 'handle_signal TERM' TERM
@@ -256,14 +256,14 @@ process_docker_event() {
     case "$status" in
         init|start|create|unpause|restart)
             echo "$(date): ANY Docker START event ($status) → IMMEDIATE stop_miner"
-            stop_miner
+            stop_miner || true
             ;;
         kill|destroy|stop|die|died|pause)
             echo "$(date): Docker STOP event ($status) → Checking if all containers stopped..."
             sleep 3
             if confirm_no_containers_running $IDLE_CONFIRM_LOOPS; then
                 echo "$(date): Confirmed no containers running → START miner"
-                start_miner
+                start_miner || true
             else
                 echo "$(date): Containers still running → no action"
             fi
@@ -285,12 +285,12 @@ start_miner() {
                 return 0
             else
                 echo "$(date): Miner process is dead but screen session exists - cleaning up..."
-                stop_miner
+                stop_miner || true
                 echo "$(date): Starting fresh miner after cleanup..."
             fi
         else
             echo "$(date): Screen session exists but no PID file found - cleaning up..."
-            stop_miner
+            stop_miner || true
             echo "$(date): Starting fresh miner after cleanup..."
         fi
     fi
@@ -417,10 +417,10 @@ stop_miner() {
 echo "$(date): Performing initial Docker container check..."
 if any_container_running; then
     echo "$(date): Containers found running at startup → stop_miner (do not start miner)"
-    stop_miner
+    stop_miner || true
 else
     echo "$(date): No containers running at startup → start_miner"
-    start_miner
+    start_miner || true
 fi
 echo "$(date): Starting Docker event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
@@ -449,7 +449,7 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     sleep 5
 done
 echo "$(date): Performing final cleanup..."
-stop_miner
+stop_miner || true
 echo "$(date): Docker event monitor stopped gracefully"
 EOF
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
@@ -470,7 +470,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -495,7 +495,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -520,7 +520,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no

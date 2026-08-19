@@ -9,6 +9,7 @@ SHUTDOWN_REQUESTED=0
 : "${IDLE_CONFIRM_LOOPS:=2}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
+: "${ALWAYS_LOGS:=true}"
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -328,14 +329,14 @@ process_docker_event() {
             # Confirm container is actually running (not just transient)
             if confirm_docker_container_running $IDLE_CONFIRM_LOOPS; then
                 echo "$(date): Docker container confirmed running → START miner"
-                start_miner
+                start_miner || true
             else
                 echo "$(date): Docker container not running (transient state) → no action"
             fi
             ;;
         kill|destroy|stop|die|died|pause)
             echo "$(date): Docker STOP/PAUSE event ($status) → IMMEDIATE stop_miner"
-            stop_miner
+            stop_miner || true
             ;;
         *)
             ;;
@@ -381,7 +382,8 @@ start_miner() {
     local LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
     # Create PID file directory
     mkdir -p /run/rigcontrol
-    if [[ "$API_PORT" -gt 0 ]]; then
+    if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
+        echo "$(date): Known miner with API - starting without log file (nothing reads it)"
         setsid bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
@@ -390,7 +392,11 @@ start_miner() {
             < /dev/null &
         echo $! > "$pid_file"
     else
-        echo "$(date): No API for this miner - still writing $LOG_FILE (needed for log-scraping telemetry), in addition to the service journal"
+        if [[ "$API_PORT" -gt 0 ]]; then
+            echo "$(date): ALWAYS_LOGS enabled - starting with log file for easier review of miner output (API is still used for stats, this is redundant with the service journal but kept for consistency/override-ability)"
+        else
+            echo "$(date): No API for this miner - still writing $LOG_FILE (needed for log-scraping telemetry), in addition to the service journal"
+        fi
         rm -f "$LOG_FILE"
         setsid bash -c \
             'echo "Miner starting at $(date)"; \
@@ -476,10 +482,10 @@ echo "$(date): Performing initial Docker container check..."
 echo "$(date): Checking Docker target container..."
 if confirm_docker_container_running $IDLE_CONFIRM_LOOPS; then
     echo "$(date): Docker target container confirmed running at startup → start_miner"
-    start_miner
+    start_miner || true
 else
     echo "$(date): Docker target container not running at startup → stop_miner"
-    stop_miner
+    stop_miner || true
 fi
 # DOCKER EVENT MONITORING LOOP
 echo "$(date): Starting Docker event monitor..."
@@ -519,7 +525,7 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
 done
 # Final cleanup before exit
 echo "$(date): Performing final cleanup..."
-stop_miner
+stop_miner || true
 echo "$(date): Docker event monitor stopped gracefully"
 EOF
 # Make the script executable
@@ -540,7 +546,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -566,7 +572,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -588,7 +594,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no

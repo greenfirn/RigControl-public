@@ -12,6 +12,7 @@ IGNORED_IMAGES=(
 )
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
+: "${ALWAYS_LOGS:=true}"
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -343,7 +344,8 @@ start_miner() {
         echo "$(date): Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
     fi
     mkdir -p /run/rigcontrol
-    if [[ "$API_PORT" -gt 0 ]]; then
+    if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
+        echo "$(date): Known miner with API - starting without log file (nothing reads it)"
         setsid bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
@@ -352,7 +354,11 @@ start_miner() {
             < /dev/null &
         echo $! > "$pid_file"
     else
-        echo "$(date): No API for this miner - still writing $LOG_FILE (needed for log-scraping telemetry), in addition to the service journal"
+        if [[ "$API_PORT" -gt 0 ]]; then
+            echo "$(date): ALWAYS_LOGS enabled - starting with log file for easier review of miner output (API is still used for stats, this is redundant with the service journal but kept for consistency/override-ability)"
+        else
+            echo "$(date): No API for this miner - still writing $LOG_FILE (needed for log-scraping telemetry), in addition to the service journal"
+        fi
         rm -f "$LOG_FILE"
         setsid bash -c \
             'echo "Miner starting at $(date)"; \

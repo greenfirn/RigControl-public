@@ -467,12 +467,10 @@ ExecStart=/usr/local/bin/docker_events_cpu.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 StandardOutput=journal
 StandardError=journal
-# Allow up to 5 seconds for graceful shutdown
-TimeoutStopSec=5
 SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
