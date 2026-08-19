@@ -880,8 +880,12 @@ const LOGS_TYPE_LABELS = {
     "cpu.api": "CPU API call",
     "gpu.api": "GPU API call",
     "aux.api": "AUX API call",
+    "cpu.conf": "CPU rig conf",
+    "gpu.conf": "GPU rig conf",
+    "aux.conf": "AUX rig conf",
+    "agent.conf": "Agent conf",
 };
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api"]);
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
     "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
@@ -895,6 +899,10 @@ const LOGS_COMMAND_BUILDERS = {
     "cpu.api": () => "cpu.api",
     "gpu.api": () => "gpu.api",
     "aux.api": () => "aux.api",
+    "cpu.conf": () => "cat /etc/rigcontrol/rig-cpu.json",
+    "gpu.conf": () => "cat /etc/rigcontrol/rig-gpu.json",
+    "aux.conf": () => "cat /etc/rigcontrol/rig-aux.json",
+    "agent.conf": () => "cat /etc/rigcontrol/rigcontrol-agent.conf",
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };

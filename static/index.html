@@ -1113,7 +1113,7 @@
                 placeholder="Search worker name..."
                 autocomplete="off"
             />
-            <button class="action-btn" id="btn-open-logs" title="View CPU/GPU/AUX log or service log for the selected worker (select exactly one)">Logs</button>
+            <button class="action-btn" id="btn-open-logs" title="View CPU/GPU/AUX logs, service logs, screen snapshots, miner API calls, or rig conf for the selected worker (select exactly one)">Logs / Config</button>
             <span class="action-mode-sep"></span>
             <button class="action-btn" id="btn-send-cmd" title="Send Cmd">
                 &gt;_
@@ -1263,6 +1263,10 @@ nvidia-smi
                     <option value="cpu.api">CPU API call</option>
                     <option value="gpu.api">GPU API call</option>
                     <option value="aux.api">AUX API call</option>
+                    <option value="cpu.conf">CPU rig conf</option>
+                    <option value="gpu.conf">GPU rig conf</option>
+                    <option value="aux.conf">AUX rig conf</option>
+                    <option value="agent.conf">Agent conf</option>
                 </select>
                 <label class="logs-lines-field" for="logs-lines-input">Lines
                     <input type="number" id="logs-lines-input" min="10" max="5000" step="10" value="200">
