@@ -884,6 +884,7 @@ const LOGS_TYPE_LABELS = {
     "gpu.conf": "GPU rig conf",
     "aux.conf": "AUX rig conf",
     "agent.conf": "Agent conf",
+    "agent.svclog": "Agent log",
 };
 const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf"]);
 const LOGS_COMMAND_BUILDERS = {
@@ -903,6 +904,7 @@ const LOGS_COMMAND_BUILDERS = {
     "gpu.conf": () => "cat /etc/rigcontrol/rig-gpu.json",
     "aux.conf": () => "cat /etc/rigcontrol/rig-aux.json",
     "agent.conf": () => "cat /etc/rigcontrol/rigcontrol-agent.conf",
+    "agent.svclog": (n) => `journalctl -u rigcontrol-agent.service -n ${n} --no-pager`,
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
