@@ -668,7 +668,7 @@ def collect_service_uptime(service):
         }
     except Exception:
         return {"state": "unknown", "uptime_seconds": 0, "service": service}
-_MINER_PROCESS_MAP = {
+_BUILTIN_MINER_PROCESS_MAP = {
     "xmrig":        "xmrig",
     "lolminer":     "lolminer",
     "bzminer":      "bzminer",
@@ -682,23 +682,19 @@ _MINER_PROCESS_MAP = {
     "t-rex":        "trex",
     "peakminer":    "peakminer",
 }
-_BUILTIN_MINER_PROCESS_MAP = dict(_MINER_PROCESS_MAP)
-_CUSTOM_MINER_PROCESS_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "").strip().lower()
-if _CUSTOM_MINER_PROCESS_NAME:
-    _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
 _custom_miner_lock = threading.Lock()
+_CUSTOM_MINER_PROCESS_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "").strip().lower()
 def set_custom_miner_process_name(name):
-    """Sets/replaces the custom-miner process name after module import, since rigcontrol-agent.conf loads after this module does; safe to call more than once, and safe to call while detect_running_miners() is reading the same state on another thread (both take _custom_miner_lock) so a re-resolve can never be read half-applied."""
-    global _CUSTOM_MINER_PROCESS_NAME, _MINER_PROCESS_MAP
+    """Sets/replaces the currently-registered custom-miner process name.
+    Safe to call more than once, and safe to call while detect_running_miners()
+    is reading it on another thread (both take _custom_miner_lock).
+    _BUILTIN_MINER_PROCESS_MAP is a permanent registry that is never mutated
+    anywhere - this function only ever touches the single dynamic
+    _CUSTOM_MINER_PROCESS_NAME value, kept in a completely separate variable
+    so the two can never be merged/confused the way a shared dict could be."""
+    global _CUSTOM_MINER_PROCESS_NAME
     with _custom_miner_lock:
-        if _CUSTOM_MINER_PROCESS_NAME:
-            _MINER_PROCESS_MAP = {
-                k: v for k, v in _MINER_PROCESS_MAP.items()
-                if not (k == _CUSTOM_MINER_PROCESS_NAME and v == "custom_log")
-            }
         _CUSTOM_MINER_PROCESS_NAME = (name or "").strip().lower()
-        if _CUSTOM_MINER_PROCESS_NAME:
-            _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
 _MINER_DOCKER_MAP = {
     "xmrig":        "xmrig",
     "lolminer":     "lolminer",
@@ -761,20 +757,28 @@ def detect_running_miners():
     found = {}
     try:
         with _custom_miner_lock:
-            grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
-                             "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
-            if _CUSTOM_MINER_PROCESS_NAME:
-                grep_pattern += "|" + re.escape(_CUSTOM_MINER_PROCESS_NAME)
-            grep_pattern += ")"
-            miner_process_map_snapshot = dict(_MINER_PROCESS_MAP)
+            custom_name = _CUSTOM_MINER_PROCESS_NAME
+        grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
+                         "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
+        if custom_name:
+            grep_pattern += "|" + re.escape(custom_name)
+        grep_pattern += ")"
         result = subprocess.run(
             ["bash", "-c", f"ps aux | grep -E {shlex.quote(grep_pattern)} | grep -v grep"],
             capture_output=True, text=True, timeout=2
         )
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
-                for proc_name, miner_name in miner_process_map_snapshot.items():
-                    if proc_name in line.lower():
+                line_lower = line.lower()
+                # Custom miner is checked against its own dedicated variable,
+                # never merged into _BUILTIN_MINER_PROCESS_MAP, so a custom
+                # name can never be mistaken for (or overwrite) a real
+                # built-in collector entry.
+                if custom_name and custom_name in line_lower:
+                    found["custom_log"] = True
+                    continue
+                for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
+                    if proc_name in line_lower:
                         found[miner_name] = True
                         break
     except Exception as e:
