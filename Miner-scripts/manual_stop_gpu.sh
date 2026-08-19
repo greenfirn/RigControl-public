@@ -44,7 +44,8 @@ do
     source "$f"
 done
 # Slot is fixed by which service instance this is - not user-configurable
-SCREEN_NAME="gpu"
+# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
+SERVICE_TYPE="gpu"
 # Get OC settings from rig.conf
 RESET_OC=$(get_rig_conf "RESET_OC" "0")
 # Remove quotes if present
@@ -53,13 +54,14 @@ RESET_OC="${RESET_OC//\"/}"
 RESET_OC="${RESET_OC,,}"
 # Default to false if empty
 : "${RESET_OC:=false}"
+: "${POWER_LIMIT:=}"
 echo "Miner Name:      $MINER_NAME"
-echo "Screen Session:  $SCREEN_NAME"
+echo "Screen Session:  $SERVICE_TYPE"
 echo "Reset GPU on stop: $RESET_OC"
 echo "========================================"
 # PID-BASED KILL FUNCTION
 kill_by_pid() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -83,17 +85,17 @@ kill_by_pid() {
 }
 # STOP MINER FUNCTION
 stop_miner() {
-    echo "[$(date)] Stopping $SCREEN_NAME miner..."
+    echo "[$(date)] Stopping $SERVICE_TYPE miner..."
     # Check if screen session exists at all
-    if screen -list | grep -q "$SCREEN_NAME"; then
-        echo "[$(date)] Screen session found for $SCREEN_NAME"
+    if screen -list | grep -q "$SERVICE_TYPE"; then
+        echo "[$(date)] Screen session found for $SERVICE_TYPE"
         # 1. FIRST ATTEMPT: Clean screen quit (let miner cleanup)
         echo "[$(date)] Sending clean quit to screen session..."
-        screen -S "$SCREEN_NAME" -X quit
+        screen -S "$SERVICE_TYPE" -X quit
         echo "[$(date)] Waiting 5 seconds for miner cleanup..."
         sleep 5
         # 2. CHECK: If miner process still exists after clean quit
-        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+        local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -105,7 +107,7 @@ stop_miner() {
             fi
         fi
         # 3. CLEANUP: Any leftover screen processes
-        local screen_pids=$(pgrep -f "SCREEN.*$SCREEN_NAME" 2>/dev/null || true)
+        local screen_pids=$(pgrep -f "SCREEN.*$SERVICE_TYPE" 2>/dev/null || true)
         if [[ -n "$screen_pids" ]]; then
             echo "[$(date)] Cleaning up leftover screen processes..."
             kill -15 $screen_pids 2>/dev/null
@@ -114,13 +116,13 @@ stop_miner() {
         fi
         # 4. Final verification for screen session
         echo "[$(date)] Verifying cleanup..."
-        if screen -list | grep -q "$SCREEN_NAME"; then
+        if screen -list | grep -q "$SERVICE_TYPE"; then
             echo "[$(date)] WARNING: Screen session still exists!"
             # Try one more forceful cleanup
             echo "[$(date)] Attempting forceful cleanup..."
-            screen -ls | grep "$SCREEN_NAME" | cut -d. -f1 | awk '{print $1}' | xargs kill 2>/dev/null || true
+            screen -ls | grep "$SERVICE_TYPE" | cut -d. -f1 | awk '{print $1}' | xargs kill 2>/dev/null || true
             sleep 2
-            if screen -list | grep -q "$SCREEN_NAME"; then
+            if screen -list | grep -q "$SERVICE_TYPE"; then
                 echo "[$(date)] ERROR: Could not remove screen session!"
                 # Continue to reset GPU anyway
             else
@@ -130,11 +132,11 @@ stop_miner() {
             echo "[$(date)] Screen session cleaned up successfully."
         fi
         # Clean PID file if still exists
-        rm -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+        rm -f "/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     else
-        echo "[$(date)] No $SCREEN_NAME screen session found."
+        echo "[$(date)] No $SERVICE_TYPE screen session found."
         # Check if PID file exists (orphaned process)
-        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+        local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -151,7 +153,7 @@ stop_miner() {
     # 5. Reset GPU if configured (always run this if RESET_OC is true)
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "[$(date)] Resetting GPU clocks and power limits..."
-        /usr/local/bin/gpu_reset_poststop.sh
+        /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
     echo "[$(date)] Final sleep 2 seconds..."
     sleep 2
@@ -159,11 +161,11 @@ stop_miner() {
     echo "MINER STOPPED SUCCESSFULLY"
     echo "========================================"
 }
-if screen -list | grep -q "$SCREEN_NAME"; then
-    echo "Miner is currently running in screen session: $SCREEN_NAME"
+if screen -list | grep -q "$SERVICE_TYPE"; then
+    echo "Miner is currently running in screen session: $SERVICE_TYPE"
     # Check for PID file
-    if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
-        miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
+    if [[ -f "/run/rigcontrol/${SERVICE_TYPE}_miner.pid" ]]; then
+        miner_pid=$(cat "/run/rigcontrol/${SERVICE_TYPE}_miner.pid")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
             echo "Active PID: $miner_pid"
         fi

@@ -181,12 +181,13 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 # Slot is fixed by which service instance this is - not user-configurable
-SCREEN_NAME="gpu"
+# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
+SERVICE_TYPE="gpu"
 echo "========================================"
 echo "STARTUP CONFIGURATION SUMMARY"
 echo "========================================"
 echo "Miner Name:      $MINER_NAME"
-echo "Screen Session:  $SCREEN_NAME"
+echo "Screen Session:  $SERVICE_TYPE"
 echo "Worker Name:     $WORKER_NAME"
 echo "API:             $API_HOST:$API_PORT"
 echo "Wallet:          $WALLET"
@@ -211,7 +212,7 @@ check_api_health() {
 }
 # START MINER FUNCTION
 is_miner_alive() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     [[ -f "$pid_file" ]] || return 1
     local pid
     pid=$(cat "$pid_file" 2>/dev/null)
@@ -219,15 +220,15 @@ is_miner_alive() {
     ps -p "$pid" > /dev/null 2>&1
 }
 start_miner() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    local LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
+    local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
     # Check if miner is already running
     if is_miner_alive; then
-        echo "[$(date)] Miner already running for $SCREEN_NAME (PID: $(cat "$pid_file"))"
+        echo "[$(date)] Miner already running for $SERVICE_TYPE (PID: $(cat "$pid_file"))"
         echo "[$(date)] To view output: tail -f $LOG_FILE"
         return 0
     elif [[ -f "$pid_file" ]]; then
-        echo "[$(date)] Stale PID file found for $SCREEN_NAME - cleaning up..."
+        echo "[$(date)] Stale PID file found for $SERVICE_TYPE - cleaning up..."
         rm -f "$pid_file"
         echo "[$(date)] Starting fresh miner after cleanup..."
     fi
@@ -244,7 +245,7 @@ start_miner() {
             echo "[$(date)] Applying GPU clocks skipped - no ALGO or CUSTOM_MINER name available."
         fi
     fi
-    echo "[$(date)] Starting $SCREEN_NAME..."
+    echo "[$(date)] Starting $SERVICE_TYPE..."
     echo "[$(date)] API: $API_HOST:$API_PORT"
     echo "[$(date)] Full Command: $START_CMD"
     if [[ "$API_PORT" -gt 0 ]]; then

@@ -180,10 +180,11 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
+# SERVICE_TYPE: one of "cpu" / "gpu" / "aux" - fixed by which service instance this is, not user-configurable
 case "$OC_FILE" in
-    *rig-gpu*) SCREEN_NAME="gpu" ;;
-    *rig-cpu*) SCREEN_NAME="cpu" ;;
-    *rig-aux*) SCREEN_NAME="aux" ;;
+    *rig-gpu*) SERVICE_TYPE="gpu" ;;
+    *rig-cpu*) SERVICE_TYPE="cpu" ;;
+    *rig-aux*) SERVICE_TYPE="aux" ;;
 esac
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
@@ -192,7 +193,7 @@ check_api_health() {
     return 0
 }
 is_miner_alive() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     [[ -f "$pid_file" ]] || return 1
     local pid
     pid=$(cat "$pid_file" 2>/dev/null)
@@ -201,7 +202,7 @@ is_miner_alive() {
 }
 # PID-BASED KILL - Backup for crashed miners
 kill_by_pid() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -345,14 +346,14 @@ process_docker_event() {
 # MINER CONTROL FUNCTIONS
 # Function to start miner
 start_miner() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     # Check if miner is already running
     if is_miner_alive; then
-        echo "$(date): Miner already running for $SCREEN_NAME (PID: $(cat "$pid_file"))"
+        echo "$(date): Miner already running for $SERVICE_TYPE (PID: $(cat "$pid_file"))"
         echo "$(date): Miner output goes to this service's journal (journalctl -f)"
         return 0  # Exit early - miner is already running
     elif [[ -f "$pid_file" ]]; then
-        echo "$(date): Stale PID file found for $SCREEN_NAME - cleaning up..."
+        echo "$(date): Stale PID file found for $SERVICE_TYPE - cleaning up..."
         stop_miner || true
         echo "$(date): Starting fresh miner after cleanup..."
         # Continue to start fresh miner
@@ -371,7 +372,7 @@ start_miner() {
             echo "$(date): Applying GPU clocks skipped - no ALGO or CUSTOM_MINER name available."
         fi
     fi
-    echo "$(date): Starting $SCREEN_NAME..."
+    echo "$(date): Starting $SERVICE_TYPE..."
     echo "$(date): API: $API_HOST:$API_PORT"
     echo "$(date): Command: $START_CMD"
     if [[ "$API_PORT" -gt 0 ]]; then
@@ -379,7 +380,7 @@ start_miner() {
     else
         echo "$(date): Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
     fi
-    local LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
+    local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
     # Create PID file directory
     mkdir -p /run/rigcontrol
     if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
@@ -444,10 +445,10 @@ start_miner() {
 }
 # Function to stop miner (clean closure first)
 stop_miner() {
-    echo "$(date): Stopping $SCREEN_NAME miner..."
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    echo "$(date): Stopping $SERVICE_TYPE miner..."
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if ! is_miner_alive; then
-        echo "$(date): No running $SCREEN_NAME process found - nothing to stop."
+        echo "$(date): No running $SERVICE_TYPE process found - nothing to stop."
         rm -f "$pid_file"
         return 0
     fi

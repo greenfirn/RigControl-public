@@ -175,12 +175,13 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 # Slot is fixed by which service instance this is - not user-configurable
-SCREEN_NAME="gpu"
+# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
+SERVICE_TYPE="gpu"
 echo "========================================"
 echo "STARTUP CONFIGURATION SUMMARY"
 echo "========================================"
 echo "Miner Name:      $MINER_NAME"
-echo "Screen Session:  $SCREEN_NAME"
+echo "Screen Session:  $SERVICE_TYPE"
 echo "Worker Name:     $WORKER_NAME"
 echo "API:             $API_HOST:$API_PORT"
 echo "Wallet:          $WALLET"
@@ -206,25 +207,25 @@ check_api_health() {
 # START MINER FUNCTION
 start_miner() {
     # Check if miner is already running
-    if screen -list | grep -q "$SCREEN_NAME"; then
-        echo "[$(date)] Screen session exists for $SCREEN_NAME - checking if miner is alive..."
-        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    if screen -list | grep -q "$SERVICE_TYPE"; then
+        echo "[$(date)] Screen session exists for $SERVICE_TYPE - checking if miner is alive..."
+        local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             if ps -p "$miner_pid" > /dev/null 2>&1; then
-                echo "[$(date)] Miner already running in screen session: $SCREEN_NAME"
-                echo "[$(date)] To view: sudo screen -r $SCREEN_NAME"
+                echo "[$(date)] Miner already running in screen session: $SERVICE_TYPE"
+                echo "[$(date)] To view: sudo screen -r $SERVICE_TYPE"
                 echo "[$(date)] PID: $miner_pid"
                 return 0
             else
                 echo "[$(date)] Miner process is dead but screen session exists - cleaning up..."
-                screen -S "$SCREEN_NAME" -X quit 2>/dev/null || true
+                screen -S "$SERVICE_TYPE" -X quit 2>/dev/null || true
                 rm -f "$pid_file"
                 echo "[$(date)] Starting fresh miner after cleanup..."
             fi
         else
             echo "[$(date)] Screen session exists but no PID file found - cleaning up..."
-            screen -S "$SCREEN_NAME" -X quit 2>/dev/null || true
+            screen -S "$SERVICE_TYPE" -X quit 2>/dev/null || true
             echo "[$(date)] Starting fresh miner after cleanup..."
         fi
     fi
@@ -242,25 +243,25 @@ start_miner() {
             echo "[$(date)] Applying GPU clocks skipped - no ALGO or CUSTOM_MINER name available."
         fi
     fi
-    echo "[$(date)] Starting $SCREEN_NAME..."
+    echo "[$(date)] Starting $SERVICE_TYPE..."
     echo "[$(date)] API: $API_HOST:$API_PORT"
     echo "[$(date)] Full Command: $START_CMD"
     # Create PID file directory
     mkdir -p /run/rigcontrol
     # Start in screen session with PID tracking
-    screen -dmS "$SCREEN_NAME" bash -c \
+    screen -dmS "$SERVICE_TYPE" bash -c \
         'echo "Miner starting at $(date)"; \
          echo "API: '"$API_HOST:$API_PORT"'"; \
-         echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
-         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+         echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
+         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
          '"$START_CMD"
     # Wait for PID file creation
     sleep 3
     # Verify startup
-    if screen -list | grep -q "$SCREEN_NAME"; then
-        echo "[$(date)] Miner started in screen session: $SCREEN_NAME"
-        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
-            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
+    if screen -list | grep -q "$SERVICE_TYPE"; then
+        echo "[$(date)] Miner started in screen session: $SERVICE_TYPE"
+        if [[ -f "/run/rigcontrol/${SERVICE_TYPE}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SERVICE_TYPE}_miner.pid")
             echo "[$(date)] Miner process PID: $miner_pid"
         fi
         # Wait for API to come up if enabled
@@ -283,15 +284,15 @@ start_miner() {
             echo "[$(date)] API disabled, skipping health check"
         fi
         echo "[$(date)] ARGS/OCS: $ARGS"
-        echo "[$(date)] To view miner output: sudo screen -r $SCREEN_NAME"
+        echo "[$(date)] To view miner output: sudo screen -r $SERVICE_TYPE"
         echo "========================================"
         echo "MINER STARTED SUCCESSFULLY"
         echo "========================================"
         return 0
     else
         echo "[$(date)] ERROR: Failed to start screen session!"
-        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
-            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
+        if [[ -f "/run/rigcontrol/${SERVICE_TYPE}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SERVICE_TYPE}_miner.pid")
             echo "[$(date)] Found PID file with PID: $miner_pid"
             if ps -p "$miner_pid" > /dev/null 2>&1; then
                 echo "[$(date)] Process $miner_pid is running but no screen session"

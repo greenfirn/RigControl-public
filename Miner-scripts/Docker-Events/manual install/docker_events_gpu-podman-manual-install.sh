@@ -19,7 +19,8 @@ if [ ! -f "/opt/miners/rigel/current/rigel" ]; then
 else
     echo "rigel already exists in current directory"
 fi
-SCREEN_NAME="gpu"
+# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
+SERVICE_TYPE="gpu"
 START_CMD="/opt/miners/rigel/current/rigel"
 ARGS="-a kawpow -o stratum+ssl://ca.quai.herominers.com:1185 -o stratum+ssl://us2.quai.herominers.com:1185 -u wallet-address -p x -w 5950X-2-3070 --api-bind 127.0.0.1:5000"
 APPLY_OC="false"
@@ -50,7 +51,7 @@ trap 'handle_signal TERM' TERM
 trap 'handle_signal INT' INT
 trap 'handle_signal HUP' HUP
 is_miner_alive() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     [[ -f "$pid_file" ]] || return 1
     local pid
     pid=$(cat "$pid_file" 2>/dev/null)
@@ -58,7 +59,7 @@ is_miner_alive() {
     ps -p "$pid" > /dev/null 2>&1
 }
 kill_by_pid() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -251,14 +252,14 @@ diag_heartbeat_loop() {
 }
 # MINER CONTROL FUNCTIONS
 start_miner() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    local LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
+    local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
     if is_miner_alive; then
-        echo "$(date): Miner already running for $SCREEN_NAME (PID: $(cat "$pid_file"))"
+        echo "$(date): Miner already running for $SERVICE_TYPE (PID: $(cat "$pid_file"))"
         echo "$(date): Miner output goes to this service's journal (journalctl -f) and $LOG_FILE"
         return 0
     elif [[ -f "$pid_file" ]]; then
-        echo "$(date): Stale PID file found for $SCREEN_NAME - cleaning up..."
+        echo "$(date): Stale PID file found for $SERVICE_TYPE - cleaning up..."
         stop_miner || true
         echo "$(date): Starting fresh miner after cleanup..."
     fi
@@ -266,7 +267,7 @@ start_miner() {
         echo "$(date): Applying GPU clocks..."
         /usr/local/bin/gpu_apply_ocs.sh
     fi
-    echo "$(date): Starting $SCREEN_NAME..."
+    echo "$(date): Starting $SERVICE_TYPE..."
     echo "$(date): Command: $START_CMD $ARGS"
     mkdir -p /run/rigcontrol
     rm -f "$LOG_FILE"
@@ -288,7 +289,7 @@ start_miner() {
         local miner_pid=$(cat "$pid_file")
         echo "$(date): Miner started (PID: $miner_pid)"
         echo "$(date): ARGS/OCS: $ARGS"
-        echo "$(date): To view miner output: journalctl -u docker_events_${SCREEN_NAME}.service -f"
+        echo "$(date): To view miner output: journalctl -u docker_events_${SERVICE_TYPE}.service -f"
         return 0
     else
         echo "$(date): ERROR: Failed to start miner!"
@@ -296,10 +297,10 @@ start_miner() {
     fi
 }
 stop_miner() {
-    echo "$(date): Stopping $SCREEN_NAME miner..."
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    echo "$(date): Stopping $SERVICE_TYPE miner..."
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if ! is_miner_alive; then
-        echo "$(date): No running $SCREEN_NAME process found - nothing to stop."
+        echo "$(date): No running $SERVICE_TYPE process found - nothing to stop."
         rm -f "$pid_file"
         return 0
     fi

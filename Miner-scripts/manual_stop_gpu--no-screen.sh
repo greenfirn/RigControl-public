@@ -44,7 +44,8 @@ do
     source "$f"
 done
 # Slot is fixed by which service instance this is - not user-configurable
-SCREEN_NAME="gpu"
+# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
+SERVICE_TYPE="gpu"
 # Get OC settings from rig.conf
 RESET_OC=$(get_rig_conf "RESET_OC" "0")
 # Remove quotes if present
@@ -53,13 +54,14 @@ RESET_OC="${RESET_OC//\"/}"
 RESET_OC="${RESET_OC,,}"
 # Default to false if empty
 : "${RESET_OC:=false}"
+: "${POWER_LIMIT:=}"
 echo "Miner Name:      $MINER_NAME"
-echo "Screen Session:  $SCREEN_NAME"
+echo "Screen Session:  $SERVICE_TYPE"
 echo "Reset GPU on stop: $RESET_OC"
 echo "========================================"
 # PID-BASED ALIVE CHECK / KILL FUNCTIONS
 is_miner_alive() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     [[ -f "$pid_file" ]] || return 1
     local pid
     pid=$(cat "$pid_file" 2>/dev/null)
@@ -67,7 +69,7 @@ is_miner_alive() {
     ps -p "$pid" > /dev/null 2>&1
 }
 kill_by_pid() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
@@ -96,10 +98,10 @@ kill_by_pid() {
 }
 # STOP MINER FUNCTION
 stop_miner() {
-    echo "[$(date)] Stopping $SCREEN_NAME miner..."
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    echo "[$(date)] Stopping $SERVICE_TYPE miner..."
+    local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if ! is_miner_alive; then
-        echo "[$(date)] No running $SCREEN_NAME process found - nothing to stop."
+        echo "[$(date)] No running $SERVICE_TYPE process found - nothing to stop."
         rm -f "$pid_file"
     else
         local miner_pid=$(cat "$pid_file")
@@ -123,7 +125,7 @@ stop_miner() {
     # Reset GPU if configured (always run this if RESET_OC is true)
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "[$(date)] Resetting GPU clocks and power limits..."
-        /usr/local/bin/gpu_reset_poststop.sh
+        /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
     echo "[$(date)] Final sleep 2 seconds..."
     sleep 2
@@ -132,7 +134,7 @@ stop_miner() {
     echo "========================================"
 }
 if is_miner_alive; then
-    miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
+    miner_pid=$(cat "/run/rigcontrol/${SERVICE_TYPE}_miner.pid")
     echo "Miner is currently running (PID: $miner_pid)"
 else
     echo "Miner is not currently running."
