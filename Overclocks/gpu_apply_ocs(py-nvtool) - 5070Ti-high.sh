@@ -16,10 +16,10 @@ ALGO_LOWER=$(echo "$ALGO" | tr '[:upper:]' '[:lower:]')
 
 case "$ALGO_LOWER" in
     keryxhash|keryx-miner|keryx-minerx)
-        CORE=2100
+        CORE=2490
         CORE_OFFSET=300
         MEM=0
-        MEM_OFFSET=750
+        MEM_OFFSET=1500
         POWER_LIMIT=0
         FAN_MODE="none"
         FAN_VALUE=""
@@ -51,3 +51,5 @@ if [[ "$FAN_MODE" == "curve" ]]; then
 fi
 EOF
 sudo chmod +x /usr/local/bin/gpu_apply_ocs.sh
+
+sudo /usr/local/bin/gpu_apply_ocs.sh keryx-miner
