@@ -7,6 +7,64 @@ GPU_SERVICE="${GPU_SERVICE_NAME:-docker_events_gpu.service}"
 CPU_SERVICE="${CPU_SERVICE_NAME:-docker_events_cpu.service}"
 AUX_SERVICE="${AUX_SERVICE_NAME:-docker_events_aux.service}"
 WATCHDOG_SERVICE="${WATCHDOG_SERVICE_NAME:-rigcontrol_watchdog.service}"
+# Workers tab -> Logs -> API call. rigcontrol_agent.sh has already resolved
+# the actual running miner's stats-API endpoint (see resolve_active_miner_api()
+# in rigcontrol_telemetry.sh) and passed it in via <PREFIX>_API_* env vars -
+# this just fetches it and pretty-prints the response (jq, falling back to
+# python3's json.tool, falling back to raw text for non-JSON APIs like
+# TeamRedMiner's cgminer protocol).
+rc_miner_api_fetch() {
+    local prefix="$1"   # CPU | GPU | AUX
+    local method_var="${prefix}_API_METHOD"
+    local url_var="${prefix}_API_URL"
+    local urlfb_var="${prefix}_API_URL_FALLBACK"
+    local tcphost_var="${prefix}_API_TCP_HOST"
+    local tcpport_var="${prefix}_API_TCP_PORT"
+    local tcppayload_var="${prefix}_API_TCP_PAYLOAD"
+    local miner_var="${prefix}_API_MINER"
+    local reason_var="${prefix}_API_REASON"
+    local method="${!method_var:-}"
+    local url="${!url_var:-}"
+    local url_fb="${!urlfb_var:-}"
+    local tcp_host="${!tcphost_var:-}"
+    local tcp_port="${!tcpport_var:-}"
+    local tcp_payload="${!tcppayload_var:-}"
+    local miner="${!miner_var:-}"
+    local reason="${!reason_var:-}"
+
+    if [[ "$method" != "http" && "$method" != "tcp" ]]; then
+        echo "No active miner API available for $prefix."
+        [[ -n "$reason" ]] && echo "$reason"
+        return 1
+    fi
+    [[ -n "$miner" ]] && echo "[$prefix] miner: $miner"
+
+    local body=""
+    if [[ "$method" == "tcp" ]]; then
+        body=$(timeout 4 bash -c '
+            exec 3<>"/dev/tcp/'"$tcp_host"'/'"$tcp_port"'" || exit 1
+            printf "%s" "$1" >&3
+            cat <&3
+        ' _ "$tcp_payload" 2>/dev/null) || true
+    else
+        body=$(curl -s -m 4 "$url" 2>/dev/null) || true
+        if [[ -z "$body" && -n "$url_fb" ]]; then
+            body=$(curl -s -m 4 "$url_fb" 2>/dev/null) || true
+        fi
+    fi
+
+    if [[ -z "$body" ]]; then
+        echo "No response from the miner's API."
+        return 1
+    fi
+    if command -v jq >/dev/null 2>&1 && echo "$body" | jq . >/dev/null 2>&1; then
+        echo "$body" | jq .
+    elif command -v python3 >/dev/null 2>&1 && echo "$body" | python3 -m json.tool >/dev/null 2>&1; then
+        echo "$body" | python3 -m json.tool
+    else
+        echo "$body"
+    fi
+}
 # Read entire command from STDIN (multi-line safe)
 RAW_CMD="$(cat)"
 if [[ -z "$RAW_CMD" ]]; then
@@ -74,6 +132,16 @@ case "$CMD" in
     watchdog.restart)
         systemctl restart "$WATCHDOG_SERVICE"
         echo "Restarted $WATCHDOG_SERVICE"
+        ;;
+    # MINER API CALL (Workers tab -> Logs -> CPU/GPU/AUX API)
+    cpu.api)
+        rc_miner_api_fetch CPU
+        ;;
+    gpu.api)
+        rc_miner_api_fetch GPU
+        ;;
+    aux.api)
+        rc_miner_api_fetch AUX
         ;;
     # MODE SWITCHING
     mode.set)

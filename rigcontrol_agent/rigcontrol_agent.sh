@@ -465,6 +465,29 @@ async def handle_command(raw, mqtt):
         visible_groups = data.get("visible_groups")
         await publish_status(mqtt, "refresh-request", visible_groups=visible_groups)
         return
+    # Workers tab -> Logs -> API call: resolve the actual running miner's
+    # stats-API endpoint here (reusing telemetry's own port/config logic -
+    # one source of truth for "what port does miner X's API live on") and
+    # hand it to rigcontrol_cmd.sh via env vars, instead of re-deriving
+    # miner ports a second time in bash.
+    extra_env = {}
+    first_line = command.strip().splitlines()[0].strip() if command.strip() else ""
+    if first_line in ("cpu.api", "gpu.api", "aux.api"):
+        slot = first_line.split(".", 1)[0]
+        try:
+            resolved = await asyncio.to_thread(telemetry.resolve_active_miner_api, slot)
+        except Exception as e:
+            resolved = {"method": "none", "reason": f"resolution error: {e}"}
+        prefix = f"{slot.upper()}_API_"
+        extra_env[f"{prefix}METHOD"]       = resolved.get("method", "none")
+        extra_env[f"{prefix}URL"]          = resolved.get("url", "")
+        extra_env[f"{prefix}URL_FALLBACK"] = resolved.get("url_fallback", "")
+        extra_env[f"{prefix}TCP_HOST"]     = resolved.get("host", "")
+        extra_env[f"{prefix}TCP_PORT"]     = str(resolved.get("port", "") or "")
+        extra_env[f"{prefix}TCP_PAYLOAD"]  = resolved.get("payload", "")
+        extra_env[f"{prefix}MINER"]        = resolved.get("miner", "")
+        extra_env[f"{prefix}REASON"]       = resolved.get("reason", "")
+        log(f"[Logs] Resolved {slot} miner API: {resolved}")
     try:
         proc = await asyncio.to_thread(
             subprocess.run,
@@ -478,6 +501,7 @@ async def handle_command(raw, mqtt):
                 "GPU_SERVICE_NAME": GPU_SERVICE_NAME,
                 "WATCHDOG_SERVICE_NAME": WATCHDOG_SERVICE_NAME,
                 "AUX_SERVICE_NAME": AUX_SERVICE_NAME,
+                **extra_env,
             }
         )
         response = {

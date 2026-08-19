@@ -1818,6 +1818,133 @@ def _read_agent_conf_val(key):
         _agent_conf_cache["mtime"] = mtime
         _agent_conf_cache["data"] = data
     return _agent_conf_cache["data"].get(key, "")
+def _find_slot_miner_pid(slot):
+    """Finds the PID of the actual miner process running inside the detached
+    `screen -S <slot>` session (slot is "cpu"/"gpu"/"aux" - see SCREEN_NAME
+    in the docker_events launcher), walking its process tree a few
+    generations deep past the wrapper shell/pipe (screen -> bash -c
+    "$START_CMD | sed | tee"). Returns (pid, full_cmdline), or (None, None)
+    if the session or a plausible miner process inside it isn't found."""
+    try:
+        result = subprocess.run(["screen", "-list"], capture_output=True, text=True, timeout=2)
+    except Exception:
+        return None, None
+    screen_pid = None
+    for line in (result.stdout or "").splitlines():
+        m = re.search(rf"(\d+)\.{re.escape(slot)}(?:\s|\t|$)", line.strip())
+        if m:
+            screen_pid = m.group(1)
+            break
+    if not screen_pid:
+        return None, None
+    skip_names = {"bash", "sh", "screen", "sed", "tee", "SCREEN", "awk", "grep"}
+    frontier = [screen_pid]
+    seen = set()
+    for _ in range(5):
+        if not frontier:
+            break
+        next_frontier = []
+        for pid in frontier:
+            if pid in seen:
+                continue
+            seen.add(pid)
+            try:
+                children = subprocess.run(
+                    ["pgrep", "-P", pid], capture_output=True, text=True, timeout=2
+                ).stdout.split()
+            except Exception:
+                children = []
+            for cpid in children:
+                try:
+                    with open(f"/proc/{cpid}/cmdline", "rb") as f:
+                        cmdline = f.read().replace(b"\x00", b" ").decode(errors="ignore").strip()
+                except Exception:
+                    cmdline = ""
+                bin_name = os.path.basename(cmdline.split(" ", 1)[0]) if cmdline else ""
+                if bin_name and bin_name not in skip_names:
+                    return cpid, cmdline
+                next_frontier.append(cpid)
+        frontier = next_frontier
+    return None, None
+def resolve_active_miner_api(slot):
+    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is
+    actually running under the given slot's screen session right now
+    (slot is "cpu"/"gpu"/"aux"), reusing the exact same default-port
+    env-var conventions as the collect_*_stats() functions above so there's
+    one source of truth for "what port does miner X's API live on".
+    Used by rigcontrol_agent.sh's handle_command() to hand a ready-to-fetch
+    endpoint to rigcontrol_cmd.sh for the Workers tab -> Logs -> API call
+    option, instead of re-deriving miner ports in bash. Returns a dict:
+    {"method": "http", "url": ..., "url_fallback": ..., "miner": ...} /
+    {"method": "tcp", "host": ..., "port": ..., "payload": ..., "miner": ...} /
+    {"method": "none", "reason": ...}."""
+    pid, cmdline = _find_slot_miner_pid(slot)
+    if not cmdline:
+        return {"method": "none", "reason": f"no active miner process found under the '{slot}' screen session"}
+    bin_name = os.path.basename(cmdline.split(" ", 1)[0])
+    lc = cmdline.lower()
+    def _port(*keys, default=None):
+        for k in keys:
+            v = os.environ.get(k, "").strip()
+            if v:
+                return v
+        return str(default)
+    if "xmrig" in lc:
+        if slot == "cpu":
+            host = os.environ.get("XMRIG_CPU_API_HOST", "").strip() or os.environ.get("XMRIG_API_HOST", "127.0.0.1")
+            port = _port("XMRIG_CPU_API_PORT", "XMRIG_API_PORT", default=18080)
+        else:
+            host = os.environ.get("XMRIG_GPU_API_HOST", "127.0.0.1")
+            port = _port("XMRIG_GPU_API_PORT", default=18081)
+        return {"method": "http", "url": f"http://{host}:{port}/2/summary", "miner": "xmrig"}
+    if "lolminer" in lc:
+        port = _port("LOLMINER_API_PORT", default=8020)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/", "miner": "lolminer"}
+    if "bzminer" in lc:
+        port = _port("BZMINER_API_PORT", default=4014)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/", "miner": "bzminer"}
+    if "rigel" in lc:
+        port = _port("RIGEL_API_PORT", default=5000)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/", "miner": "rigel"}
+    if "srbminer" in lc:
+        if slot == "cpu":
+            port = _port("SRBMINER_CPU_API_PORT", default=21551)
+        else:
+            port = _port("SRBMINER_MULTI_API_PORT", "SRBMINER_API_PORT", "SRBMINER_GPU_API_PORT", default=21550)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/", "miner": "srbminer"}
+    if "wildrig" in lc:
+        port = _port("WILDRIG_API_PORT", default=4000)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/", "miner": "wildrig"}
+    if "onezerominer" in lc:
+        port = _port("ONEZEROMINER_API_PORT", default=3001)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/", "miner": "onezerominer"}
+    if "gminer" in lc:
+        port = _port("GMINER_API_PORT", default=10050)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/stat", "miner": "gminer"}
+    if "t-rex" in lc or re.search(r"\btrex\b", lc):
+        port = _port("TREX_API_PORT", default=4067)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/summary", "miner": "t-rex"}
+    if "peakminer" in lc:
+        port = _port("PEAKMINER_API_PORT", default=4068)
+        return {"method": "http", "url": f"http://127.0.0.1:{port}/summary", "miner": "peakminer"}
+    if "teamredminer" in lc:
+        return {"method": "tcp", "host": "127.0.0.1", "port": 4028, "payload": "summary\n", "miner": "teamredminer"}
+    # Unknown/custom binary - same <NAME>_API_HOST/_PORT convention already
+    # used by collect_named_custom_miner_stats() below.
+    key = _sanitize_miner_key(bin_name)
+    api_host = _read_agent_conf_val(f"{key}_API_HOST") or os.environ.get(f"{key}_API_HOST", "").strip()
+    api_port = _read_agent_conf_val(f"{key}_API_PORT") or os.environ.get(f"{key}_API_PORT", "").strip()
+    if api_host and api_port:
+        return {
+            "method": "http",
+            "url": f"http://{api_host}:{api_port}/stats",
+            "url_fallback": f"http://{api_host}:{api_port}/v1/miner/stats",
+            "miner": bin_name,
+        }
+    return {
+        "method": "none",
+        "reason": f"detected '{bin_name}' but no known API port for it (set {key}_API_HOST / {key}_API_PORT in rigcontrol-agent.conf)",
+    }
 def collect_named_custom_miner_stats():
     """Telemetry for the configured custom miner (CUSTOM_MINER_PROCESS_NAME); every setting is looked up fresh in rigcontrol-agent.conf on each call under a prefix derived from the miner's own name - <NAME>_BIN for the binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API, or <NAME>_LOG_PATH for log scraping (add <NAME>_LOG_STYLE=blocks for keryxd-style "Accepted N blocks" counting instead of generic hashrate scraping)."""
     name = _CUSTOM_MINER_PROCESS_NAME
@@ -2026,6 +2153,64 @@ GPU_SERVICE="${GPU_SERVICE_NAME:-docker_events_gpu.service}"
 CPU_SERVICE="${CPU_SERVICE_NAME:-docker_events_cpu.service}"
 AUX_SERVICE="${AUX_SERVICE_NAME:-docker_events_aux.service}"
 WATCHDOG_SERVICE="${WATCHDOG_SERVICE_NAME:-rigcontrol_watchdog.service}"
+# Workers tab -> Logs -> API call. rigcontrol_agent.sh has already resolved
+# the actual running miner's stats-API endpoint (see resolve_active_miner_api()
+# in rigcontrol_telemetry.sh) and passed it in via <PREFIX>_API_* env vars -
+# this just fetches it and pretty-prints the response (jq, falling back to
+# python3's json.tool, falling back to raw text for non-JSON APIs like
+# TeamRedMiner's cgminer protocol).
+rc_miner_api_fetch() {
+    local prefix="$1"   # CPU | GPU | AUX
+    local method_var="${prefix}_API_METHOD"
+    local url_var="${prefix}_API_URL"
+    local urlfb_var="${prefix}_API_URL_FALLBACK"
+    local tcphost_var="${prefix}_API_TCP_HOST"
+    local tcpport_var="${prefix}_API_TCP_PORT"
+    local tcppayload_var="${prefix}_API_TCP_PAYLOAD"
+    local miner_var="${prefix}_API_MINER"
+    local reason_var="${prefix}_API_REASON"
+    local method="${!method_var:-}"
+    local url="${!url_var:-}"
+    local url_fb="${!urlfb_var:-}"
+    local tcp_host="${!tcphost_var:-}"
+    local tcp_port="${!tcpport_var:-}"
+    local tcp_payload="${!tcppayload_var:-}"
+    local miner="${!miner_var:-}"
+    local reason="${!reason_var:-}"
+
+    if [[ "$method" != "http" && "$method" != "tcp" ]]; then
+        echo "No active miner API available for $prefix."
+        [[ -n "$reason" ]] && echo "$reason"
+        return 1
+    fi
+    [[ -n "$miner" ]] && echo "[$prefix] miner: $miner"
+
+    local body=""
+    if [[ "$method" == "tcp" ]]; then
+        body=$(timeout 4 bash -c '
+            exec 3<>"/dev/tcp/'"$tcp_host"'/'"$tcp_port"'" || exit 1
+            printf "%s" "$1" >&3
+            cat <&3
+        ' _ "$tcp_payload" 2>/dev/null) || true
+    else
+        body=$(curl -s -m 4 "$url" 2>/dev/null) || true
+        if [[ -z "$body" && -n "$url_fb" ]]; then
+            body=$(curl -s -m 4 "$url_fb" 2>/dev/null) || true
+        fi
+    fi
+
+    if [[ -z "$body" ]]; then
+        echo "No response from the miner's API."
+        return 1
+    fi
+    if command -v jq >/dev/null 2>&1 && echo "$body" | jq . >/dev/null 2>&1; then
+        echo "$body" | jq .
+    elif command -v python3 >/dev/null 2>&1 && echo "$body" | python3 -m json.tool >/dev/null 2>&1; then
+        echo "$body" | python3 -m json.tool
+    else
+        echo "$body"
+    fi
+}
 # Read entire command from STDIN (multi-line safe)
 RAW_CMD="$(cat)"
 if [[ -z "$RAW_CMD" ]]; then
@@ -2093,6 +2278,16 @@ case "$CMD" in
     watchdog.restart)
         systemctl restart "$WATCHDOG_SERVICE"
         echo "Restarted $WATCHDOG_SERVICE"
+        ;;
+    # MINER API CALL (Workers tab -> Logs -> CPU/GPU/AUX API)
+    cpu.api)
+        rc_miner_api_fetch CPU
+        ;;
+    gpu.api)
+        rc_miner_api_fetch GPU
+        ;;
+    aux.api)
+        rc_miner_api_fetch AUX
         ;;
     # MODE SWITCHING
     mode.set)
@@ -2592,6 +2787,29 @@ async def handle_command(raw, mqtt):
         visible_groups = data.get("visible_groups")
         await publish_status(mqtt, "refresh-request", visible_groups=visible_groups)
         return
+    # Workers tab -> Logs -> API call: resolve the actual running miner's
+    # stats-API endpoint here (reusing telemetry's own port/config logic -
+    # one source of truth for "what port does miner X's API live on") and
+    # hand it to rigcontrol_cmd.sh via env vars, instead of re-deriving
+    # miner ports a second time in bash.
+    extra_env = {}
+    first_line = command.strip().splitlines()[0].strip() if command.strip() else ""
+    if first_line in ("cpu.api", "gpu.api", "aux.api"):
+        slot = first_line.split(".", 1)[0]
+        try:
+            resolved = await asyncio.to_thread(telemetry.resolve_active_miner_api, slot)
+        except Exception as e:
+            resolved = {"method": "none", "reason": f"resolution error: {e}"}
+        prefix = f"{slot.upper()}_API_"
+        extra_env[f"{prefix}METHOD"]       = resolved.get("method", "none")
+        extra_env[f"{prefix}URL"]          = resolved.get("url", "")
+        extra_env[f"{prefix}URL_FALLBACK"] = resolved.get("url_fallback", "")
+        extra_env[f"{prefix}TCP_HOST"]     = resolved.get("host", "")
+        extra_env[f"{prefix}TCP_PORT"]     = str(resolved.get("port", "") or "")
+        extra_env[f"{prefix}TCP_PAYLOAD"]  = resolved.get("payload", "")
+        extra_env[f"{prefix}MINER"]        = resolved.get("miner", "")
+        extra_env[f"{prefix}REASON"]       = resolved.get("reason", "")
+        log(f"[Logs] Resolved {slot} miner API: {resolved}")
     try:
         proc = await asyncio.to_thread(
             subprocess.run,
@@ -2605,6 +2823,7 @@ async def handle_command(raw, mqtt):
                 "GPU_SERVICE_NAME": GPU_SERVICE_NAME,
                 "WATCHDOG_SERVICE_NAME": WATCHDOG_SERVICE_NAME,
                 "AUX_SERVICE_NAME": AUX_SERVICE_NAME,
+                **extra_env,
             }
         )
         response = {

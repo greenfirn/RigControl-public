@@ -877,10 +877,14 @@ const LOGS_TYPE_LABELS = {
     "cpu.snap": "CPU screen snapshot",
     "gpu.snap": "GPU screen snapshot",
     "aux.snap": "AUX screen snapshot",
+    "cpu.api": "CPU API call",
+    "gpu.api": "GPU API call",
+    "aux.api": "AUX API call",
 };
 // Types where the "Lines" field doesn't apply (screen hardcopy dumps the
-// whole visible terminal buffer, not a tail'd/journalctl'd line count).
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap"]);
+// whole visible terminal buffer, and an API call returns one JSON document -
+// neither is a tail'd/journalctl'd line count).
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api"]);
 // Sent through the same raw-execution path as the existing Send Cmd box
 // (rigcontrol_cmd.sh's default `*` case: bash -c "$RAW_CMD") - nothing new
 // to deploy on the rig side. $CPU_SERVICE_NAME / $GPU_SERVICE_NAME /
@@ -899,6 +903,14 @@ const LOGS_COMMAND_BUILDERS = {
     "cpu.snap": () => `screen -S cpu -X hardcopy /tmp/rigcontrol_cpu_snap.txt && cat /tmp/rigcontrol_cpu_snap.txt`,
     "gpu.snap": () => `screen -S gpu -X hardcopy /tmp/rigcontrol_gpu_snap.txt && cat /tmp/rigcontrol_gpu_snap.txt`,
     "aux.snap": () => `screen -S aux -X hardcopy /tmp/rigcontrol_aux_snap.txt && cat /tmp/rigcontrol_aux_snap.txt`,
+    // These are structured commands (not raw shell) - rigcontrol_agent.sh
+    // intercepts them, resolves the actual running miner's stats-API
+    // endpoint via resolve_active_miner_api() in rigcontrol_telemetry.sh,
+    // and hands it to rigcontrol_cmd.sh's cpu.api/gpu.api/aux.api case,
+    // which fetches it and pretty-prints the JSON (or raw text fallback).
+    "cpu.api": () => "cpu.api",
+    "gpu.api": () => "gpu.api",
+    "aux.api": () => "aux.api",
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
