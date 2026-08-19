@@ -890,6 +890,7 @@ const LOGS_TYPE_LABELS = {
     "sys.top": "Processes (ps, by CPU)",
 };
 const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
+const LOGS_TYPES_PRESERVE_SCROLL = new Set(["sys.top"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
     "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
@@ -3317,9 +3318,12 @@ function handleCommandResponse(response) {
             let text = "";
             if (r.stdout) text += stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             if (r.stderr) text += (text ? "\n" : "") + stripAnsi(r.stderr);
+            const typeSelect = document.getElementById("logs-type-select");
+            const currentType = typeSelect ? typeSelect.value : "";
+            const preserveScroll = LOGS_TYPES_PRESERVE_SCROLL.has(currentType);
             const prevScrollTop = out.scrollTop;
             out.value = stripBlankLines(text) || "(empty)";
-            out.scrollTop = prevScrollTop;
+            out.scrollTop = preserveScroll ? prevScrollTop : out.scrollHeight;
         }
         if (statusEl) {
             statusEl.textContent = `returncode=${r.returncode} · last refreshed ${new Date().toLocaleTimeString()}`;
