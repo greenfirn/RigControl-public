@@ -739,8 +739,21 @@ def docker_containers_running():
     """True if any Docker container is currently running (any image)."""
     rc, out, _ = run("docker ps -q")
     return rc == 0 and bool(out.strip())
+_last_detected_miners_set = frozenset()
+_miners_set_changed_flag = False
+def consume_miners_changed_flag():
+    """Returns True if detect_running_miners() has observed the running-miner
+    set change since this was last called, then clears the flag (one-shot).
+    Lets callers (e.g. custom-miner re-resolution in the agent) react only
+    when the running set actually changed instead of re-checking blindly
+    on every cycle."""
+    global _miners_set_changed_flag
+    changed = _miners_set_changed_flag
+    _miners_set_changed_flag = False
+    return changed
 def detect_running_miners():
-    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps."""
+    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call."""
+    global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
         grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
@@ -761,6 +774,10 @@ def detect_running_miners():
     except Exception as e:
         print(f"Error detecting native miner processes: {e}")
     found.update(_docker_published_miners())
+    new_set = frozenset(found.keys())
+    if new_set != _last_detected_miners_set:
+        _last_detected_miners_set = new_set
+        _miners_set_changed_flag = True
     return list(found.keys())
 def collect_miner_stats_based_on_processes():
     """Collect stats only for miners currently running."""
