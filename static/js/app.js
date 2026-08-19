@@ -886,9 +886,10 @@ const LOGS_TYPE_LABELS = {
     "agent.conf": "Agent conf",
     "agent.svclog": "Agent log",
     "sys.nvidiasmi": "nvidia-smi",
+    "sys.rocmsmi": "rocm-smi",
     "sys.df": "Disk usage (df -h)",
 };
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "sys.nvidiasmi", "sys.df"]);
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
     "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
@@ -908,6 +909,7 @@ const LOGS_COMMAND_BUILDERS = {
     "agent.conf": () => "cat /etc/rigcontrol/rigcontrol-agent.conf",
     "agent.svclog": (n) => `journalctl -u rigcontrol-agent.service -n ${n} --no-pager`,
     "sys.nvidiasmi": () => "nvidia-smi",
+    "sys.rocmsmi": () => "rocm-smi",
     "sys.df": () => "df -h",
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
