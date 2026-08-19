@@ -70,18 +70,6 @@ download_with_retry() {
     echo "ERROR: Could not download $url"
     return 1
 }
-cleanup_old_versions() {
-    local miner="$1"
-    local keep="$2"
-    local folder="$BASE_DIR/$miner"
-    [ -d "$folder" ] || return 0
-    for dir in "$folder"/*; do
-        [[ "$dir" == "$folder/current" ]] && continue
-        [[ "$dir" == "$folder/$keep" ]] && continue
-        echo "  Removing old version: $dir"
-        rm -rf "$dir"
-    done
-}
 install_miner() {
     local name="$1"
     local version="$2"
@@ -89,16 +77,18 @@ install_miner() {
     local file="$4"
     local strip="$5"
     local bin_name="$6"
-    local miner_dir="$BASE_DIR/$name/$version"
+    local miner_dir="$BASE_DIR/$name/current"
     local bin_path="$miner_dir/$bin_name"
-    if [ ! -f "$bin_path" ]; then
+    local version_file="$miner_dir/.installed_version"
+    local installed_version=""
+    [ -f "$version_file" ] && installed_version="$(cat "$version_file" 2>/dev/null)"
+    if [ ! -f "$bin_path" ] || [ "$installed_version" != "$version" ]; then
         echo ""
-        echo "==== Installing $name $version ===="
-        rm -rf "$miner_dir"
+        echo "==== Installing $name $version (overwriting in place, current is kept as-is otherwise) ===="
         mkdir -p "$miner_dir"
         cd "$miner_dir"
         download_with_retry "$file" "$url"
-        echo "  Extracting..."
+        echo "  Extracting on top of $miner_dir..."
         if ! tar -xf "$file" $strip; then
             echo "ERROR: Extraction failed — file likely invalid."
             rm -f "$file"
@@ -109,13 +99,12 @@ install_miner() {
             echo "ERROR: Expected binary '$bin_name' not found!"
             exit 1
         fi
+        echo "$version" > "$version_file"
     else
         echo ""
         echo "$name $version already installed (found $bin_name), skipping."
     fi
-    ln -sfn "$miner_dir" "$BASE_DIR/$name/current"
-    echo "  Symlink: $BASE_DIR/$name/current -> $miner_dir"
-    cleanup_old_versions "$name" "$version"
+    echo "  Installed at: $miner_dir"
 }
 install_custom_miner() {
     local url="$1"
@@ -124,16 +113,18 @@ install_custom_miner() {
     file="$(basename "$url")"
     local version
     version="$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-    local miner_dir="$BASE_DIR/$bin_name/$version"
+    local miner_dir="$BASE_DIR/$bin_name/current"
     local bin_path="$miner_dir/$bin_name"
-    if [ ! -f "$bin_path" ]; then
+    local version_file="$miner_dir/.installed_version"
+    local installed_version=""
+    [ -f "$version_file" ] && installed_version="$(cat "$version_file" 2>/dev/null)"
+    if [ ! -f "$bin_path" ] || [ "$installed_version" != "$version" ]; then
         echo ""
-        echo "==== Installing CUSTOM_MINER ($bin_name) ===="
-        rm -rf "$miner_dir"
+        echo "==== Installing CUSTOM_MINER ($bin_name), overwriting in place, current is kept as-is otherwise ===="
         mkdir -p "$miner_dir"
         cd "$miner_dir"
         download_with_retry "$file" "$url"
-        echo "  Extracting..."
+        echo "  Extracting on top of $miner_dir..."
         case "$file" in
             *.tar.gz|*.tgz)  tar -xzf "$file" --strip-components=1 ;;
             *.tar.xz|*.txz)  tar -xJf "$file" --strip-components=1 ;;
@@ -176,6 +167,7 @@ install_custom_miner() {
             exit 1
         fi
         chmod +x "$bin_name" 2>/dev/null
+        echo "$version" > "$version_file"
     else
         echo ""
         echo "CUSTOM_MINER already installed (found $bin_name), skipping."
@@ -187,9 +179,7 @@ install_custom_miner() {
     else
         echo "  WARNING: '$bin_name --version' produced no output"
     fi
-    ln -sfn "$miner_dir" "$BASE_DIR/$bin_name/current"
-    echo "  Symlink: $BASE_DIR/$bin_name/current -> $miner_dir"
-    cleanup_old_versions "$bin_name" "$version"
+    echo "  Installed at: $miner_dir"
 }
 should_install() {
     local miner="$1"
