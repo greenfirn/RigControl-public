@@ -2,35 +2,32 @@ sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
+# Power limit for GPU reset (default 150W, can be overridden by service)
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
+# Number of times to check for no running containers
+: "${IDLE_CONFIRM_LOOPS:=3}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
-# SIGNAL HANDLER
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
     SHUTDOWN_REQUESTED=1
-    # Ensure miner is stopped
     echo "$(date): Stopping miner if running..."
     stop_miner || true
     exit 0
 }
-# Setup signal handlers
 trap 'handle_signal TERM' TERM
 trap 'handle_signal INT' INT
 trap 'handle_signal HUP' HUP
-# Where miners are installed
 BASE_DIR="/opt/miners"
 readonly BASE_DIR
-# Where THIS script and lib/ live
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[init] BASE_DIR=$BASE_DIR"
 mkdir -p "$BASE_DIR"
-# Rig config (must be set by service)
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
@@ -42,13 +39,12 @@ if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 fi
-# Miner config (with default location)
+# MINER_CONF: path to miner.conf (default /etc/rigcontrol/miner.conf).
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 [[ -f "$MINER_CONF" ]] || {
     echo "Missing miner.conf: $MINER_CONF"
     exit 1
 }
-# Source libraries
 for f in \
     "$SCRIPT_DIR/lib/00-get_rig_conf.sh" \
     "$SCRIPT_DIR/lib/01-miner_install.sh" \
@@ -59,6 +55,7 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
+# API_CONF: path to api.conf (default /etc/rigcontrol/api.conf).
 : "${API_CONF:=/etc/rigcontrol/api.conf}"
 PORTS_CONF="$API_CONF"
 unset API_PORT API_HOST
@@ -110,7 +107,6 @@ fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
 echo "[api]   API_HOST=$API_HOST"
 echo "[api]   API_PORT=$API_PORT"
-# MINER-SPECIFIC API COMMAND GENERATION
 add_api_flags() {
     local miner_name="$1"
     local api_host="$2"
@@ -164,23 +160,18 @@ add_api_flags() {
             ;;
     esac
 }
-# FINAL PLACEHOLDER SUBSTITUTION
-# CPU threads
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
     ARGS="${ARGS//%CPU_THREADS%/$CPU_THREADS}"
 fi
-# Warthog target
 if [[ -n "$WARTHOG_TARGET" ]]; then
     ARGS="${ARGS//%WARTHOG_TARGET%/$WARTHOG_TARGET}"
 fi
-# Replace %WORKER_NAME% placeholder in ARGS, WALLET, PASS, POOL
 ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# Add miner-specific API flags
 if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
@@ -190,67 +181,119 @@ case "$OC_FILE" in
     *rig-cpu*) SCREEN_NAME="cpu" ;;
     *rig-aux*) SCREEN_NAME="aux" ;;
 esac
-# API HEALTH CHECK FUNCTION
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
-        return 0  # API not enabled, consider healthy
+        return 0
     fi
-    # just return healthy...
     return 0
-}
-# PID-BASED ALIVE CHECK / KILL - no screen session in this variant
-is_miner_alive() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    [[ -f "$pid_file" ]] || return 1
-    local pid
-    pid=$(cat "$pid_file" 2>/dev/null)
-    [[ -n "$pid" ]] || return 1
-    ps -p "$pid" > /dev/null 2>&1
 }
 kill_by_pid() {
     local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
         if ps -p "$miner_pid" > /dev/null 2>&1; then
-            echo "$(date): Sending Ctrl+C (SIGINT) to miner process group (PGID: $miner_pid)..."
-            kill -2 -- "-$miner_pid" 2>/dev/null
-            local waited=0
-            while [[ $waited -lt 10 ]]; do
-                if ! ps -p "$miner_pid" > /dev/null 2>&1; then
-                    echo "$(date): Miner exited gracefully after ${waited}s"
-                    break
-                fi
-                sleep 1
-                ((waited++))
-            done
+            echo "$(date): WARNING: Miner process still alive after screen quit - forcing kill (PID: $miner_pid)..."
+            kill -15 "$miner_pid" 2>/dev/null
+            sleep 2
             if ps -p "$miner_pid" > /dev/null 2>&1; then
-                echo "$(date): Miner not responding to SIGINT after 10s - sending SIGKILL..."
-                kill -9 -- "-$miner_pid" 2>/dev/null
+                echo "$(date): Miner not responding to SIGTERM - sending SIGKILL..."
+                kill -9 "$miner_pid" 2>/dev/null
                 sleep 1
-                pkill -P "$miner_pid" 2>/dev/null 2>&1 || true
-                echo "$(date): Miner process group $miner_pid terminated (forcefully)"
             fi
+            pkill -P "$miner_pid" 2>/dev/null 2>&1 || true
+            echo "$(date): Miner process $miner_pid terminated (forcefully)"
         fi
-        # Clean up PID file
         rm -f "$pid_file"
     fi
 }
-# MINER CONTROL FUNCTIONS
-# Function to start miner
-start_miner() {
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    local LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
-    # Check if miner is already running
-    if is_miner_alive; then
-        echo "$(date): Miner already running for $SCREEN_NAME (PID: $(cat "$pid_file"))"
-        echo "$(date): Miner output goes to this service's journal (journalctl -f)"
+is_docker_running() {
+    docker ps > /dev/null 2>&1
+    return $?
+}
+any_container_running() {
+    local running_count=$(docker ps -q 2>/dev/null | wc -l)
+    if [[ $running_count -gt 0 ]]; then
+        echo "$(date): Found $running_count running container(s)"
         return 0
-    elif [[ -f "$pid_file" ]]; then
-        echo "$(date): Stale PID file found for $SCREEN_NAME - cleaning up..."
-        stop_miner || true
-        echo "$(date): Starting fresh miner after cleanup..."
+    else
+        echo "$(date): No containers running"
+        return 1
     fi
-    # Apply GPU OC's if configured
+}
+confirm_no_containers_running() {
+    local loops=${1:-$IDLE_CONFIRM_LOOPS}
+    local check_interval=2
+    echo "$(date): Confirming no containers are running (checking $loops times, $check_interval second intervals)..."
+    for ((i=1; i<=loops; i++)); do
+        echo "$(date): No-container check $i/$loops..."
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo "$(date): Shutdown requested during confirmation, aborting..."
+            return 1
+        fi
+        if ! is_docker_running; then
+            echo "$(date): Docker not running → UNAVAILABLE → BREAKING (cannot confirm)"
+            return 1
+        fi
+        if any_container_running; then
+            echo "$(date): Containers found running → BREAKING (containers exist)"
+            return 1
+        else
+            echo "$(date): No containers running → continue checking"
+        fi
+        if [ $i -lt $loops ]; then
+            echo "$(date): Waiting $check_interval seconds for next check..."
+            sleep $check_interval
+        fi
+    done
+    echo "$(date): Confirmed no containers running after $loops consecutive checks"
+    return 0
+}
+process_docker_event() {
+    local container_name="$1"
+    local status="$2"
+    local image="$3"
+    echo "$(date): Docker event - Container: $container_name, Action: $status, Image: $image"
+    case "$status" in
+        init|start|create|unpause|restart)
+            echo "$(date): ANY Docker START event ($status) → IMMEDIATE stop_miner"
+            stop_miner || true
+            ;;
+        kill|destroy|stop|die|died|pause)
+            echo "$(date): Docker STOP event ($status) → Checking if all containers stopped..."
+            sleep 3
+            if confirm_no_containers_running $IDLE_CONFIRM_LOOPS; then
+                echo "$(date): Confirmed no containers running → START miner"
+                start_miner || true
+            else
+                echo "$(date): Containers still running → no action"
+            fi
+            ;;
+        *)
+            echo "$(date): Unhandled Docker action: $status for $container_name"
+            ;;
+    esac
+}
+start_miner() {
+    if screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): Screen session exists for $SCREEN_NAME - checking if miner is alive..."
+        local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+        if [[ -f "$pid_file" ]]; then
+            local miner_pid=$(cat "$pid_file")
+            if ps -p "$miner_pid" > /dev/null 2>&1; then
+                echo "$(date): Miner already running in screen session: $SCREEN_NAME"
+                echo "$(date): To view: sudo screen -r $SCREEN_NAME"
+                return 0
+            else
+                echo "$(date): Miner process is dead but screen session exists - cleaning up..."
+                stop_miner || true
+                echo "$(date): Starting fresh miner after cleanup..."
+            fi
+        else
+            echo "$(date): Screen session exists but no PID file found - cleaning up..."
+            stop_miner || true
+            echo "$(date): Starting fresh miner after cleanup..."
+        fi
+    fi
     if [[ "${APPLY_OC,,}" == "true" ]]; then
         OC_TARGET="${ALGO:-}"
         if [[ -z "$OC_TARGET" || "$OC_TARGET" == "0" ]]; then
@@ -269,24 +312,25 @@ start_miner() {
     mkdir -p /run/rigcontrol
     if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
         echo "$(date): Known miner with API - starting without log file (nothing reads it)"
-        setsid bash -c \
+        screen -fn -dmS "$SCREEN_NAME" bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
-             trap '\''echo "Miner exiting at $(date)"; rm -f "'"$pid_file"'"'\'' EXIT; \
-             '"$START_CMD"'' \
-            < /dev/null &
-        echo $! > "$pid_file"
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             '"$START_CMD"''
     else
         if [[ "$API_PORT" -gt 0 ]]; then
-            echo "$(date): ALWAYS_LOGS enabled - starting with log file for easier review of miner output (API is still used for stats, this is redundant with the service journal but kept for consistency/override-ability)"
+            echo "$(date): ALWAYS_LOGS enabled - starting with log file for easier review of miner output (API is still used for stats)"
         else
-            echo "$(date): No API for this miner - still writing $LOG_FILE (needed for log-scraping telemetry), in addition to the service journal"
+            echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
         fi
+        LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
         rm -f "$LOG_FILE"
-        setsid bash -c \
+        screen -fn -dmS "$SCREEN_NAME" bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
-             trap '\''echo "Miner exiting at $(date)"; rm -f "'"$pid_file"'"'\'' EXIT; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
              ( while true; do \
                  sleep '"$LOG_CHECK_INTERVAL"'; \
                  sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
@@ -294,16 +338,15 @@ start_miner() {
                      tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
                  fi; \
                done ) & \
-             '"$START_CMD"' 2>&1 | tee -a "'"$LOG_FILE"'"' \
-            < /dev/null &
-        echo $! > "$pid_file"
+             '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
     fi
     sleep 2
-    # Verify startup
-    if is_miner_alive; then
-        local miner_pid=$(cat "$pid_file")
-        echo "$(date): Miner started (PID: $miner_pid)"
-        # Wait for API to come up if enabled
+    if screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): Miner started in screen session: $SCREEN_NAME"
+        if [[ -f "/run/rigcontrol/${SCREEN_NAME}_miner.pid" ]]; then
+            local miner_pid=$(cat "/run/rigcontrol/${SCREEN_NAME}_miner.pid")
+            echo "$(date): Miner process PID: $miner_pid"
+        fi
         if [[ "$API_PORT" -gt 0 ]]; then
             echo "$(date): Waiting for API to start (max 30 seconds)..."
             local max_wait=30
@@ -321,69 +364,105 @@ start_miner() {
             fi
         fi
         echo "$(date): ARGS/OCS: $ARGS"
-        echo "$(date): To view miner output: journalctl -u <service-name> -f"
+        echo "$(date): To view miner output: sudo screen -r $SCREEN_NAME"
         return 0
     else
-        echo "$(date): ERROR: Failed to start miner process!"
+        echo "$(date): ERROR: Failed to start screen session!"
         return 1
     fi
 }
-# Function to stop miner (clean closure first)
 stop_miner() {
     echo "$(date): Stopping $SCREEN_NAME miner..."
-    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
-    if ! is_miner_alive; then
-        echo "$(date): No running $SCREEN_NAME process found - nothing to stop."
-        rm -f "$pid_file"
+    if ! screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): No $SCREEN_NAME screen session found - nothing to stop."
         return 0
     fi
-    local miner_pid=$(cat "$pid_file")
-    kill_by_pid
-    # Reset GPU if configured
+    echo "$(date): Sending clean quit to screen session..."
+    screen -S "$SCREEN_NAME" -X quit
+    echo "$(date): Waiting 10 seconds for miner cleanup..."
+    sleep 10
+    local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
+    if [[ -f "$pid_file" ]]; then
+        local miner_pid=$(cat "$pid_file")
+        if ps -p "$miner_pid" > /dev/null 2>&1; then
+            echo "$(date): Miner still running after screen quit - using force cleanup..."
+            kill_by_pid
+        else
+            echo "$(date): Miner exited cleanly after screen quit."
+            rm -f "$pid_file"
+        fi
+    fi
+    local screen_pids=$(pgrep -f "SCREEN.*$SCREEN_NAME" 2>/dev/null || true)
+    if [[ -n "$screen_pids" ]]; then
+        echo "$(date): Cleaning up leftover screen processes..."
+        kill -15 $screen_pids 2>/dev/null
+        sleep 2
+        kill -9 $screen_pids 2>/dev/null 2>&1 || true
+    fi
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "$(date): Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
-    # Final verification
     echo "$(date): Verifying cleanup..."
-    if ps -p "$miner_pid" > /dev/null 2>&1; then
-        echo "$(date): WARNING: Miner process still exists! Waiting 5s before retrying kill_by_pid..."
-        sleep 5
-        kill_by_pid
-        if ps -p "$miner_pid" > /dev/null 2>&1; then
-            echo "$(date): WARNING: Miner process still exists after retry!"
-            return 1
-        else
-            echo "$(date): Miner process cleaned up successfully after retry."
-        fi
+    if screen -list | grep -q "$SCREEN_NAME"; then
+        echo "$(date): WARNING: Screen session still exists!"
+        return 1
     else
-        echo "$(date): Miner process cleaned up successfully."
+        echo "$(date): Screen session cleaned up successfully."
     fi
     rm -f "$pid_file"
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# START MINER
-echo "$(date): Starting miner (no container checks)..."
-start_miner
+echo "$(date): Performing initial Docker container check..."
+if any_container_running; then
+    echo "$(date): Containers found running at startup → stop_miner (do not start miner)"
+    stop_miner || true
+else
+    echo "$(date): No containers running at startup → start_miner"
+    start_miner || true
+fi
+echo "$(date): Starting Docker event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
-    sleep 60
+    echo "$(date): Connecting to Docker events stream..."
+    docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
+    while read -r type action name image; do
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo "$(date): Shutdown requested, breaking event loop..."
+            break 2
+        fi
+        if [ "$type" != "container" ]; then
+            continue
+        fi
+        process_docker_event "$name" "$action" "$image"
+    done
+    if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+        echo "$(date): Shutdown requested, exiting main loop..."
+        break
+    fi
+    if ! is_docker_running; then
+        echo "$(date): ERROR: Docker daemon not responding. Waiting 30 seconds..."
+        sleep 30
+        continue
+    fi
+    echo "$(date): Docker events stream ended, restarting monitor in 5 seconds..."
+    sleep 5
 done
-# Final cleanup before exit
 echo "$(date): Performing final cleanup..."
-stop_miner
-echo "$(date): Miner launcher stopped gracefully"
+stop_miner || true
+echo "$(date): Docker event monitor stopped gracefully"
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write GPU service --
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
-Description=GPU Miner Launcher
+Description=Docker Events GPU Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
+Environment="IDLE_CONFIRM_LOOPS=3"
 Environment="POWER_LIMIT="
 ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
@@ -399,14 +478,18 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write CPU service --
+sudo systemctl enable docker_events_gpu.service
+sudo systemctl restart docker_events_gpu.service
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
-Description=CPU Miner Launcher
+Description=Docker Events CPU Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
+Environment="IDLE_CONFIRM_LOOPS=3"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
@@ -420,14 +503,18 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write AUX service --
+sudo systemctl enable docker_events_cpu.service
+sudo systemctl restart docker_events_cpu.service
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
-Description=AUX Miner Launcher
+Description=Docker Events AUX Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-aux.json"
+Environment="IDLE_CONFIRM_LOOPS=3"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
@@ -441,13 +528,8 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl restart docker_events_cpu.service
-sudo systemctl restart docker_events_gpu.service
-sudo systemctl restart docker_events_aux.service
-sudo systemctl enable docker_events_cpu.service
-sudo systemctl enable docker_events_gpu.service
 sudo systemctl enable docker_events_aux.service
-# follow logs
-sudo journalctl -u docker_events_cpu.service -f
+sudo systemctl restart docker_events_aux.service
 sudo journalctl -u docker_events_gpu.service -f
+sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_aux.service -f

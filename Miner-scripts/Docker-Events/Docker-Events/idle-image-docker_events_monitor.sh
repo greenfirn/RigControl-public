@@ -1,9 +1,11 @@
+# idle-image-docker_events_monitor.sh
 sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
-: "${POWER_LIMIT:=}"
+: "${POWER_LIMIT:=150}"
 SHUTDOWN_REQUESTED=0
+: "${IDLE_CONFIRM_LOOPS:=2}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
@@ -14,7 +16,7 @@ handle_signal() {
     SHUTDOWN_REQUESTED=1
     # Ensure miner is stopped
     echo "$(date): Stopping miner if running..."
-    stop_miner
+    stop_miner || true
     exit 0
 }
 # Setup signal handlers
@@ -59,9 +61,12 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
+# DOCKER EVENT SOURCE
+echo "$(date): Using Docker events monitor"
+echo "$(date): Target Image: ${TARGET_IMAGE}"
+echo "$(date): Docker running confirm loops: $IDLE_CONFIRM_LOOPS"
 : "${API_CONF:=/etc/rigcontrol/api.conf}"
 PORTS_CONF="$API_CONF"
-unset API_PORT API_HOST
 API_LOOKUP_NAME="$MINER_NAME"
 if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
     API_LOOKUP_NAME="$CUSTOM_MINER"
@@ -90,8 +95,8 @@ else
         API_PORT="$AGENT_CONF_PORT"
         echo "[api] Found specific API_PORT: $MINER_API_PORT_VAR=$API_PORT (from $AGENT_CONF, not in $PORTS_CONF)"
     else
-        API_PORT=0
-        echo "[api] No $MINER_API_PORT_VAR found in $PORTS_CONF or $AGENT_CONF, API disabled"
+        : "${API_PORT:=0}"
+        echo "[api] Using generic API_PORT: $API_PORT"
     fi
 fi
 if [[ -n "${!MINER_API_HOST_VAR:-}" ]]; then
@@ -103,8 +108,8 @@ else
         API_HOST="$AGENT_CONF_HOST"
         echo "[api] Found specific API_HOST: $MINER_API_HOST_VAR=$API_HOST (from $AGENT_CONF, not in $PORTS_CONF)"
     else
-        API_HOST="127.0.0.1"
-        echo "[api] No $MINER_API_HOST_VAR found in $PORTS_CONF or $AGENT_CONF, defaulting to $API_HOST"
+        : "${API_HOST:=127.0.0.1}"
+        echo "[api] Using generic API_HOST: $API_HOST"
     fi
 fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
@@ -155,11 +160,8 @@ add_api_flags() {
         "nbminer")
             echo "$current_args --api $api_host:$api_port"
             ;;
-        "keryx-miner"|"keryx_miner")
-            echo "$current_args"
-            ;;
         *)
-            echo "[api] Miner '$miner_name' has no known API integration (unknown/custom miner) - starting without API flags, no API health check possible. If this miner exposes no stats API at all, telemetry log-scraping is the fallback for monitoring it instead (see CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH in rigcloud_telemetry.py)." >&2
+            # No API flags for unknown miners
             echo "$current_args"
             ;;
     esac
@@ -223,6 +225,121 @@ kill_by_pid() {
         rm -f "$pid_file"
     fi
 }
+# DOCKER-SPECIFIC FUNCTIONS
+is_docker_running() {
+    docker ps > /dev/null 2>&1
+    return $?
+}
+check_docker_target_container() {
+    # Get all containers based on image
+    candidates=$(docker ps -a \
+        --filter "ancestor=${TARGET_IMAGE}" \
+        --format "{{.ID}} {{.Names}}")
+    match_id=""
+    while read -r cid cname; do
+        # Exact match
+        if [[ "$cname" == "$TARGET_NAME" ]]; then
+            match_id="$cid"
+            break
+        fi
+        # Prefix match: name begins with TARGET_NAME
+        if [[ "$cname" == ${TARGET_NAME}* ]]; then
+            suffix="${cname#${TARGET_NAME}}"
+            # Suffix must be 1+ digits ONLY
+            if [[ "$suffix" =~ ^[0-9]+$ ]]; then
+                match_id="$cid"
+                break
+            fi
+        fi
+    done <<< "$candidates"
+    # No matching container found
+    if [ -z "$match_id" ]; then
+        echo "no matching container found"
+        return 1
+    fi
+    # Check container status
+    status=$(docker inspect -f '{{.State.Status}}' "$match_id" 2>/dev/null)
+    if [ "$status" = "running" ]; then
+        echo "target container running"
+        return 0
+    else
+        echo "target container exists but status=$status"
+        return 1
+    fi
+}
+confirm_docker_container_running() {
+    local loops=${1:-$IDLE_CONFIRM_LOOPS}
+    local check_interval=2  # seconds
+    echo "$(date): Confirming Docker target container is running (checking $loops times, $check_interval second intervals)..."
+    for ((i=1; i<=loops; i++)); do
+        echo "$(date): Docker running check $i/$loops..."
+        # Check if shutdown was requested
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo "$(date): Shutdown requested during running confirmation, aborting..."
+            return 1
+        fi
+        # Check if Docker is running
+        if ! is_docker_running; then
+            echo "$(date): Docker not running → UNAVAILABLE → BREAKING (cannot confirm)"
+            return 1
+        fi
+        # Check if target container exists and is running
+        if check_docker_target_container; then
+            echo "$(date): Target container confirmed running → continue checking"
+            # Continue checking to confirm it's stable
+        else
+            echo "$(date): Target container NOT running → BREAKING (container not running)"
+            return 1
+        fi
+        # If this is not the last check, wait and continue
+        if [ $i -lt $loops ]; then
+            echo "$(date): Waiting $check_interval seconds for next running check..."
+            sleep $check_interval
+        fi
+    done
+    echo "$(date): Docker container confirmed running after $loops consecutive checks"
+    return 0
+}
+process_docker_event() {
+    local container_name="$1"
+    local status="$2"
+    local image="$3"
+    # DOCKER-SPECIFIC LOGIC: Name matching with image
+    name_match=0
+    if [[ "$container_name" == "$TARGET_NAME" ]]; then
+        name_match=1
+    elif [[ "$container_name" == ${TARGET_NAME}* ]]; then
+        suffix="${container_name#${TARGET_NAME}}"
+        if [[ "$suffix" =~ ^[0-9]+$ ]]; then
+            name_match=1
+        fi
+    fi
+    # Process only if image AND name match
+    if [[ "$image" != "$TARGET_IMAGE" ]] || [[ "$name_match" -eq 0 ]]; then
+        echo "$(date): Skipping non-matching container"
+        return
+    fi
+    case "$status" in
+        start|create|unpause|restart)
+            echo "$(date): Docker START event ($status) → Confirm container is running, then start miner..."
+            # Wait a moment for container to fully start
+            sleep 1
+            # Confirm container is actually running (not just transient)
+            if confirm_docker_container_running $IDLE_CONFIRM_LOOPS; then
+                echo "$(date): Docker container confirmed running → START miner"
+                start_miner || true
+            else
+                echo "$(date): Docker container not running (transient state) → no action"
+            fi
+            ;;
+        kill|destroy|stop|die|died|pause)
+            echo "$(date): Docker STOP/PAUSE event ($status) → IMMEDIATE stop_miner"
+            stop_miner || true
+            ;;
+        *)
+            ;;
+    esac
+}
 # MINER CONTROL FUNCTIONS
 # Function to start miner
 start_miner() {
@@ -238,13 +355,13 @@ start_miner() {
                 return 0  # Exit early - miner is already running
             else
                 echo "$(date): Miner process is dead but screen session exists - cleaning up..."
-                stop_miner
+                stop_miner || true
                 echo "$(date): Starting fresh miner after cleanup..."
                 # Continue to start fresh miner
             fi
         else
             echo "$(date): Screen session exists but no PID file found - cleaning up..."
-            stop_miner
+            stop_miner || true
             echo "$(date): Starting fresh miner after cleanup..."
             # Continue to start fresh miner
         fi
@@ -266,29 +383,40 @@ start_miner() {
     echo "$(date): Starting $SCREEN_NAME..."
     echo "$(date): API: $API_HOST:$API_PORT"
     echo "$(date): Command: $START_CMD"
-    if [[ "$API_PORT" -gt 0 ]]; then
-        echo "$(date): Running in API mode (health checks enabled)"
-    else
-        echo "$(date): Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
-    fi
     # Create PID file directory
     mkdir -p /run/rigcontrol
-    # Start in screen session
-    LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
-    rm -f "$LOG_FILE"  # delete log on each fresh start
-    screen -fn -dmS "$SCREEN_NAME" bash -c \
-        'echo "Miner starting at $(date)"; \
-         echo "API: '"$API_HOST:$API_PORT"'"; \
-         echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
-         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
-         ( while true; do \
-             sleep '"$LOG_CHECK_INTERVAL"'; \
-             sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
-             if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
-                 tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
-             fi; \
-           done ) & \
-         '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
+    if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
+        echo "$(date): Known miner with API - starting without log file (nothing reads it)"
+        # Start in screen session
+        screen -dmS "$SCREEN_NAME" bash -c \
+            'echo "Miner starting at $(date)"; \
+             echo "API: '"$API_HOST:$API_PORT"'"; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             '"$START_CMD"''
+    else
+        if [[ "$API_PORT" -gt 0 ]]; then
+            echo "$(date): ALWAYS_LOGS enabled - starting with log file for easier review of miner output (API is still used for stats)"
+        else
+            echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
+        fi
+        LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
+        rm -f "$LOG_FILE"
+        # Start in screen session
+        screen -dmS "$SCREEN_NAME" bash -c \
+            'echo "Miner starting at $(date)"; \
+             echo "API: '"$API_HOST:$API_PORT"'"; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             ( while true; do \
+                 sleep '"$LOG_CHECK_INTERVAL"'; \
+                 sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
+                 if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
+                     tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
+                 fi; \
+               done ) & \
+             '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
+    fi
     # Wait a moment for PID file creation
     sleep 2
     # Verify startup
@@ -334,8 +462,8 @@ stop_miner() {
     # 1. FIRST ATTEMPT: Clean screen quit (let miner cleanup)
     echo "$(date): Sending clean quit to screen session..."
     screen -S "$SCREEN_NAME" -X quit
-    echo "$(date): Waiting 10 seconds for miner cleanup..."
-    sleep 10
+    echo "$(date): Waiting 5 seconds for miner cleanup..."
+    sleep 5
     # 2. CHECK: If miner process still exists after clean quit
     local pid_file="/run/rigcontrol/${SCREEN_NAME}_miner.pid"
     if [[ -f "$pid_file" ]]; then
@@ -374,35 +502,76 @@ stop_miner() {
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# START MINER
-echo "$(date): Starting miner (no container checks)..."
-start_miner
+# INITIAL CHECK
+echo "$(date): Performing initial Docker container check..."
+echo "$(date): Checking Docker target container..."
+if confirm_docker_container_running $IDLE_CONFIRM_LOOPS; then
+    echo "$(date): Docker target container confirmed running at startup → start_miner"
+    start_miner || true
+else
+    echo "$(date): Docker target container not running at startup → stop_miner"
+    stop_miner || true
+fi
+# DOCKER EVENT MONITORING LOOP
+echo "$(date): Starting Docker event monitor..."
+# Main monitoring loop with restart on failure
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
-    sleep 60
+    # DOCKER EVENT STREAM
+    echo "$(date): Connecting to Docker events stream..."
+    docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
+    while read -r type action name image; do
+        # Check for shutdown request
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo "$(date): Shutdown requested, breaking event loop..."
+            break 2  # Break out of both loops
+        fi
+        # Skip non-container events
+        if [ "$type" != "container" ]; then
+            continue
+        fi
+        # Process Docker event
+        process_docker_event "$name" "$action" "$image"
+    done
+    # Events stream ended
+    # Check if shutdown was requested
+    if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+        echo "$(date): Shutdown requested, exiting main loop..."
+        break
+    fi
+    # Check if docker is running
+    if ! is_docker_running; then
+        echo "$(date): ERROR: Docker daemon not responding. Waiting 30 seconds..."
+        sleep 30
+        continue
+    fi
+    # Wait before retrying
+    echo "$(date): Docker events stream ended, restarting monitor in 5 seconds..."
+    sleep 5
 done
 # Final cleanup before exit
 echo "$(date): Performing final cleanup..."
-stop_miner
-echo "$(date): Miner launcher stopped gracefully"
+stop_miner || true
+echo "$(date): Docker event monitor stopped gracefully"
 EOF
 # Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write GPU service --
-sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
+# -- write CPU service --
+sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
-Description=GPU Miner Launcher
+Description=Docker Events CPU Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
-Environment="POWER_LIMIT="
-ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
+Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
+Environment="IDLE_CONFIRM_LOOPS=3"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -410,20 +579,25 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write CPU service --
-sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
+# -- write GPU service --
+sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
-Description=CPU Miner Launcher
+Description=Docker Events GPU Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
+Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
+Environment="IDLE_CONFIRM_LOOPS=3"
+Environment="POWER_LIMIT=150"
+ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh 150
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -432,17 +606,20 @@ WantedBy=multi-user.target
 EOF
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
-Description=AUX Miner Launcher
+Description=Docker Events AUX Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-aux.json"
+Environment="IDLE_CONFIRM_LOOPS=3"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no

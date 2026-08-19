@@ -1,9 +1,12 @@
+# Nosana-podman_events_monitor.sh
 sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
+PODMAN_READY=false
+: "${IDLE_CONFIRM_LOOPS:=7}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
@@ -14,7 +17,7 @@ handle_signal() {
     SHUTDOWN_REQUESTED=1
     # Ensure miner is stopped
     echo "$(date): Stopping miner if running..."
-    stop_miner
+    stop_miner || true
     exit 0
 }
 # Setup signal handlers
@@ -59,9 +62,17 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
+# PODMAN EVENT SOURCE
+echo "$(date): Confirming Podman config..."
+if [ "$TARGET_NAME" = "podman" ]; then
+    echo "$(date): Using Podman events monitor"
+    echo "$(date): Podman idle confirm loops: $IDLE_CONFIRM_LOOPS"
+else
+    echo "$(date): Exiting... TARGET_NAME in conf should be podman"
+	exit 1
+fi
 : "${API_CONF:=/etc/rigcontrol/api.conf}"
 PORTS_CONF="$API_CONF"
-unset API_PORT API_HOST
 API_LOOKUP_NAME="$MINER_NAME"
 if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
     API_LOOKUP_NAME="$CUSTOM_MINER"
@@ -90,8 +101,8 @@ else
         API_PORT="$AGENT_CONF_PORT"
         echo "[api] Found specific API_PORT: $MINER_API_PORT_VAR=$API_PORT (from $AGENT_CONF, not in $PORTS_CONF)"
     else
-        API_PORT=0
-        echo "[api] No $MINER_API_PORT_VAR found in $PORTS_CONF or $AGENT_CONF, API disabled"
+        : "${API_PORT:=0}"
+        echo "[api] Using generic API_PORT: $API_PORT"
     fi
 fi
 if [[ -n "${!MINER_API_HOST_VAR:-}" ]]; then
@@ -103,8 +114,8 @@ else
         API_HOST="$AGENT_CONF_HOST"
         echo "[api] Found specific API_HOST: $MINER_API_HOST_VAR=$API_HOST (from $AGENT_CONF, not in $PORTS_CONF)"
     else
-        API_HOST="127.0.0.1"
-        echo "[api] No $MINER_API_HOST_VAR found in $PORTS_CONF or $AGENT_CONF, defaulting to $API_HOST"
+        : "${API_HOST:=127.0.0.1}"
+        echo "[api] Using generic API_HOST: $API_HOST"
     fi
 fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
@@ -155,11 +166,8 @@ add_api_flags() {
         "nbminer")
             echo "$current_args --api $api_host:$api_port"
             ;;
-        "keryx-miner"|"keryx_miner")
-            echo "$current_args"
-            ;;
         *)
-            echo "[api] Miner '$miner_name' has no known API integration (unknown/custom miner) - starting without API flags, no API health check possible. If this miner exposes no stats API at all, telemetry log-scraping is the fallback for monitoring it instead (see CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH in rigcloud_telemetry.py)." >&2
+            # No API flags for unknown miners
             echo "$current_args"
             ;;
     esac
@@ -223,6 +231,87 @@ kill_by_pid() {
         rm -f "$pid_file"
     fi
 }
+# PODMAN-SPECIFIC FUNCTIONS
+is_docker_running() {
+    docker ps > /dev/null 2>&1
+    return $?
+}
+is_podman_container_running() {
+    docker ps --filter "name=^podman$" --format "{{.Names}}" | grep -q "^podman$" && return 0 || return 1
+}
+get_podman_child_containers() {
+    if [ "$PODMAN_READY" = true ] && is_podman_container_running; then
+        docker exec podman podman ps --format "{{.Names}}" 2>/dev/null | \
+            grep -v "^tunnel-api-" | \
+            grep -v "^frpc-api-" | \
+            sort | tr '\n' ' ' | xargs
+    else
+        echo ""
+    fi
+}
+confirm_podman_idle() {
+    local loops=${1:-$IDLE_CONFIRM_LOOPS}
+    local check_interval=5  # seconds
+    echo "$(date): Confirming Podman is idle (checking $loops times, $check_interval second intervals)..."
+    for ((i=1; i<=loops; i++)); do
+        echo "$(date): Podman idle check $i/$loops..."
+        # Check if shutdown was requested
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo "$(date): Shutdown requested during idle confirmation, aborting..."
+            return 1
+        fi
+        # Check if Podman container is running
+        if ! is_podman_container_running; then
+            echo "$(date): Podman container not found → UNAVAILABLE → BREAKING (safe failure mode)"
+            return 1
+        fi
+        # Get current child containers
+        local child_containers=$(get_podman_child_containers)
+        if [ -n "$child_containers" ]; then
+            echo "$(date): Found child containers: [$child_containers] → BREAKING idle check (Podman busy)"
+            return 1
+        else
+            echo "$(date): No child containers found → Podman IDLE"
+        fi
+        # If this is not the last check, wait and continue
+        if [ $i -lt $loops ]; then
+            echo "$(date): Waiting $check_interval seconds for next idle check..."
+            sleep $check_interval
+        fi
+    done
+    echo "$(date): Podman confirmed idle after $loops consecutive checks"
+    return 0
+}
+process_podman_event() {
+    local container_name="$1"
+    local status="$2"
+    local event_time="$3"
+    # Skip tunnel-api and frpc-api containers
+    if [[ "$container_name" == tunnel-api-* ]] || [[ "$container_name" == frpc-api-* ]]; then
+        echo "$(date): Skipping tunnel/frpc container: $container_name"
+        return
+    fi
+    case "$status" in
+        init|start|create|unpause|restart)
+            echo "$(date): IMMEDIATE REACTION to Podman $status event → Podman busy → INSTANT stop_miner"
+            stop_miner || true
+            ;;
+        kill|destroy|stop|die|died|pause)
+            echo "$(date): Podman STOP/PAUSE event ($status) → Confirm Podman idle, then start miner..."
+            # Wait a moment for operation to complete
+            sleep 1
+            # Confirm Podman is actually idle
+            if confirm_podman_idle $IDLE_CONFIRM_LOOPS; then
+                echo "$(date): Podman confirmed IDLE → start_miner"
+                start_miner || true
+            else
+                echo "$(date): Podman still busy or unavailable → keep miner stopped"
+            fi
+            ;;
+        *)
+            ;;
+    esac
+}
 # MINER CONTROL FUNCTIONS
 # Function to start miner
 start_miner() {
@@ -238,13 +327,13 @@ start_miner() {
                 return 0  # Exit early - miner is already running
             else
                 echo "$(date): Miner process is dead but screen session exists - cleaning up..."
-                stop_miner
+                stop_miner || true
                 echo "$(date): Starting fresh miner after cleanup..."
                 # Continue to start fresh miner
             fi
         else
             echo "$(date): Screen session exists but no PID file found - cleaning up..."
-            stop_miner
+            stop_miner || true
             echo "$(date): Starting fresh miner after cleanup..."
             # Continue to start fresh miner
         fi
@@ -266,29 +355,40 @@ start_miner() {
     echo "$(date): Starting $SCREEN_NAME..."
     echo "$(date): API: $API_HOST:$API_PORT"
     echo "$(date): Command: $START_CMD"
-    if [[ "$API_PORT" -gt 0 ]]; then
-        echo "$(date): Running in API mode (health checks enabled)"
-    else
-        echo "$(date): Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
-    fi
     # Create PID file directory
     mkdir -p /run/rigcontrol
-    # Start in screen session
-    LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
-    rm -f "$LOG_FILE"  # delete log on each fresh start
-    screen -fn -dmS "$SCREEN_NAME" bash -c \
-        'echo "Miner starting at $(date)"; \
-         echo "API: '"$API_HOST:$API_PORT"'"; \
-         echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
-         trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
-         ( while true; do \
-             sleep '"$LOG_CHECK_INTERVAL"'; \
-             sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
-             if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
-                 tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
-             fi; \
-           done ) & \
-         '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
+    if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
+        echo "$(date): Known miner with API - starting without log file (nothing reads it)"
+        # Start in screen session
+        screen -dmS "$SCREEN_NAME" bash -c \
+            'echo "Miner starting at $(date)"; \
+             echo "API: '"$API_HOST:$API_PORT"'"; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             '"$START_CMD"''
+    else
+        if [[ "$API_PORT" -gt 0 ]]; then
+            echo "$(date): ALWAYS_LOGS enabled - starting with log file for easier review of miner output (API is still used for stats)"
+        else
+            echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
+        fi
+        LOG_FILE="/run/rigcontrol/${SCREEN_NAME}_miner.log"
+        rm -f "$LOG_FILE"
+        # Start in screen session
+        screen -dmS "$SCREEN_NAME" bash -c \
+            'echo "Miner starting at $(date)"; \
+             echo "API: '"$API_HOST:$API_PORT"'"; \
+             echo "$$" > "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"; \
+             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SCREEN_NAME}_miner.pid"'"'\'' EXIT; \
+             ( while true; do \
+                 sleep '"$LOG_CHECK_INTERVAL"'; \
+                 sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
+                 if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
+                     tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
+                 fi; \
+               done ) & \
+             '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
+    fi
     # Wait a moment for PID file creation
     sleep 2
     # Verify startup
@@ -374,35 +474,117 @@ stop_miner() {
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# START MINER
-echo "$(date): Starting miner (no container checks)..."
-start_miner
+# INITIAL PODMAN CHECK
+echo "$(date): Performing initial Podman check..."
+# PODMAN MODE: Wait for Podman container to be ready
+echo "$(date): Waiting for Podman container to be ready..."
+max_wait=60
+waited=0
+while [[ $waited -lt $max_wait ]]; do
+    if is_podman_container_running; then
+        echo "$(date): Podman container is running"
+        PODMAN_READY=true
+        break
+    fi
+    sleep 1
+    ((waited++))
+done
+if [ "$PODMAN_READY" = true ]; then
+    # Initial idle confirmation for Podman
+    if confirm_podman_idle $IDLE_CONFIRM_LOOPS; then
+        echo "$(date): Podman confirmed IDLE at startup → start_miner"
+        start_miner || true
+    else
+        echo "$(date): Podman BUSY or UNAVAILABLE at startup → stop_miner"
+        stop_miner || true
+    fi
+else
+    echo "$(date): Podman container not ready after $max_wait seconds → stop_miner"
+    stop_miner || true
+fi
+# PODMAN EVENT MONITORING LOOP
+echo "$(date): Starting Podman event monitor..."
+# Main monitoring loop with restart on failure
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
-    sleep 60
+    # PODMAN EVENT STREAM
+    echo "$(date): Connecting to Podman events stream..."
+    docker exec podman podman events \
+        --filter 'type=container' \
+        --format '{{.Time}}|{{.Status}}|{{.Name}}' 2>&1 | \
+    while IFS='|' read -r event_time status container_name; do
+        # Check for shutdown request
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo "$(date): Shutdown requested, breaking event loop..."
+            break 2  # Break out of both loops
+        fi
+        # Skip empty lines or malformed events
+        [ -z "$status" ] && continue
+        [ -z "$container_name" ] && continue
+        # Process Podman event
+        process_podman_event "$container_name" "$status" "$event_time"
+    done
+    # Events stream ended
+    # Check if shutdown was requested
+    if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+        echo "$(date): Shutdown requested, exiting main loop..."
+        break
+    fi
+    # Check if docker is running
+    if ! is_docker_running; then
+        echo "$(date): ERROR: Docker daemon not responding. Waiting 30 seconds..."
+        sleep 30
+        continue
+    fi
+    # Check if podman container is running
+    if ! is_podman_container_running; then
+        echo "$(date): ERROR: Podman container not running. Waiting 30 seconds..."
+        PODMAN_READY=false
+        # Wait for Podman to restart
+        max_wait=60
+        waited=0
+        while [[ $waited -lt $max_wait && $SHUTDOWN_REQUESTED -eq 0 ]]; do
+            if is_podman_container_running; then
+                echo "$(date): Podman container restarted"
+                PODMAN_READY=true
+                break
+            fi
+            sleep 1
+            ((waited++))
+        done
+        if [ "$PODMAN_READY" = false ]; then
+            echo "$(date): Podman container not available after $max_wait seconds"
+            stop_miner || true
+            continue
+        fi
+    fi
+    # Wait before retrying
+    echo "$(date): Podman events stream ended, restarting monitor in 5 seconds..."
+    sleep 5
 done
 # Final cleanup before exit
 echo "$(date): Performing final cleanup..."
-stop_miner
-echo "$(date): Miner launcher stopped gracefully"
+stop_miner || true
+echo "$(date): Podman event monitor stopped gracefully"
 EOF
 # Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write GPU service --
-sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
+# -- write CPU service --
+sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
-Description=GPU Miner Launcher
+Description=Docker Events CPU Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
-Environment="POWER_LIMIT="
-ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
+Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
+Environment="IDLE_CONFIRM_LOOPS=7"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -410,20 +592,25 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write CPU service --
-sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
+# -- write GPU service --
+sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
-Description=CPU Miner Launcher
+Description=Docker Events GPU Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
+Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
+Environment="IDLE_CONFIRM_LOOPS=7"
+Environment="POWER_LIMIT="
+ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
@@ -432,17 +619,20 @@ WantedBy=multi-user.target
 EOF
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
-Description=AUX Miner Launcher
+Description=Docker Events AUX Miner Monitor
+After=docker.service
+Requires=docker.service
 [Service]
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-aux.json"
+Environment="IDLE_CONFIRM_LOOPS=7"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=60
 StandardOutput=journal
 StandardError=journal
 SendSIGKILL=no
