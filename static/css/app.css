@@ -1157,6 +1157,7 @@ h1 {
     font-family: Consolas, monospace;
     font-size: var(--font-size-output);
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     resize: none;
     border: none;
     outline: none;
