@@ -2227,7 +2227,6 @@ def _read_conf_key_json(path, *keys):
         resolved = {
             "CUSTOM_MINER": (miner_alt or mc_miner) if is_custom else "",
             "MINER": "" if is_custom else (miner_alt or miner),
-            "SCREEN_NAME": (it.get("screen_name") or "").strip(),
         }
         for key in keys:
             val = resolved.get(key, "")
@@ -2246,12 +2245,12 @@ for _rig_conf_path in ("/etc/rigcontrol/rig-gpu.conf", "/etc/rigcontrol/rig-cpu.
         _resolved_name = os.path.basename(_override_bin.rstrip("/"))
         _rig_conf_path = ""
     else:
-        _resolved_name = _read_conf_key(_rig_conf_path, "CUSTOM_MINER", "MINER")
-        if not _resolved_name:
-            _rig_json_path = _rig_conf_path[:-len(".conf")] + ".json" if _rig_conf_path.endswith(".conf") else _rig_conf_path + ".json"
-            _resolved_name = _read_conf_key_json(_rig_json_path, "CUSTOM_MINER", "MINER")
-            if _resolved_name:
-                _rig_conf_path = _rig_json_path
+        _rig_json_path = _rig_conf_path[:-len(".conf")] + ".json"
+        _resolved_name = _read_conf_key_json(_rig_json_path, "CUSTOM_MINER", "MINER")
+        if _resolved_name:
+            _rig_conf_path = _rig_json_path
+        else:
+            _resolved_name = _read_conf_key(_rig_conf_path, "CUSTOM_MINER", "MINER")
     if not _resolved_name:
         continue
     _resolved_lower = _resolved_name.strip().lower()
@@ -2282,18 +2281,8 @@ if _custom_miner_slot:
         os.environ[f"{_miner_key}_BIN"] = _custom_bin_override
         log(f"[Config] {_miner_key}_BIN (from CUSTOM_MINER_BIN_{_custom_miner_slot.upper()}) = {_custom_bin_override}")
     if f"{_miner_key}_LOG_PATH" not in os.environ:
-        _explicit_screen_name = ""
-        if _custom_miner_conf_path:
-            if _custom_miner_conf_path.endswith(".json"):
-                _explicit_screen_name = _read_conf_key_json(_custom_miner_conf_path, "SCREEN_NAME")
-            else:
-                _explicit_screen_name = _read_conf_key(_custom_miner_conf_path, "SCREEN_NAME")
-        if _explicit_screen_name:
-            os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_explicit_screen_name}_miner.log"
-            log(f"[Config] {_miner_key}_LOG_PATH (from {_custom_miner_conf_path} SCREEN_NAME row) = {os.environ[f'{_miner_key}_LOG_PATH']}")
-        else:
-            os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_custom_miner_slot}_miner.log"
-            log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_custom_miner_slot} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
+        os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_custom_miner_slot}_miner.log"
+        log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_custom_miner_slot} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
 # CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
