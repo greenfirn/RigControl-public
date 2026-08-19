@@ -166,8 +166,8 @@ def resolve_custom_miner():
             continue
         _resolved_lower = _resolved_name.strip().lower()
         _already_known = (
-            _resolved_lower in telemetry._MINER_PROCESS_MAP
-            or _resolved_lower in set(telemetry._MINER_PROCESS_MAP.values())
+            _resolved_lower in telemetry._BUILTIN_MINER_PROCESS_MAP
+            or _resolved_lower in set(telemetry._BUILTIN_MINER_PROCESS_MAP.values())
         )
         if _already_known:
             _source_desc = f"CUSTOM_MINER_BIN_{_slot_name.upper()} basename" if _override_bin else str(_rig_conf_path)
@@ -429,8 +429,11 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         effective_visible_groups = visible_groups
         if STATS_DB_ENABLED and (time.time() - _stats_db_last_save) >= STATS_DB_INTERVAL_SECONDS:
             effective_visible_groups = None
-        if telemetry.consume_miners_changed_flag():
-            await asyncio.to_thread(resolve_custom_miner)
+        try:
+            if telemetry.consume_miners_changed_flag():
+                await asyncio.to_thread(resolve_custom_miner)
+        except Exception as e:
+            log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
         payload = await asyncio.to_thread(
             telemetry.collect_full_stats, effective_visible_groups
         )
@@ -621,8 +624,11 @@ async def stats_db_periodic_loop():
         if elapsed < STATS_DB_INTERVAL_SECONDS:
             continue
         try:
-            if telemetry.consume_miners_changed_flag():
-                await asyncio.to_thread(resolve_custom_miner)
+            try:
+                if telemetry.consume_miners_changed_flag():
+                    await asyncio.to_thread(resolve_custom_miner)
+            except Exception as e:
+                log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
             payload = await asyncio.to_thread(telemetry.collect_full_stats)
             payload["event"] = "stats-db-periodic"
             payload["stats_db_enabled"] = STATS_DB_ENABLED

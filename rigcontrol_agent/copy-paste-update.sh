@@ -28,6 +28,7 @@ import socket
 import re
 import shlex
 import requests
+import threading
 gpu_present  = False
 gpu_type     = "None"
 _gpu_detected = False
@@ -699,20 +700,23 @@ _MINER_PROCESS_MAP = {
     "t-rex":        "trex",
     "peakminer":    "peakminer",
 }
+_BUILTIN_MINER_PROCESS_MAP = dict(_MINER_PROCESS_MAP)
 _CUSTOM_MINER_PROCESS_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "").strip().lower()
 if _CUSTOM_MINER_PROCESS_NAME:
     _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
+_custom_miner_lock = threading.Lock()
 def set_custom_miner_process_name(name):
-    """Sets/replaces the custom-miner process name after module import, since rigcontrol-agent.conf loads after this module does; safe to call more than once."""
+    """Sets/replaces the custom-miner process name after module import, since rigcontrol-agent.conf loads after this module does; safe to call more than once, and safe to call while detect_running_miners() is reading the same state on another thread (both take _custom_miner_lock) so a re-resolve can never be read half-applied."""
     global _CUSTOM_MINER_PROCESS_NAME, _MINER_PROCESS_MAP
-    if _CUSTOM_MINER_PROCESS_NAME:
-        _MINER_PROCESS_MAP = {
-            k: v for k, v in _MINER_PROCESS_MAP.items()
-            if not (k == _CUSTOM_MINER_PROCESS_NAME and v == "custom_log")
-        }
-    _CUSTOM_MINER_PROCESS_NAME = (name or "").strip().lower()
-    if _CUSTOM_MINER_PROCESS_NAME:
-        _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
+    with _custom_miner_lock:
+        if _CUSTOM_MINER_PROCESS_NAME:
+            _MINER_PROCESS_MAP = {
+                k: v for k, v in _MINER_PROCESS_MAP.items()
+                if not (k == _CUSTOM_MINER_PROCESS_NAME and v == "custom_log")
+            }
+        _CUSTOM_MINER_PROCESS_NAME = (name or "").strip().lower()
+        if _CUSTOM_MINER_PROCESS_NAME:
+            _MINER_PROCESS_MAP = {_CUSTOM_MINER_PROCESS_NAME: "custom_log", **_MINER_PROCESS_MAP}
 _MINER_DOCKER_MAP = {
     "xmrig":        "xmrig",
     "lolminer":     "lolminer",
@@ -774,18 +778,20 @@ def detect_running_miners():
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
-        grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
-                         "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
-        if _CUSTOM_MINER_PROCESS_NAME:
-            grep_pattern += "|" + re.escape(_CUSTOM_MINER_PROCESS_NAME)
-        grep_pattern += ")"
+        with _custom_miner_lock:
+            grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
+                             "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
+            if _CUSTOM_MINER_PROCESS_NAME:
+                grep_pattern += "|" + re.escape(_CUSTOM_MINER_PROCESS_NAME)
+            grep_pattern += ")"
+            miner_process_map_snapshot = dict(_MINER_PROCESS_MAP)
         result = subprocess.run(
             ["bash", "-c", f"ps aux | grep -E {shlex.quote(grep_pattern)} | grep -v grep"],
             capture_output=True, text=True, timeout=2
         )
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
-                for proc_name, miner_name in _MINER_PROCESS_MAP.items():
+                for proc_name, miner_name in miner_process_map_snapshot.items():
                     if proc_name in line.lower():
                         found[miner_name] = True
                         break
@@ -2283,8 +2289,8 @@ def resolve_custom_miner():
             continue
         _resolved_lower = _resolved_name.strip().lower()
         _already_known = (
-            _resolved_lower in telemetry._MINER_PROCESS_MAP
-            or _resolved_lower in set(telemetry._MINER_PROCESS_MAP.values())
+            _resolved_lower in telemetry._BUILTIN_MINER_PROCESS_MAP
+            or _resolved_lower in set(telemetry._BUILTIN_MINER_PROCESS_MAP.values())
         )
         if _already_known:
             _source_desc = f"CUSTOM_MINER_BIN_{_slot_name.upper()} basename" if _override_bin else str(_rig_conf_path)
@@ -2546,8 +2552,11 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         effective_visible_groups = visible_groups
         if STATS_DB_ENABLED and (time.time() - _stats_db_last_save) >= STATS_DB_INTERVAL_SECONDS:
             effective_visible_groups = None
-        if telemetry.consume_miners_changed_flag():
-            await asyncio.to_thread(resolve_custom_miner)
+        try:
+            if telemetry.consume_miners_changed_flag():
+                await asyncio.to_thread(resolve_custom_miner)
+        except Exception as e:
+            log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
         payload = await asyncio.to_thread(
             telemetry.collect_full_stats, effective_visible_groups
         )
@@ -2738,8 +2747,11 @@ async def stats_db_periodic_loop():
         if elapsed < STATS_DB_INTERVAL_SECONDS:
             continue
         try:
-            if telemetry.consume_miners_changed_flag():
-                await asyncio.to_thread(resolve_custom_miner)
+            try:
+                if telemetry.consume_miners_changed_flag():
+                    await asyncio.to_thread(resolve_custom_miner)
+            except Exception as e:
+                log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
             payload = await asyncio.to_thread(telemetry.collect_full_stats)
             payload["event"] = "stats-db-periodic"
             payload["stats_db_enabled"] = STATS_DB_ENABLED
