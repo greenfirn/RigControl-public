@@ -1113,6 +1113,7 @@
                 placeholder="Search worker name..."
                 autocomplete="off"
             />
+            <button class="action-btn" id="btn-open-logs" title="View CPU/GPU/AUX log or service log for the selected worker (select exactly one)">Logs</button>
             <span class="action-mode-sep"></span>
             <button class="action-btn" id="btn-send-cmd" title="Send Cmd">
                 &gt;_
@@ -1237,6 +1238,44 @@ nvidia-smi
             <div class="fs-list-panel">
                 <div id="saved-cmd-list" class="fs-list">
                 </div>
+            </div>
+        </div>
+    </div>
+    <div id="logs-modal" class="cmd-float-panel hidden">
+        <div class="cmd-dialog">
+            <div class="cmd-header">
+                <span class="cmd-target">
+                    Logs &mdash; <span id="logs-target-rig">-</span>
+                </span>
+                <button type="button" class="cmd-header-close" id="btn-close-logs-modal" title="Close">&#10005;</button>
+            </div>
+            <div class="logs-toolbar">
+                <select id="logs-type-select" title="Which log to view">
+                    <option value="cpu.log">CPU log</option>
+                    <option value="gpu.log" selected>GPU log</option>
+                    <option value="aux.log">AUX log</option>
+                    <option value="cpu.svclog">CPU service log</option>
+                    <option value="gpu.svclog">GPU service log</option>
+                    <option value="aux.svclog">AUX service log</option>
+                </select>
+                <label class="logs-lines-field" for="logs-lines-input">Lines
+                    <input type="number" id="logs-lines-input" min="10" max="5000" step="10" value="200">
+                </label>
+                <button type="button" class="cmd-btn ok" id="btn-logs-refresh">Refresh</button>
+                <span class="logs-toolbar-sep"></span>
+                <label class="logs-auto-refresh-toggle" title="Automatically re-fetch this log on an interval">
+                    <input type="checkbox" id="logs-auto-refresh-checkbox"> Auto
+                </label>
+                <div class="logs-interval-group" title="Auto-refresh interval, in seconds">
+                    <button type="button" class="wdconfig-unit-btn" id="btn-logs-interval-down" title="Decrease">&#9660;</button>
+                    <input type="number" id="logs-interval-input" min="2" max="300" step="1" value="5">
+                    <button type="button" class="wdconfig-unit-btn" id="btn-logs-interval-up" title="Increase">&#9650;</button>
+                    <span class="logs-interval-unit">s</span>
+                </div>
+                <span id="logs-status" class="wdconfig-status"></span>
+            </div>
+            <div class="cmd-body">
+                <textarea id="logs-output" class="logs-output" readonly spellcheck="false" placeholder="Click Refresh to load..."></textarea>
             </div>
         </div>
     </div>

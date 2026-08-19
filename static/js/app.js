@@ -107,6 +107,7 @@ let viewOnlyMode = false;
 let isLocalConnection = true;
 const VIEW_ONLY_DISABLED_IDS = [
     "btn-cmd-send", "btn-cmd-clear-send",
+    "btn-open-logs", "btn-logs-refresh",
     "btn-action-start", "btn-action-stop", "btn-action-restart",
     "btn-quick-a", "btn-quick-b", "btn-quick-c",
     "btn-reset",
@@ -863,6 +864,30 @@ const WD_ACTION_RAW_KEYS = [
     ["wdconfig-action-custom-script", "ACTION_CUSTOM_SCRIPT"],
 ];
 let pendingWdConfigFetchRig = null;
+let pendingLogsFetchRig = null;
+let lastSyncedLogsRig = null;
+let logsAutoRefreshTimer = null;
+const LOGS_TYPE_LABELS = {
+    "cpu.log": "CPU log",
+    "gpu.log": "GPU log",
+    "aux.log": "AUX log",
+    "cpu.svclog": "CPU service log",
+    "gpu.svclog": "GPU service log",
+    "aux.svclog": "AUX service log",
+};
+// Sent through the same raw-execution path as the existing Send Cmd box
+// (rigcontrol_cmd.sh's default `*` case: bash -c "$RAW_CMD") - nothing new
+// to deploy on the rig side. $CPU_SERVICE_NAME / $GPU_SERVICE_NAME /
+// $AUX_SERVICE_NAME are already exported into that process's environment
+// by rigcontrol_agent.sh, so they resolve correctly here.
+const LOGS_COMMAND_BUILDERS = {
+    "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
+    "gpu.log": (n) => `tail -n ${n} /run/rigcontrol/gpu_miner.log`,
+    "aux.log": (n) => `tail -n ${n} /run/rigcontrol/aux_miner.log`,
+    "cpu.svclog": (n) => `journalctl -u "$CPU_SERVICE_NAME" -n ${n} --no-pager`,
+    "gpu.svclog": (n) => `journalctl -u "$GPU_SERVICE_NAME" -n ${n} --no-pager`,
+    "aux.svclog": (n) => `journalctl -u "$AUX_SERVICE_NAME" -n ${n} --no-pager`,
+};
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
 const DataHelper = {
@@ -3231,6 +3256,22 @@ function isCmdModuleVisible() {
 }
 function handleCommandResponse(response) {
     const r = response;
+    if (pendingLogsFetchRig && r.rig === pendingLogsFetchRig) {
+        pendingLogsFetchRig = null;
+        const out = document.getElementById("logs-output");
+        const statusEl = document.getElementById("logs-status");
+        if (out) {
+            let text = "";
+            if (r.stdout) text += stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
+            if (r.stderr) text += (text ? "\n" : "") + stripAnsi(r.stderr);
+            out.value = stripBlankLines(text) || "(empty)";
+            out.scrollTop = out.scrollHeight;
+        }
+        if (statusEl) {
+            statusEl.textContent = `returncode=${r.returncode} · last refreshed ${new Date().toLocaleTimeString()}`;
+        }
+        return;
+    }
     if (pendingWdConfigFetchRig && r.rig === pendingWdConfigFetchRig) {
         pendingWdConfigFetchRig = null;
         const statusEl = document.getElementById("wdconfig-status");
@@ -4434,6 +4475,115 @@ function openCmdModal() {
 }
 function closeCmdModal() {
     document.getElementById("cmd-modal").classList.add("hidden");
+}
+function isLogsModuleVisible() {
+    const modal = document.getElementById("logs-modal");
+    return !!modal && !modal.classList.contains("hidden");
+}
+function getLogsTargetRig() {
+    return selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
+}
+function openLogsModal() {
+    const rig = getLogsTargetRig();
+    if (!rig) {
+        alert("Select exactly one worker first to view its logs");
+        return;
+    }
+    lastSyncedLogsRig = rig;
+    const rigLabel = document.getElementById("logs-target-rig");
+    if (rigLabel) rigLabel.textContent = rig;
+    document.getElementById("logs-modal")?.classList.remove("hidden");
+    fetchLogs();
+    if (document.getElementById("logs-auto-refresh-checkbox")?.checked) {
+        startLogsAutoRefresh();
+    }
+}
+function closeLogsModal() {
+    document.getElementById("logs-modal")?.classList.add("hidden");
+    stopLogsAutoRefresh();
+    pendingLogsFetchRig = null;
+}
+function fetchLogs() {
+    const rig = getLogsTargetRig();
+    const statusEl = document.getElementById("logs-status");
+    if (!rig) {
+        if (statusEl) statusEl.textContent = "Select exactly one worker";
+        return;
+    }
+    const type = document.getElementById("logs-type-select")?.value || "gpu.log";
+    let lines = parseInt(document.getElementById("logs-lines-input")?.value, 10);
+    if (!Number.isFinite(lines) || lines < 10) lines = 200;
+    lines = Math.min(Math.max(lines, 10), 5000);
+    const linesInput = document.getElementById("logs-lines-input");
+    if (linesInput) linesInput.value = lines;
+    const rigLabel = document.getElementById("logs-target-rig");
+    if (rigLabel) rigLabel.textContent = rig;
+    pendingLogsFetchRig = rig;
+    if (statusEl) statusEl.textContent = `Loading ${LOGS_TYPE_LABELS[type] || type}...`;
+    const builder = LOGS_COMMAND_BUILDERS[type] || LOGS_COMMAND_BUILDERS["gpu.log"];
+    fetch(`${API}/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rigs: [rig], command: builder(lines) })
+    }).catch(err => {
+        console.error("Log fetch failed", err);
+        if (statusEl) statusEl.textContent = "Failed to send request";
+        pendingLogsFetchRig = null;
+    });
+}
+function startLogsAutoRefresh() {
+    stopLogsAutoRefresh();
+    let secs = parseInt(document.getElementById("logs-interval-input")?.value, 10);
+    if (!Number.isFinite(secs) || secs < 2) secs = 5;
+    logsAutoRefreshTimer = setInterval(() => {
+        if (!isLogsModuleVisible()) {
+            stopLogsAutoRefresh();
+            return;
+        }
+        fetchLogs();
+    }, secs * 1000);
+}
+function stopLogsAutoRefresh() {
+    if (logsAutoRefreshTimer) {
+        clearInterval(logsAutoRefreshTimer);
+        logsAutoRefreshTimer = null;
+    }
+}
+function handleLogsAutoRefreshToggle() {
+    const cb = document.getElementById("logs-auto-refresh-checkbox");
+    if (cb?.checked) {
+        startLogsAutoRefresh();
+    } else {
+        stopLogsAutoRefresh();
+    }
+}
+function adjustLogsInterval(delta) {
+    const input = document.getElementById("logs-interval-input");
+    if (!input) return;
+    const cur = parseInt(input.value, 10) || 5;
+    const next = Math.max(2, Math.min(300, cur + delta));
+    input.value = next;
+    localStorage.setItem("rigcontrol_logs_interval", String(next));
+    if (document.getElementById("logs-auto-refresh-checkbox")?.checked) {
+        startLogsAutoRefresh();
+    }
+}
+function restoreLogsPrefs() {
+    const typeSel = document.getElementById("logs-type-select");
+    const linesInput = document.getElementById("logs-lines-input");
+    const intervalInput = document.getElementById("logs-interval-input");
+    const autoCb = document.getElementById("logs-auto-refresh-checkbox");
+    const savedType = localStorage.getItem("rigcontrol_logs_type");
+    if (savedType && typeSel && Array.from(typeSel.options).some(o => o.value === savedType)) {
+        typeSel.value = savedType;
+    }
+    const savedLines = localStorage.getItem("rigcontrol_logs_lines");
+    if (savedLines && linesInput) linesInput.value = savedLines;
+    const savedInterval = localStorage.getItem("rigcontrol_logs_interval");
+    if (savedInterval && intervalInput) intervalInput.value = savedInterval;
+    if (localStorage.getItem("rigcontrol_logs_auto") === "1" && autoCb) {
+        autoCb.checked = true;
+    }
 }
 function getSavedCommandName() {
     const el = document.getElementById("saved-cmd-name");
@@ -10175,6 +10325,15 @@ function syncOpenModulesToSelection() {
             }
         }
     }
+    if (isLogsModuleVisible() && count === 1) {
+        const [onlyLogs] = selectedRigs;
+        const rigLabel = document.getElementById("logs-target-rig");
+        if (rigLabel) rigLabel.textContent = onlyLogs;
+        if (onlyLogs !== lastSyncedLogsRig) {
+            lastSyncedLogsRig = onlyLogs;
+            fetchLogs();
+        }
+    }
 }
 document.addEventListener("DOMContentLoaded", async () => {
     setupHeaderBarHeightSync();
@@ -10223,6 +10382,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("btn-send-cmd")?.addEventListener("click", openCmdModal);
     document.getElementById("btn-close-cmd-modal")?.addEventListener("click", closeCmdModal);
+    document.getElementById("btn-open-logs")?.addEventListener("click", openLogsModal);
+    document.getElementById("btn-close-logs-modal")?.addEventListener("click", closeLogsModal);
+    document.getElementById("btn-logs-refresh")?.addEventListener("click", fetchLogs);
+    document.getElementById("logs-type-select")?.addEventListener("change", (e) => {
+        localStorage.setItem("rigcontrol_logs_type", e.target.value);
+        fetchLogs();
+    });
+    document.getElementById("logs-lines-input")?.addEventListener("change", (e) => {
+        localStorage.setItem("rigcontrol_logs_lines", e.target.value);
+    });
+    document.getElementById("logs-auto-refresh-checkbox")?.addEventListener("change", (e) => {
+        localStorage.setItem("rigcontrol_logs_auto", e.target.checked ? "1" : "0");
+        handleLogsAutoRefreshToggle();
+    });
+    document.getElementById("logs-interval-input")?.addEventListener("change", (e) => {
+        let secs = parseInt(e.target.value, 10);
+        if (!Number.isFinite(secs) || secs < 2) secs = 2;
+        if (secs > 300) secs = 300;
+        e.target.value = secs;
+        localStorage.setItem("rigcontrol_logs_interval", String(secs));
+        if (document.getElementById("logs-auto-refresh-checkbox")?.checked) {
+            startLogsAutoRefresh();
+        }
+    });
+    document.getElementById("btn-logs-interval-up")?.addEventListener("click", () => adjustLogsInterval(1));
+    document.getElementById("btn-logs-interval-down")?.addEventListener("click", () => adjustLogsInterval(-1));
+    restoreLogsPrefs();
     document.getElementById("rig-search")?.addEventListener("input", (e) => {
         rigSearchQuery = (e.target.value || "").trim().toLowerCase();
         scheduleRender();

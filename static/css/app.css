@@ -1048,6 +1048,116 @@ h1 {
 .cmd-output-resize-divider.dragging::after {
     background: var(--text-accent);
 }
+#logs-modal.cmd-float-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 500;
+    width: 70vw;
+    height: 60vh;
+    min-width: 360px;
+    min-height: 260px;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 40px);
+    resize: both;
+    overflow: hidden;
+}
+#logs-modal.cmd-float-panel.hidden {
+    display: none;
+}
+#logs-modal .cmd-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    margin: 0;
+    background: var(--surface-modal);
+    border: 1px solid var(--border-modal);
+    border-radius: 5px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.logs-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface-modal-panel);
+    border-bottom: 1px solid var(--border-modal);
+}
+.logs-toolbar select,
+.logs-toolbar input[type="number"] {
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: var(--font-size-input);
+    outline: none;
+}
+.logs-lines-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-label);
+    color: var(--text-secondary);
+}
+.logs-lines-field input {
+    width: 70px;
+}
+.logs-toolbar-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border-divider-soft, var(--border-modal));
+}
+.logs-auto-refresh-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--font-size-label);
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.logs-interval-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.logs-interval-group input {
+    width: 46px;
+    text-align: center;
+}
+.logs-interval-unit {
+    font-size: var(--font-size-label);
+    color: var(--text-secondary);
+}
+#logs-modal .cmd-body {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+    background: var(--surface-modal);
+}
+.logs-output {
+    flex: 1 1 auto;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 10px;
+    background: var(--surface-app);
+    color: var(--text-primary);
+    font-family: Consolas, monospace;
+    font-size: var(--font-size-output);
+    white-space: pre-wrap;
+    resize: none;
+    border: none;
+    outline: none;
+}
 .cmd-row {
     display: flex;
     flex-direction: column;
