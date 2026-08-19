@@ -890,6 +890,7 @@ const LOGS_TYPE_LABELS = {
     "sys.nvidiasmi": "nvidia-smi",
     "sys.rocmsmi": "rocm-smi",
     "sys.df": "Disk usage (df -h)",
+    "sys.top": "Processes (top)",
 };
 const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.snap", "gpu.snap", "aux.snap", "cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
 const LOGS_COMMAND_BUILDERS = {
@@ -915,6 +916,7 @@ const LOGS_COMMAND_BUILDERS = {
     "sys.nvidiasmi": () => "nvidia-smi",
     "sys.rocmsmi": () => "rocm-smi",
     "sys.df": () => "df -h",
+    "sys.top": (n) => `top -bn1 | head -n ${n}`,
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
@@ -3321,8 +3323,9 @@ function handleCommandResponse(response) {
             let text = "";
             if (r.stdout) text += stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             if (r.stderr) text += (text ? "\n" : "") + stripAnsi(r.stderr);
+            const prevScrollTop = out.scrollTop;
             out.value = stripBlankLines(text) || "(empty)";
-            out.scrollTop = out.scrollHeight;
+            out.scrollTop = prevScrollTop;
         }
         if (statusEl) {
             statusEl.textContent = `returncode=${r.returncode} · last refreshed ${new Date().toLocaleTimeString()}`;
