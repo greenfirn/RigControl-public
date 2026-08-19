@@ -137,11 +137,6 @@
     "statPanelImageOpacity": 0.3,
     "statPanelImageFit": "cover",
     "toolbarBtnIcons": {
-      "btn-flightsheets": "📋FS",
-      "btn-overclocks": "🚀OC",
-      "btn-wallets": "🛢W-P",
-      "btn-stats": "📊S",
-      "btn-wdconfig": "📡WD",
       "btn-toggle-select": "🧪✕",
       "btn-mode-all": "🛸ALL",
       "btn-mode-cpu": "🧠CPU",
@@ -153,7 +148,6 @@
       "btn-quick-a": "🥚A",
       "btn-quick-b": "👽B",
       "btn-quick-c": "🧬C",
-      "btn-statuslog": "📜SL",
       "btn-remote-logout": "⎋"
     },
     "wallpaperFit": false,
