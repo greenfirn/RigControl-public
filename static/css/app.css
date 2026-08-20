@@ -3938,6 +3938,10 @@ h1 {
     min-width: 70px;
     padding: 0 3px;
 }
+.miner-stat-item.pool {
+    min-width: auto;
+    width: auto;
+}
 .stat-label {
     font-size: var(--font-size-popover-stat-label);
     opacity: 0.7;

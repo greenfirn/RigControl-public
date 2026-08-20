@@ -3859,19 +3859,12 @@ function render() {
                                    ${minerInfo.totalAccepted}/${minerInfo.totalRejected}
                               </div>
                          </div>
-                         <div class="miner-stat-item">
+                         <div class="miner-stat-item pool">
                               <div class="stat-label">POOL</div>
                               <div class="stat-value" title="${minerInfo.algorithms.map(a => a.pool).filter(p => p).join(', ') || 'No pool connected'}">
                                    ${(() => {
                                         const pools = minerInfo.algorithms.map(a => a.pool).filter(p => p && p !== "unknown");
-                                        if (pools.length === 0) return '--';
-                                        const firstPool = pools[0];
-                                        const domainMatch = firstPool.match(/(?:https?:\/\/)?(?:www\.)?([^\/:]+)/);
-                                        if (domainMatch) {
-                                             const domainParts = domainMatch[1].split('.');
-                                             return domainParts.length > 1 ? domainParts[domainParts.length - 2] : domainParts[0];
-                                        }
-                                        return firstPool;
+                                        return pools.length === 0 ? '--' : pools[0];
                                    })()}
                               </div>
                          </div>

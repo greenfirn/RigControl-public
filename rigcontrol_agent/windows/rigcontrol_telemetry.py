@@ -770,8 +770,7 @@ def collect_bzminer_stats():
         if current_url:
             url_parts = current_url.split("://")
             if len(url_parts) > 1:
-                host_part = url_parts[1].split(":")[0]
-                pool_url = host_part.split(".")[-2] if "." in host_part else host_part
+                pool_url = url_parts[1]
         total_hashrate = 0
         for device in devices:
             device_pools = device.get("pool", [])
@@ -832,7 +831,7 @@ def collect_rigel_stats():
             "pool_hashrate_hs": pool_hr.get(algo) if isinstance(pool_hr, dict) else None,
             "accepted_shares": algo_sol.get("accepted") if isinstance(algo_sol, dict) else None,
             "rejected_shares": algo_sol.get("rejected") if isinstance(algo_sol, dict) else None,
-            "pool": pool_data.get("url", "").split("://")[-1].split(":")[0] if algo == list(all_algos)[0] else None
+            "pool": pool_data.get("url", "").split("://")[-1] if algo == list(all_algos)[0] else None
         }
         algorithms.append(algo_data)
     return {
@@ -1145,7 +1144,7 @@ def collect_xmrig_stats():
         if shares_total is not None and shares_good is not None:
             rejected_shares = shares_total - shares_good
         connection = data.get("connection", {})
-        pool_url = connection.get("url", "").split("://")[-1].split(":")[0] if connection else None
+        pool_url = connection.get("url", "").split("://")[-1] if connection else None
         cpu_info = data.get("cpu", {})
         threads = cpu_info.get("threads", 0)
         algo_data = {
@@ -1193,7 +1192,7 @@ def collect_trex_stats():
             "hashrate_hs": hashrate_hs,
             "accepted_shares": data.get("accepted_count"),
             "rejected_shares": data.get("rejected_count"),
-            "pool": data.get("url", "").split("://")[-1].split(":")[0] if data.get("url") else None,
+            "pool": data.get("url", "").split("://")[-1] if data.get("url") else None,
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_data)
@@ -1231,7 +1230,7 @@ def collect_nbminer_stats():
             "hashrate_hs": hashrate_hs,
             "accepted_shares": data.get("stratum", {}).get("accepted_shares"),
             "rejected_shares": data.get("stratum", {}).get("rejected_shares"),
-            "pool": data.get("stratum", {}).get("url", "").split("://")[-1].split(":")[0] if data.get("stratum", {}).get("url") else None,
+            "pool": data.get("stratum", {}).get("url", "").split("://")[-1] if data.get("stratum", {}).get("url") else None,
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_data)

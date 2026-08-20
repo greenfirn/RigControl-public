@@ -163,3 +163,23 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Fixed:** added `fancurve.conf` -> `cat /etc/systemd/system/fan-curve.service` in the same 4 places (`static/index.html`'s dropdown, `LOGS_TYPE_LABELS`, `LOGS_TYPES_WITHOUT_LINES`, `LOGS_COMMAND_BUILDERS`), placed next to `fancurve.svclog`. Used `cat` rather than `tail` - the unit file is ~44 lines and `tail`'s default 10-line window would risk cutting off the `ExecStart` curve line depending on exact length, while `cat` always shows the whole thing.
 
 **Verified:** `node --check` clean; dropdown options vs `LOGS_TYPE_LABELS`/`LOGS_COMMAND_BUILDERS` keys diffed again - still an exact match in both directions (22 entries now).
+
+## POOL display: stopped truncating to a bare middle-domain-label
+
+**What:** the dashboard's per-miner POOL stat card showed only a fragment of the actual pool address - e.g. `pool.pearlhash.xyz:9000` (wildrig's real `connection.pool` value) displayed as just `pearlhash`. Two layers were stripping information: `rigcontrol_telemetry.sh`'s `extract_pool_host()` (shared by 11 different miner collectors - xmrig, trex, bzminer, srbminer, wildrig, teamredminer, rigel, gminer, onezerominer, lolminer, peakminer) stripped the port; then `static/js/app.js`'s POOL card render (Workers tab, miner detail card) applied its own domain-shortening heuristic on top of that (`"pool.pearlhash.xyz".split('.')` -> took the second-to-last label), losing the subdomain too.
+
+**Fixed:**
+- `extract_pool_host()` in `rigcontrol_agent/rigcontrol_telemetry.sh`, `rigcontrol_telemetry-exclude.sh`, and `copy-paste-update.sh` (all 3 carry the same embedded `rigcontrol_telemetry.py` payload, kept in sync) - now only strips the scheme prefix (`stratum+ssl://` etc.) if present, keeping the full `host:port`.
+- `static/js/app.js`'s POOL stat card (Workers tab) - removed the domain-shortening regex/split logic entirely; now shows `pools[0]` as-is, i.e. whatever the backend now sends.
+
+**Scope confirmed with the user:** full `host:port` display for every miner's pool field, not just wildrig - both changes apply uniformly across every collector/card, not per-miner.
+
+**Verified:** `node --check` clean on `app.js`; `bash -n` clean on all 3 changed `.sh` wrappers plus `python3 -m py_compile` clean on each extracted embedded payload; manually checked `extract_pool_host()`'s new behavior against the real wildrig pool string, a `stratum+ssl://` example, and a no-scheme example - all return the full host:port unchanged apart from scheme-stripping.
+
+## POOL stat item: auto-size width instead of fixed min-width
+
+**What:** follow-up to the POOL-display fix above. `.miner-stat-item` has a shared `min-width: 70px`, fine for short fixed-shape values (HASHRATE, SHARES, UPTIME) but not ideal now that POOL can show a full `host:port` string of very different lengths per miner.
+
+**Fixed:** added a `pool` class to the POOL item's wrapping `<div class="miner-stat-item">` in `static/js/app.js`, and a `.miner-stat-item.pool { min-width: auto; width: auto; }` override in `static/css/app.css` - only the POOL item drops the shared 70px floor, sizing purely to its own content. The other stat items (hashrate/algorithms/shares/uptime) keep the existing 70px min-width unchanged.
+
+**Verified:** `node --check` clean on `app.js`; CSS brace-balance sanity check (836/836) on `app.css`.

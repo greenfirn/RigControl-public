@@ -62,12 +62,12 @@ def run(cmd: str):
     )
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 def extract_pool_host(pool_str: str) -> str:
-    """Extract bare hostname from any pool URL string."""
+    """Extract the bare host:port from any pool URL string (strips only the scheme prefix, e.g. "stratum+ssl://", if present)."""
     if not pool_str:
         return ""
     if "://" in pool_str:
-        return pool_str.split("://")[1].split(":")[0]
-    return pool_str.split(":")[0]
+        return pool_str.split("://")[1]
+    return pool_str
 def normalize_to_hs(value, unit=None):
     """Convert any hash-rate unit to H/s."""
     if value is None:
