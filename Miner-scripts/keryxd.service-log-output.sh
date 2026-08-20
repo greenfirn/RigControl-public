@@ -39,7 +39,7 @@ ExecStart=/bin/bash -c '\
             tail -c 10485760 /run/rigcontrol/aux_miner.log > /run/rigcontrol/aux_miner.log.tmp 2>/dev/null && cat /run/rigcontrol/aux_miner.log.tmp > /run/rigcontrol/aux_miner.log && rm -f /run/rigcontrol/aux_miner.log.tmp; \
         fi; \
     done ) & \
-    /opt/miners/keryx-node/keryxd --utxoindex --disable-upnp --ram-scale=10.0 --addpeer=141.95.35.181 --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110 2>&1 | tee -a /run/rigcontrol/aux_miner.log'
+    /opt/miners/keryx-node/keryxd --utxoindex --addpeer=141.95.35.181 --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110 2>&1 | tee -a /run/rigcontrol/aux_miner.log'
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
