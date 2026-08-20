@@ -21,25 +21,12 @@ sudo mv -v /opt/miners/keryx-miner/current/models /opt/miners/
 sudo systemctl start docker_events_gpu.service
 ```
 
-- Scripts now use standard Linux (FHS) locations instead of hardcoding
-  '/home/user' - configs live in /etc/rigcontrol/, miner installs in
+- Scripts use standard Linux (FHS) locations
+
+- configs live in /etc/rigcontrol/, miner installs in
   /opt/miners/, persistent state (stats DB, cmd log) in
   /var/lib/rigcontrol/, and PID/runtime miner logs in /run/rigcontrol/.
   
-- '/home/user' still matters for one thing: it's still where SCP/SFTP
-  as a non-root user is allowed to land a file (see the SSH note
-  below) - every script that needs something there now moves it into
-  place itself (mkdir + tee/mv), so you don't need to create
-  '/home/user' by hand or add a synthetic account anymore.
-
-- Migrating an existing rig that already has data under the old
-  '/home/user' paths? Run
-  [rigcontrol_migrate_rig.sh](/%5Bmigration-helper-scripts%5D) after
-  deploying the updated scripts - it stops whichever docker_events
-  service is active, moves configs/miners/stats DB into their new
-  homes (mv, not cp, so large miner model files aren't duplicated),
-  and restarts the service.
-
 ## Notes
 
 -- [no-container-docker_events_monitor--LATEST-log.sh](/Miner-scripts/Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) is best for keryx-miner with screen session and logs --
