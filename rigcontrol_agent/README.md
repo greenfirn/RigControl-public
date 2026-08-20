@@ -55,7 +55,7 @@ CUSTOM_MINER_BIN_AUX=/opt/miners/keryx-node/keryxd
 # binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API,
 # or <NAME>_LOG_PATH for log scraping (<NAME>_LOG_STYLE=blocks for
 # keryxd-style "Accepted N blocks" counting instead of generic hashrate scraping)
-KERYXD_LOG_PATH=/run/rigcontrol/keryxd.log
+KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
 KERYXD_LOG_STYLE=blocks
 #KERYX_MINER_API_HOST=127.0.0.1
 #KERYX_MINER_API_PORT=3338
@@ -92,7 +92,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 KERYX_MINER_API_HOST=127.0.0.1
 KERYX_MINER_API_PORT=3338
 #KERYXD_BIN=/opt/miners/keryx-node/keryxd
-#KERYXD_LOG_PATH=/run/rigcontrol/keryxd.log
+#KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
 #KERYXD_LOG_STYLE=blocks
 EOF
 ```
