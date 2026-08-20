@@ -63,6 +63,7 @@ EOF
 ```
 rigcontrol-agent-local... KERYX_MINER_API
 ```
+sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10
 BROKER_PORT=1883
 BROKER_USER=admin
@@ -93,4 +94,5 @@ KERYX_MINER_API_PORT=3338
 #KERYXD_BIN=/opt/miners/keryx-node/keryxd
 #KERYXD_LOG_PATH=/tmp/keryxd.log
 #KERYXD_LOG_STYLE=blocks
+EOF
 ```
