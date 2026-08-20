@@ -38,7 +38,7 @@ sudo systemctl start docker_events_gpu.service
 4. miner start/stop scripts:
 - [keryx-miner.service.sh](../keryx-miner.service.sh)
 -  using flightsheets:
-- [no-docker_launcher.sh](../no-docker_launcher.sh) -- systems without docker
+- [no-docker_launcher.sh](../no-docker_launcher.sh) -- same miner conf,api,etc for systems without docker
 - [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh) -- no screen, logs in service
 - [no-container-docker_events_monitor--LATEST-log.sh](no-container-docker_events_monitor--LATEST-log.sh) -- with miner screen session
 - clore, etc
@@ -55,5 +55,3 @@ sudo systemctl start docker_events_gpu.service
 [no-container-docker_events_monitor--no-screen-clore.sh](platform-specific/no-container-docker_events_monitor--no-screen-clore.sh), [no-container-docker_events_monitor-clore.sh](platform-specific/no-container-docker_events_monitor-clore.sh) ... run idle job parallel with clore idle job (empty script ubuntu image etc)
 
 [podman_events_monitor--no-screen.sh](platform-specific/podman_events_monitor--no-screen.sh), [podman_events_monitor.sh](platform-specific/podman_events_monitor.sh) ... Nosana podman containers
-
-[no-docker_launcher.sh](../no-docker_launcher.sh) ... same miner conf,api,etc for no docker mining rigs
