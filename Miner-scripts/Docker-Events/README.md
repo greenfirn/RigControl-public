@@ -23,8 +23,6 @@ sudo systemctl start docker_events_gpu.service
 
 'update_miner_versions.sh miner-name miner-name' no options for all -- do not spam run this script uses github api, you will get rate limited
 
-strip meaningless 0 in older confs... [strip_flightsheet_zero.bat](source/strip_flightsheet_zero.bat) - [strip_flightsheet_zero.py](source/strip_flightsheet_zero.py)
-
 ## Setup
 
 -- [no-container-docker_events_monitor--LATEST-log.sh](/Miner-scripts/Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) is best for keryx-miner with screen session and logs --
@@ -34,7 +32,7 @@ strip meaningless 0 in older confs... [strip_flightsheet_zero.bat](source/strip_
 * most recent updated, others may not work as is
 * naming/layout may have changed for clore, nosana, etc
 
-1. 'write - script files--LATEST...' (see source/lib to explore original seperate files)
+1. 'write - script files--LATEST...' (see lib to explore original seperate files)
 2. 'write - api.conf' -- miner api settings
 3. 'write - miner_conf.sh' -- miner versions
 4. miner start/stop scripts:
