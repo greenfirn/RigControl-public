@@ -12,7 +12,7 @@ docker-compose.yml: note needed extras
 
 # IMPORTANT 
 
-create database files,config.json before first run:
+create database files,config.json before first run: it will try and mount as a folder if files are missing
 ```
 touch rigcontrol_config.json
 touch rigcontrol_flightsheets.db
