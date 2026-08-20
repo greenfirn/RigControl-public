@@ -360,3 +360,39 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Not touched:** `app.js`'s own hardcoded `TEMPLATES_CONFIG` fallback (lines 1-63, used only if the `templates.json` fetch fails) is still on the old single-field `apply_script_template` structure with the old placeholder names. It's dead weight for overclocking specifically (the generation code only ever reads the new field names), but rewriting JS fallback logic is a bigger, more consequential change than a JSON/docs fix - flagged here rather than changed without being asked.
 
 **Verified:** `python3 -m json.tool` clean; cross-checked every placeholder name against the exact strings `fillPlaceholders()` passes in `app.js`.
+
+## Added rigcontrol_agent/windows/run.bat and requirements.txt
+
+**What:** confirmed via the user's local path (`...\GitHub\RigControl\rigcontrol_agent\windows`) that a second, separate run.bat genuinely belongs here too - this is the Windows *agent's* run.bat, distinct from the dashboard server's copy added earlier. Same stale content as the earlier upload (`title RigCloud Agent`, `python rigcloud_agent_win.py`) from before the RigCloud -> RigControl rename. The folder also had no `requirements.txt` at all, even though run.bat depends on one existing to install anything.
+
+**Fixed:**
+- Added `rigcontrol_agent/windows/run.bat`, title corrected to "RigControl Agent", both `python` calls changed to `rigcontrol_agent_win.py` to match the actual script in that folder.
+- Added `rigcontrol_agent/windows/requirements.txt` (didn't exist before) - AST-parsed both `rigcontrol_agent_win.py` and `rigcontrol_telemetry.py` (windows) for third-party imports: `paho` (paho-mqtt), `psutil`, and `wmi`/`pythoncom` (the `WMI` package, which needs `pywin32` for `pythoncom`). Note this agent uses `paho-mqtt` directly, unlike the Linux agent's venv which installs both `aiomqtt` and `paho-mqtt` inline via `copy-paste-update.sh`/`rigcontrol_agent-service.sh` - not a discrepancy, just a different MQTT client choice per platform.
+
+**Not yet done:** no README currently documents Windows agent setup (`rigcontrol_agent/README.md` only shows a Linux/systemd workflow plus one Windows test screenshot); `rigcontrol_agent/windows/README-windows-services.txt` covers NSSM service registration only, not the run.bat/venv setup. Flagging in case a Windows agent setup section is wanted.
+
+## rigcontrol_agent/windows/: replaced 4 files with the user's live working copy
+
+**What:** the user uploaded `windows.zip` labeled as their actual live working copy of the Windows agent. Diffing it against the repo found real two-way divergence in `rigcontrol_agent_win.py` specifically - the repo had `mqtt_publish_resilient()`, an `_iso_to_sqlite_utc()` helper, an extra `start_date` param on `query_stats_history()`, and the `MIN_TELEMETRY_PULL_INTERVAL_SECONDS` overlap-guard (confirmed genuinely wired up, not dead code) that the live copy lacks - but the live copy was 786 lines vs the repo's 651, meaning it has real content the repo doesn't have anywhere else. Also confirmed `rigcontrol_telemetry.py`'s live copy still has the old `.split("://")[-1].split(":")[0]` POOL-truncation bug fixed earlier this session (Windows telemetry POOL fix entry, above) - the live deployment never got that fix pushed to it.
+
+**Fixed:** per explicit user instruction ("treat windows.zip as source of truth"), replaced all 4 shared files as-is: `rigcontrol_agent.conf`, `rigcontrol_agent_win.py`, `rigcontrol_cmd.bat`, `rigcontrol_telemetry.py`.
+
+**Known regressions from this replacement (flagging, not silently fixing):** this reintroduces the POOL-truncation bug in `rigcontrol_telemetry.py` (back to stripping `:port`) and drops `mqtt_publish_resilient()`, `_iso_to_sqlite_utc()`, the `query_stats_history()` `start_date` param, and the `MIN_TELEMETRY_PULL_INTERVAL_SECONDS` overlap-guard from `rigcontrol_agent_win.py`. None of these were re-applied on top of the uploaded files - the user can say if any should be layered back in.
+
+**Verified:** `python3 -m py_compile` clean on both `.py` files.
+
+## rigcontrol_agent/windows/: reverted the windows.zip replacement, matched GitHub instead
+
+**What:** the user then uploaded `GitHub-08-20c.zip` and asked whether anything functional was missing for the server and agents. Diffing it exposed that the windows.zip replacement above was a mistake in the other direction: GitHub's copies had `mqtt_publish_resilient()`, the `MIN_TELEMETRY_PULL_INTERVAL_SECONDS` guard, and no POOL-truncation bug - all things windows.zip's version lacked or reintroduced. `rigcontrol_cmd.bat` turned out to be a bigger structural difference than a simple feature gap: GitHub's version controls 3 separate services (CPU/GPU/AUX, each with its own stop-flag file), matching the AUX-slot architecture built out everywhere else this session (keryxd, `CUSTOM_MINER_BIN_AUX`, `flightsheet.aux_template`, etc.); windows.zip's version instead controlled a single COMMON service with no AUX support at all. `rigcontrol_agent.conf` was also missing `MIN_TELEMETRY_PULL_INTERVAL_SECONDS` to match.
+
+**Fixed:** per user confirmation, replaced all 5 files (`rigcontrol_agent.conf`, `rigcontrol_agent_win.py`, `rigcontrol_cmd.bat`, `rigcontrol_telemetry.py`, `run.bat`) with GitHub's versions, undoing the windows.zip replacement from the previous entry. GitHub's `run.bat` had already been fixed to "RigControl Agent" / `rigcontrol_agent_win.py` almost everywhere, except the `:: run hidden` PowerShell line at the bottom still called `'rigcloud_agent_win.py'` - fixed that one remaining stale reference too.
+
+**Verified:** `rigcontrol_dashboard_server_pi/` confirmed fully in sync with GitHub (0 diffs); `rigcontrol_dashboard_server_windows/` confirmed in sync except `requirements.txt` (expected - that fix hasn't been pushed to GitHub yet); `python3 -m py_compile` clean on both `.py` files after the revert.
+
+## Added rigcontrol_dashboard_server_windows/migrate_flightsheets_to_json.bat
+
+**What:** the user confirmed run.bat's disappearance was a broader pattern - all run.bat files were dropped at some point during the RigCloud -> RigControl rename across the renamed repos, and separately recalled `migrate_flightsheets_to_json.py` used to have a `.bat` wrapper too. Checked all 4 uploads received so far (rigcontrol.zip, windows.zip, both GitHub exports) for one - not present in any of them. The user then uploaded `rename_flightsheet_conf_paths.py`/`.bat` "from old repo" (a related but different migration script - renames CPU/GPU conf tee paths inside a flightsheet DB, not the same as the JSON-format migration) plus a `copy-from-to-pi.txt` referencing a `migration-helper-scripts\` folder that doesn't exist anywhere in the current repo.
+
+**Fixed:** wrote `migrate_flightsheets_to_json.bat` from scratch (no original recovered), modeled directly on `rename_flightsheet_conf_paths.bat`'s exact structure - DB_PATH/SCRIPT_PATH variables, existence checks, dry-run first, y/N confirm before writing - but wired to `migrate_flightsheets_to_json.py`'s actual CLI (`--list` to classify, `--show-diff` for the dry-run preview, `--apply` to write, matching its real argparse interface rather than guessing flag names).
+
+**Deliberately not done:** did not add a `migration-helper-scripts/` folder or `rename_flightsheet_conf_paths.py`/`.bat` to the repo - user confirmed these are one-off/personal migration tools not meant for the tracked repo, not a missing-file gap to fix.

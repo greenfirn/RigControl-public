@@ -28,11 +28,11 @@
 
 [google app password](https://myaccount.google.com/apppasswords)
 
-9. 'run.bat' create and activate virtual environment with requirements and start server
+9. [run.bat](run.bat) create and activate virtual environment with requirements and start server
 
 ![run-bat](../images/Screenshot-run-bat.png)
 
--- to start on boot create a basic task in windows task scheduler to start 'run.bat' when user logs on with highest privelage checked --
+-- to start on boot create a basic task in windows task scheduler to start [run.bat](run.bat) when user logs on with highest privelage checked --
 
 -- [accessKeys.csv.example](accessKeys.csv.example) (rename to accessKeys.csv) is only if you plan on using a amazon connection
 

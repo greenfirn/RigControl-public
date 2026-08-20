@@ -1,0 +1,4 @@
+paho-mqtt
+psutil
+pywin32
+WMI

@@ -44,7 +44,7 @@ sudo systemctl start docker_events_gpu.service
 - clore, etc
 5. [rig-confs](../rig-confs/) -- "flightsheets"
 6. [py-nvtool-install-usage.txt](../../py-nvtool/py-nvtool-install-usage.txt) -- 'overclocks' Reset / Apply
-7. [update_miner_versions.sh](../update_miner_versions.sh) miner-name miner-name -- no options for all -- do not spam run this script uses github api, you will get rate limited
+7. [update_miner_versions.sh](../update_miner_versions.sh) -- see warning in # Important above
 
 ** show last 20 lines of service log... journalctl -u docker_events_gpu.service -n 20 --no-pager **
 

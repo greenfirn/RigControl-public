@@ -41,4 +41,4 @@ exit
 
 :: run hidden
 call .venv\Scripts\activate.bat
-powershell -NoProfile -Command "Start-Process python -ArgumentList 'rigcloud_agent_win.py' -WindowStyle Hidden"
+powershell -NoProfile -Command "Start-Process python -ArgumentList 'rigcontrol_agent_win.py' -WindowStyle Hidden"

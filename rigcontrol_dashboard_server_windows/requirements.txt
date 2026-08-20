@@ -1,4 +1,5 @@
-aiomqtt>=2.4,<3.0
+paho-mqtt
+psutil
 python-dotenv
 fastapi
 uvicorn[standard]
