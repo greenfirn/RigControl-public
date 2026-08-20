@@ -310,3 +310,53 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Fixed:** removed the parenthetical from both mentions.
 
 **Verified:** link-resolution script still 0 broken links.
+
+## Removed stale note from Docker-Events/platform-specific/README.md
+
+**What:** `Miner-scripts/Docker-Events/platform-specific/README.md` only contained "have not tested these no screen variants" - stale now that the `--no-screen` variants are linked as normal options elsewhere.
+
+**Fixed:** cleared the note per the user's instruction.
+
+## Docker-Events/README.md: removed duplicate warnings
+
+**What:** the user spotted two lines duplicated verbatim in `Miner-scripts/Docker-Events/README.md`: a standalone `no-docker_launcher.sh` mention (already covered in the numbered setup list, item 4) and the full `update_miner_versions.sh` rate-limit warning (appeared both in the `# Important` section and again as item 7 of the numbered setup list).
+
+**Fixed:** removed the standalone `no-docker_launcher.sh` line entirely (item 4 already covers it). Trimmed item 7 to just link the script with a pointer back to the `# Important` section instead of repeating the full warning text.
+
+**Verified:** re-ran the link-resolution script on the file - 0 broken links.
+
+## Docker-Events/README.md: merged the removed line's detail into item 4
+
+**What:** the earlier dedup pass deleted the standalone `no-docker_launcher.sh ... same miner conf,api,etc for no docker mining rigs` line outright since item 4 already linked the script. The user wanted that description kept, just merged into item 4's bullet rather than dropped.
+
+**Fixed:** item 4's `no-docker_launcher.sh` bullet now reads "-- same miner conf,api,etc for systems without docker", combining both descriptions instead of losing the "same miner conf,api,etc" detail.
+
+## Added missing run.bat to rigcontrol_dashboard_server_windows/
+
+**What:** the user uploaded the `run.bat` referenced-but-missing from earlier ("idk how run.bat dissaapeared"). Its content ran `rigcloud_agent_win.py` under a "RigCloud Agent" title - both stale from before the RigCloud -> RigControl rename. That mismatched what `rigcontrol_dashboard_server_windows/README.md` describes the file doing (starting `rigcontrol_dashboard_server.py`), so I first placed it in `rigcontrol_agent/windows/` (renaming the script call to match `rigcontrol_agent_win.py`) since the content looked agent-shaped. The user then confirmed via its actual location on their disk that it genuinely belongs in `rigcontrol_dashboard_server_windows/` instead - the uploaded copy just had stale/wrong content from an old version.
+
+**Fixed:** moved the file to `rigcontrol_dashboard_server_windows/run.bat` and corrected its content to match what that folder actually needs: title "RigControl Dashboard Server", and both `python` calls changed from `rigcloud_agent_win.py` to `rigcontrol_dashboard_server.py`. Linked all 3 `'run.bat'` mentions in `rigcontrol_dashboard_server_windows/README.md` that were previously left as plain text pending this file.
+
+**Verified:** confirmed `.gitignore` has no `*.bat` exclude (it was just dropped during the rename, not intentionally excluded); re-ran the link-resolution script on the README - 0 broken links.
+
+## rigcontrol_dashboard_server_windows/requirements.txt: fixed stale MQTT dependency
+
+**What:** the user asked whether `requirements.txt` was up to date. Cross-checked its 6 packages against every import actually used in `rigcontrol_dashboard_server.py` (via a Python AST parse, not just grep). Found `aiomqtt>=2.4,<3.0` listed but never imported anywhere in the file - the Pi/Docker twin (`rigcontrol_dashboard_server_pi/rigcontrol-ws/rigcontrol_dashboard_server.py`) genuinely uses `aiomqtt` (async client), but a diff showed the Windows `.py` was switched to the synchronous `paho.mqtt.client` at some point without updating `requirements.txt` to match. `psutil` (used for process lookups) was also missing entirely.
+
+**Fixed:** replaced `aiomqtt>=2.4,<3.0` with `paho-mqtt` and added `psutil`. A fresh `pip install -r requirements.txt` would previously install an unused package and skip two required ones, causing `ModuleNotFoundError` the first time the server actually started.
+
+**Verified:** AST-parsed every top-level import in the file and confirmed every third-party module now has a matching requirements.txt entry (pydantic and botocore are transitive deps of fastapi/boto3, intentionally not listed separately, matching this repo's existing convention).
+
+## static/config/templates.json: added missing aux_template, fixed stale readme
+
+**What:** the user asked where the "template files" were, which led to auditing `static/config/templates.json` (the file that controls the dashboard's auto-generated Flightsheet/Overclock/Watchdog scripts) against its actual consumer, `static/js/app.js`. Two real gaps found:
+- `flightsheet` only had `cpu_template`/`gpu_template`. `app.js` (line ~7035) also looks up `fsCfg.aux_template` when generating a Flightsheet for the AUX slot, but since the JSON didn't define it, AUX generation silently fell through to a hardcoded default baked into `app.js` itself - meaning AUX flightsheets weren't actually editable from this file the way the `_readme` claims everything in it is.
+- The `_readme` block documented overclocking placeholders (`%Fan Args%`, `%FAN Curve%`) and a single `apply_script_template` field that no longer match reality - at some point the apply script was split into `apply_script_header`/`apply_script_algo_block`/`apply_script_footer`, and the placeholders `fillPlaceholders()` actually substitutes are `Fan Mode`, `Fan Value`, and `FAN_CURVE_BLOCK` (confirmed by reading the substitution call in `app.js` directly, not just the JSON).
+
+**Fixed:**
+- Added `flightsheet.aux_template`, mirroring `cpu_template`/`gpu_template` but writing `/etc/rigcontrol/rig-aux.json` and restarting `docker_events_aux` (matching `app.js`'s existing hardcoded default for the same field).
+- Rewrote the `_readme` block's overclocking section to describe the real 3-way header/algo_block/footer split, the actual placeholder names (`%ALGO%`, `%Lock Core Clock%`, `%Core Clock Offset%`, `%Lock Memory Clock%`, `%Memory Clock Offset%`, `%Power Limit%`, `%Fan Mode%`, `%Fan Value%`, `%FAN_CURVE_BLOCK%`), and clarified that `fan_curve_service_template` has no `%...%` tokens of its own - its `"$FAN_VALUE"` is a literal bash variable that relies on the enclosing script already having set it.
+
+**Not touched:** `app.js`'s own hardcoded `TEMPLATES_CONFIG` fallback (lines 1-63, used only if the `templates.json` fetch fails) is still on the old single-field `apply_script_template` structure with the old placeholder names. It's dead weight for overclocking specifically (the generation code only ever reads the new field names), but rewriting JS fallback logic is a bigger, more consequential change than a JSON/docs fix - flagged here rather than changed without being asked.
+
+**Verified:** `python3 -m json.tool` clean; cross-checked every placeholder name against the exact strings `fillPlaceholders()` passes in `app.js`.

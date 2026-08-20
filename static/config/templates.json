@@ -4,21 +4,21 @@
         "",
         "%Placeholder% tokens inside a *_template string get replaced with live values from the dashboard form fields when the script is generated. Matching is exact and case-sensitive, including the % on both sides - a typo'd placeholder name will not be replaced and will show up literally in the generated script instead.",
         "",
-        "flightsheet.cpu_template / flightsheet.gpu_template have exactly ONE placeholder: %RIG_GPU_JSON%.",
+        "flightsheet.cpu_template / flightsheet.gpu_template / flightsheet.aux_template have exactly ONE placeholder: %RIG_GPU_JSON%.",
         "  It gets filled with the rig-gpu.json body (pretty-printed JSON, matching the rig-side generate_rig_gpu_json_from_conf()/convert-conf-to-rig-gpu-json.sh output) built by buildRigGpuJsonBody() in app.js from the Flightsheet form fields - custom vs. built-in miner, splitting POOL into url+pool_ssl, etc. need real branching logic, not just a field substitution, so that part isn't editable from this file the way the wrapper text (the tee target path, the systemctl service name) still is.",
         "",
-        "overclocking.apply_script_template placeholders:",
-        "  %Lock Core Clock% %Core Clock Offset% %Lock Memory Clock% %Memory Clock Offset% %Power Limit% - direct field values.",
-        "  %Fan Args% - filled in automatically by the dashboard as either ' --setfan <value>' (percent fan mode) or '' (empty, curve mode) - not a raw field value, leave this placeholder as-is.",
+        "overclocking is split into 3 separate fields that get concatenated per-algorithm row into one generated script - apply_script_header (written once, before any rows), apply_script_algo_block (repeated once per algorithm row, joined together), and apply_script_footer (written once, after all rows):",
+        "  apply_script_algo_block placeholders: %ALGO% (the case-pattern label, from the row's Algorithm field), %Lock Core Clock% %Core Clock Offset% %Lock Memory Clock% %Memory Clock Offset% %Power Limit% %Fan Mode% %Fan Value% - direct field values. Fan Mode is literally 'percent' or 'curve'; Fan Value is either the fan percent number or the curve string ('30:30,40:45,50:65') depending on Fan Mode.",
+        "  apply_script_footer placeholder: %FAN_CURVE_BLOCK% - filled in automatically by the dashboard with the full contents of fan_curve_service_template when any row uses curve mode, otherwise replaced with an empty string. Leave this placeholder as-is.",
         "",
-        "overclocking.fan_curve_service_template placeholders:",
-        "  %FAN Curve% - the fan curve string (e.g. '30:30,40:45,50:65'), only used when the Fan field is a curve instead of a percent.",
+        "overclocking.fan_curve_service_template has NO %placeholder% tokens of its own - it gets substituted whole into apply_script_footer's %FAN_CURVE_BLOCK%, and its \"$FAN_VALUE\" is a literal bash variable reference (not a %-token), relying on the surrounding script already having set FAN_VALUE=\"%Fan Value%\" earlier in apply_script_algo_block.",
         "",
         "watchdog.conf_dir / watchdog.conf_path are plain values (not templates with placeholders) - the directory watchdog config gets mkdir'd into, and the full path the watchdog conf file gets written to/read from on each worker."
     ],
     "flightsheet": {
         "cpu_template": "tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_cpu",
-        "gpu_template": "tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_gpu"
+        "gpu_template": "tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_gpu",
+        "aux_template": "tee /etc/rigcontrol/rig-aux.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_aux"
     },
     "overclocking": {
         "apply_script_header": "sudo tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n#!/bin/bash\n# gpu_apply_ocs.sh <algo_name> / <custom miner name>\n# Generated from the dashboard's Overclock module - edit there, not by hand.\n# Note: a row's Algorithm field can list multiple comma-separated algo names\n# (e.g. keryxhash,keryx-miner,keryx-minerx) - they're combined into one case\n# pattern below, joined by '|', so they all share this row's OC settings.\n\nALGO=\"${1:-}\"\nif [[ -z \"$ALGO\" ]]; then\n    echo \"Usage: $0 <algo_name>\"\n    exit 1\nfi\n\nALGO_LOWER=$(echo \"$ALGO\" | tr '[:upper:]' '[:lower:]')\n\ncase \"$ALGO_LOWER\" in\n",
