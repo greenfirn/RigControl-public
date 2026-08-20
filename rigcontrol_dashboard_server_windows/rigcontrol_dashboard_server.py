@@ -34,6 +34,9 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 dynamodb = None
 flightsheets_table = None
+def _key_schema_matches(actual: list, expected: list) -> bool:
+    norm = lambda ks: {(k["AttributeName"], k["KeyType"]) for k in ks}
+    return norm(actual) == norm(expected)
 def get_or_create_dynamo_table(table_name: str, key_schema: list, attr_defs: list):
     if not dynamodb:
         return None
