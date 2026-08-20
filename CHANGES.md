@@ -107,3 +107,51 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Also added:** a comment documenting the 3 valid values wherever `SERVICE_TYPE` gets set. The 12 universal-launcher files derive it from `OC_FILE` via a `case` statement - added `# SERVICE_TYPE: one of "cpu" / "gpu" / "aux" - fixed by which service instance this is, not user-configurable` right above it. The 8 single-slot scripts (manual-install and manual start/stop, each hardcoded to one slot) got `# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to <slot>` next to their hardcoded assignment.
 
 **Verified:** `grep -rln SCREEN_NAME` across the whole `Miner-scripts/` tree returns nothing - zero stragglers. `bash -n` clean on every outer wrapper and embedded payload afterward.
+
+## Rig-conf examples converted from .conf to .json layout
+
+**What:** the config format shipped by these scripts moved from `KEY GPU_ID "value"` flat `.conf` files to a structured `{"items":[...]}` JSON file (`rig-cpu.json`/`rig-gpu.json`/`rig-aux.json`), per `Miner-scripts/lib/00-get_rig_conf.sh`'s `RIG_GPU_JQ_FILTER`. Two example/reference files were still written in the old `.conf` format and needed converting to match.
+
+**Field mapping used:** `TARGET_IMAGE`/`TARGET_NAME`/`RESET_OC`/`APPLY_OC` -> same-named top-level keys (only included when the original had a non-empty value, matching what `generate_rig_gpu_json_from_conf()` would produce); `SCREEN_NAME` -> dropped entirely, the slot is now implied by which file it's written to; `MINER` -> top-level `miner`; `ALGO`/`PASS`/`ARGS` -> `miner_config.algo`/`.pass`/`.user_config`; `WALLET` -> `miner_config.template`; `POOL` -> `miner_config.url` with the `stratum+ssl://`/`stratum+tcp://` prefix stripped, plus a top-level `pool_ssl` boolean.
+
+**Multi-pool handling:** a few examples smashed 2 failover pool addresses into a single `POOL` value - comma-separated (srbminer examples) or, in the "rigel octa" example, a raw ` -o stratum+ssl://...` string hacked directly into the value to inject a second CLI flag. Converted all of these to the proper top-level `"pool_urls": [...]` array (bare `host:port` strings) instead, which `lib/02-load_configs.sh`'s `get_pool_url_list()` already prefers over a single `POOL` when present. `miner_config.url` is still populated with the first address as a fallback/primary-pool reference.
+
+**Files:**
+- `Miner-scripts/srbminer 2nd instance example.conf` -> replaced with `Miner-scripts/srbminer 2nd instance example.sh` (now writes `/etc/rigcontrol/rig-gpu.json` and `rig-cpu.json` directly - the old file already used the FHS `/etc/rigcontrol/` path, just in `.conf` format, so this was a pure format conversion).
+- `Miner-scripts/rig-confs/rig conf examples.txt` - all 10 `rig-cpu.conf`/`rig-gpu.conf` examples converted to `.json` blocks (xmrig Nosana, xmrig octa, xmrig clore, trex clore, srbminer clore, rigel octa, bzminer clore, bzminer octa, teamredminer octa x2), plus the existing keryx-miner custom-download example carried over unchanged (it already matches `rig-confs/keryx-custom-rig-gpu.sh`). The `miner.conf` version-pins block at the top is a different, unrelated schema (miner binary version pins, not a rig-cpu/rig-gpu/rig-aux config) and was left in its original `KEY "value"` format. Header comments updated to describe the JSON fields (`pool_urls`, `miner_alt`/`install_url`, slot-by-filename) instead of the old `.conf` key names, and the `tee` target paths updated from the file's old `/home/user/rig-*.conf` to the current `/etc/rigcontrol/rig-*.json` convention, matching every other script in the tree.
+
+**Verified:** `bash -n` clean on both outer wrappers; every embedded JSON body parsed with `json.loads`/`jq` (11 blocks across the two files, all valid).
+
+## keryxd.service: log path moved from /tmp to /run/rigcontrol
+
+**What:** the `keryxd.service` unit (Keryx node daemon, run as the AUX slot's custom miner via `CUSTOM_MINER_BIN_AUX`) wrote its own rotating log to `/tmp/keryxd.log`. Every other log/pid file in this codebase lives under `/run/rigcontrol/` - `/tmp` was never used anywhere else in the tree (confirmed by an earlier full-tree grep in this same audit pass). Also, `rigcontrol_agent.sh`'s custom-miner resolver reads the log location from `KERYXD_LOG_PATH` in `/etc/rigcontrol/rigcontrol-agent.conf` for the "Accepted N blocks" telemetry scraper (`KERYXD_LOG_STYLE=blocks`) - so the service's actual log path and that config value need to agree, and `/run/rigcontrol/keryxd.log` is the value already set there.
+
+**Fixed:** all 3 `/tmp/keryxd.log` references (the `ExecStartPre` cleanup, the in-loop rotation check, and the final `tee -a` target) changed to `/run/rigcontrol/keryxd.log`. Also added `ExecStartPre=/bin/mkdir -p /run/rigcontrol` - `/run` is a tmpfs cleared on every boot, and unlike `/tmp` (which always exists), `/run/rigcontrol` is only created by the one-time `rigcontrol-agent-local-keryxd.sh` setup script; without a guaranteed create-on-start step here, a reboot before that setup script's directory got recreated would make the service fail to write its log. Saved as `Miner-scripts/keryxd.service.sh` (new file - this unit wasn't previously part of the repo, only referenced via `AUX_SERVICE_NAME=keryxd.service` in the agent config).
+
+**Verified:** outer wrapper checked with `bash -n`; the embedded `ExecStart=/bin/bash -c '...'` payload extracted and checked with `bash -n` separately (systemd unit files aren't themselves valid shell, so the outer check alone doesn't validate the `ExecStart` script body).
+
+## keryxd.service: switched to the shared aux_miner.log path
+
+**What:** further follow-up to the entry above - moved from keryxd's own dedicated `/run/rigcontrol/keryxd.log` to the same `/run/rigcontrol/aux_miner.log` path every other AUX-slot miner uses via `${SERVICE_TYPE}_miner.log`. This makes the dashboard's "Logs / Config" -> AUX -> `aux.log` view (`tail -n N /run/rigcontrol/aux_miner.log` in `static/js/app.js`) work for keryxd directly, instead of only `aux.svclog` (journalctl) being useful.
+
+**Fixed:** all 4 `keryxd.log` references (`ExecStartPre` cleanup, in-loop rotation check + its `.tmp` file, final `tee -a` target) changed to `aux_miner.log`. Also picked up the user's added `keryxd` flags (`--disable-upnp --ram-scale=10.0 --addpeer=141.95.35.181`) in the same pass.
+
+**Follow-up needed on the config side (not part of this file):** `rigcontrol-agent.conf`'s `KERYXD_LOG_PATH=/run/rigcontrol/keryxd.log` now points at a file this service no longer writes - it should be updated to `/run/rigcontrol/aux_miner.log` to match, or removed entirely. `rigcontrol_agent.sh`'s custom-miner resolver already auto-derives `/run/rigcontrol/aux_miner.log` as the default for any custom AUX miner when `<NAME>_LOG_PATH` isn't explicitly set (see `resolve_custom_miner()`), so removing the line is the simpler option and lets the auto-default apply.
+
+**Verified:** outer wrapper and the extracted `ExecStart` bash payload both checked with `bash -n`.
+
+## rigcontrol-agent-local-keryxd.sh: KERYXD_LOG_PATH updated to match
+
+**What:** closes the loop from the entry above - `KERYXD_LOG_PATH` in `rigcontrol_agent/rigcontrol-agent-local-keryxd.sh` still pointed at `/run/rigcontrol/keryxd.log`, the path `keryxd.service` no longer writes to now that it writes `aux_miner.log` directly.
+
+**Fixed:** `KERYXD_LOG_PATH=/run/rigcontrol/keryxd.log` -> `KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log`, so `rigcontrol_telemetry.sh`'s blocks-counting scraper (`KERYXD_LOG_STYLE=blocks`) reads the file keryxd is actually writing.
+
+**Verified:** `bash -n` clean; embedded conf block unchanged otherwise.
+
+## Logs / Config: added Watchdog conf
+
+**What:** the Workers tab's Logs/Config dropdown had `watchdog.svclog` (journalctl of the watchdog service) but no way to view the watchdog's actual config file, unlike cpu/gpu/aux which each have both a `.conf` (cat the config) and `.svclog`/`.log` pair. Added `watchdog.conf` -> `cat /etc/rigcontrol/rigcontrol-watchdog.conf` (the file `watchdog/rigcontrol_watchdog.sh`/`.py` reads via `--conf`, generated by the dashboard's own Watchdog Config module).
+
+**Fixed:** added the option/label/command-builder/no-lines-input entry in the 4 places every other `.conf` type appears - `static/index.html`'s `<select id="logs-type-select">`, and `static/js/app.js`'s `LOGS_TYPE_LABELS`, `LOGS_TYPES_WITHOUT_LINES`, `LOGS_COMMAND_BUILDERS`. Placed next to `watchdog.svclog`, matching the pairing pattern used for the cpu/gpu/aux slots and `agent.conf`/`agent.svclog`.
+
+**Verified:** `node --check` clean on `app.js`; diffed the dropdown's option values against `LOGS_TYPE_LABELS` and `LOGS_COMMAND_BUILDERS` keys - all 21 entries match exactly in both directions (no dropdown option without a label/builder, no label/builder without a dropdown option).
