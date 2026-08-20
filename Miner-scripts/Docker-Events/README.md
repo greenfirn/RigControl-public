@@ -8,7 +8,7 @@
 
 # Important
 
-## keryx-miner: version change overwrites any files in miner folder '/opt/miners/keryx-miner/current'
+- keryx-miner: version change overwrites any files in miner folder '/opt/miners/keryx-miner/current'
 
 save escrow file/models outside of current:
 ```
