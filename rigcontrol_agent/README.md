@@ -3,13 +3,13 @@
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
 Ubuntu 24.04:
-
+```
 sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt --break-system-packages
-
+```
 Ubuntu 22.04:
-
+```
 sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
-
+```
 1. install python on a client rig...
 ```
 sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
