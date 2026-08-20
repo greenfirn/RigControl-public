@@ -37,7 +37,7 @@ no screen verion:
  
 -- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
 
-- may need 'sudo apt install unzip' for custom miner zip archieves
+- run once 'sudo apt install -y unzip' for custom miner zip archives
 
 - Scripts use standard Linux (FHS) locations
 
