@@ -21,12 +21,6 @@ sudo mv -v /opt/miners/keryx-miner/current/models /opt/miners/
 sudo systemctl start docker_events_gpu.service
 ```
 
-- Scripts use standard Linux (FHS) locations
-
-- configs live in /etc/rigcontrol/, miner installs in
-  /opt/miners/, persistent state (stats DB, cmd log) in
-  /var/lib/rigcontrol/, and PID/runtime miner logs in /run/rigcontrol/.
-  
 ## Notes
 
 best for keryx-miner with screen session and logs:
@@ -44,6 +38,13 @@ no screen verion:
 -- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
 
 - may need 'sudo apt install unzip' for custom miner zip archieves
+
+- Scripts use standard Linux (FHS) locations
+
+- configs live in /etc/rigcontrol/, miner installs in
+  /opt/miners/, persistent state (stats DB, cmd log) in
+  /var/lib/rigcontrol/, and PID/runtime miner logs in /run/rigcontrol/.
+
 
 ## What the scripts can do
 
