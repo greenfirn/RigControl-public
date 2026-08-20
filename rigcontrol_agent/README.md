@@ -1,4 +1,4 @@
-[Get started](https://github.com/greenfirn/RigControl#get-started)
+[Get started](../README.md#get-started)
 
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
@@ -14,21 +14,21 @@ sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
 ```
 sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 ```
-2. download the needed files: 'rigcontrol-agent-local.sh', 'rigcontrol_agent.sh', 'rigcontrol_telemetry.sh', 'rigcontrol_cmd.sh'
+2. download the needed files: [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh), [rigcontrol_agent.sh](rigcontrol_agent.sh), [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh), [rigcontrol_cmd.sh](rigcontrol_cmd.sh)
 
-3. set the server details in 'rigcontrol-agent-local.sh'
+3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
 
-4. for custom service names set them in 'rigcontrol-agent-local.sh' -- 'AUX_SERVICE_NAME=keryxd.service'
+4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
 
 5. download then copy/paste contents to write the files to a rig
 
-6. create, enable, start the service 'rigcontrol_agent-service.sh', watch logs for connection to mqtt
+6. create, enable, start the service [rigcontrol_agent-service.sh](rigcontrol_agent-service.sh), watch logs for connection to mqtt
 
-'EXCLUDE_FROM_TOTALS = True' in rigcontrol_telemetry.sh for dashboard host to not be included in status totals, select
+'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
 
-![test-windows](/images/Screenshot-test-windows.png)
+![test-windows](../images/Screenshot-test-windows.png)
 
-rigcontrol-agent-local... keryxd node: aux service name,binary location,log,log type
+[rigcontrol-agent-local-keryxd.sh](rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
 ```
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10
@@ -61,7 +61,7 @@ KERYXD_LOG_STYLE=blocks
 #KERYX_MINER_API_PORT=3338
 EOF
 ```
-rigcontrol-agent-local... KERYX_MINER_API
+[rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)... KERYX_MINER_API
 ```
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10

@@ -183,3 +183,130 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Fixed:** added a `pool` class to the POOL item's wrapping `<div class="miner-stat-item">` in `static/js/app.js`, and a `.miner-stat-item.pool { min-width: auto; width: auto; }` override in `static/css/app.css` - only the POOL item drops the shared 70px floor, sizing purely to its own content. The other stat items (hashrate/algorithms/shares/uptime) keep the existing 70px min-width unchanged.
 
 **Verified:** `node --check` clean on `app.js`; CSS brace-balance sanity check (836/836) on `app.css`.
+
+## Windows telemetry: same POOL truncation fix
+
+**What:** `rigcontrol_agent/windows/rigcontrol_telemetry.py` has no shared `extract_pool_host()` helper like the Linux version - each miner collector inlined its own version of the same pattern, and one (bzminer) was worse than the Linux bug: it stripped the port *and* reduced the hostname to just the second-to-last dot-separated label (`"pool.pearlhash.xyz"` -> `"pearlhash"`), the exact same over-truncation that was just removed from the frontend.
+
+**Fixed** (kept the port, only strip the scheme prefix if present, same as the Linux `extract_pool_host()` fix):
+- `collect_bzminer_stats()` (~line 768-774): dropped the `.split(":")[0]` port-strip and the `.split(".")[-2]` middle-label reduction entirely - now just takes everything after `://`.
+- `collect_rigel_stats()` (~line 835): `pool_data.get("url", "").split("://")[-1].split(":")[0]` -> `.split("://")[-1]`.
+- `collect_xmrig_stats()` (~line 1148): same pattern fix on `connection.get("url", "")`.
+- `collect_trex_stats()` (~line 1196): same pattern fix on `data.get("url", "")`.
+- `collect_nbminer_stats()` (~line 1234): same pattern fix on `data.get("stratum", {}).get("url", "")`.
+- `collect_lolminer_stats()`, `collect_onezerominer_stats()`, `collect_gminer_stats()` were already passing the miner's own `"Pool"`/`"pool"` field through unmodified - nothing to change there.
+
+**Verified:** `python3 -m py_compile` clean; manually checked the new bzminer and rigel/xmrig/trex/nbminer extraction patterns against `"stratum+ssl://pool.pearlhash.xyz:9000"` - both return the full `pool.pearlhash.xyz:9000` unchanged apart from scheme-stripping, matching the Linux-side fix.
+
+## rigcontrol-agent-local.sh / -local-keryxd.sh: replaced with the fuller reference version
+
+**What:** the user uploaded `rigcontrol_agent-08-20.zip` (their current live copy) to confirm what predates today's other fixes. Diffing it against the repo showed `rigcontrol_telemetry.sh`, `rigcontrol_agent.sh`, `rigcontrol_cmd.sh`, `copy-paste-update.sh`, `rigcontrol_telemetry-exclude.sh`, and `windows/rigcontrol_agent_win.py` were already byte-identical, and `windows/rigcontrol_telemetry.py` differed by exactly the pool-truncation fix from the previous entry (confirming that upload predates only that one change).
+
+`rigcontrol-agent-local.sh` and `rigcontrol-agent-local-keryxd.sh` differed in a way unrelated to today's work: the uploaded versions carry a fuller commented reference block documenting every override variable (`#CPU_SERVICE_NAME=`, `#WATCHDOG_SERVICE_NAME=`, `#CUSTOM_MINER_BIN_GPU/CPU/AUX=`, the per-custom-miner override explanation, `#KERYXD_BIN=`, etc.) that the repo's copies were missing.
+
+**Fixed:** replaced both repo files with the exact content from the upload (verified byte-identical via `diff`). The repo's old `rigcontrol-agent-local.sh` also had a `KERYX_MINERX_API_HOST`/`PORT` pair (the built-from-source variant of keryx-miner) that the uploaded version doesn't include - confirmed with the user this isn't a typo, just not currently in use, and dropped per their instruction ("i can add back x version later").
+
+**Verified:** `bash -n` clean on both.
+
+## Resync from GitHub-08-20.zip
+
+**What:** user uploaded a fresh export of both GitHub repos (`RigControl` private, `RigControl-public`) to check sync. Diffing my working copy against the uploaded `RigControl-public` found that every code file from this session's work (frontend, telemetry, agent scripts) was already in sync - but several docs/scripts had drifted independently on GitHub since the last time those specific files were touched here.
+
+**Adopted from the upload as-is:**
+- `Miner-scripts/Docker-Events/README.md`, `Miner-scripts/README.md` - fixes a wrong heading in the old copy here (`# Docker Events` instead of `# Miner-scripts`) plus restructuring already done on GitHub.
+- `Miner-scripts/keryx-miner.service.sh` - newer keryx-miner release (v0.4.9-PoM) with expanded install/update notes; the old copy here was still on v0.4.2-OPoI.
+- `Miner-scripts/keryxd.service.sh` - replaced with GitHub's plain (no log-rotation) version.
+- `Miner-scripts/keryxd.service-log-output.sh` - new file, the log-rotation variant (parallels the screen/no-screen pairing pattern used elsewhere in this repo). Per the user: keep both `keryxd.service.sh` and `keryxd.service-log-output.sh` as distinct files, don't merge them, don't change either one's flags (both leave `--disable-upnp`/`--ram-scale` as commented notes rather than active flags - not touched).
+- `rigcontrol_agent/README.md` - GitHub's version replaced two screenshot-image references with actual text code blocks for the `rigcontrol-agent.conf` examples.
+- `rigcontrol_dashboard_server_pi/README.md` - picked up additional notes (docker-compose optional extras, mosquitto bridge-mode note) added independently on GitHub.
+- Removed `rigcontrol_agent/windows/__pycache__` - a stray Python bytecode cache directory, not real content.
+
+**Kept as-is (not touched):**
+- `CHANGES.md` - this file is a superset of GitHub's copy (has the most recent "Windows telemetry" entry GitHub doesn't have yet).
+- `themes/*.json` (7 files) - differ from GitHub's copies, but unrelated to any of this session's work and not part of the resync decision - flagged separately rather than guessed at.
+
+**Still open (not resolved in this pass):**
+- On GitHub, `Miner-scripts/rig-confs/` has `rig-confs--rig conf examples.txt` and `srbminer 2nd instance example.sh` sitting in the wrong place/wrong name - artifacts of extracting a "flat" delivery zip instead of the "paths" one. The correctly-placed versions (`Miner-scripts/rig-confs/rig conf examples.txt` and `Miner-scripts/srbminer 2nd instance example.sh`) already exist correctly in this working copy - GitHub needs the misplaced copies removed and replaced with these.
+- `themes/*.json` divergence not yet reconciled either direction.
+
+**Verified:** `bash -n` clean on all 3 changed/added `.sh` files; `diff -q` confirmed byte-identical match against the upload for every adopted file.
+
+## Correction: srbminer 2nd instance example.sh belongs in rig-confs/
+
+**What:** the previous entry flagged `Miner-scripts/rig-confs/srbminer 2nd instance example.sh` on GitHub as a misplaced flat-zip artifact. That was wrong - the user confirmed `Miner-scripts/rig-confs/` is the correct, intended location for it (alongside `rig conf examples.txt` and the other named rig-conf examples).
+
+**Fixed:** moved `srbminer 2nd instance example.sh` from `Miner-scripts/` to `Miner-scripts/rig-confs/` in this working copy, matching GitHub. `rig conf examples.txt` was already correctly placed in `rig-confs/` under its plain name (not the `rig-confs--` prefixed name GitHub currently has, which does look like a flat-zip naming leftover specifically on that one file - not addressed here, only the srbminer file's location was corrected).
+
+**Verified:** `bash -n` clean.
+
+## Themes: adopted GitHub's versions
+
+**What:** the 9 theme files flagged as differing in the earlier resync (`ALIEN_icons.json`, `Alien (Nostromo)-icons.json`, `Bugs Bunny (Dark).json`, `Columbo (Classic Detective).json`, `Cotton Candy-icons.json`, `Daffy Duck (Dark)-humorous.json`, `Daffy Duck (Dark).json`, `Sylvester (Money Pile).json`, `THX.json`) were left untouched pending confirmation. User confirmed both GitHub repos (`RigControl` and `RigControl-public`) already agree with each other on these files (yesterday's theme update was already pushed to both), so this working copy's older versions - which had extra button labels neither GitHub repo has - were replaced.
+
+**Fixed:** copied all 9 files from the GitHub upload as-is.
+
+**Verified:** `diff -rq` confirms the full `themes/` directory now matches GitHub exactly; `python3 -m json.tool` validated every file.
+
+## Removed remaining stale "source/" path references
+
+**What:** a full-tree grep for `source/` found 2 more stale path references beyond the one already fixed by adopting GitHub's `Docker-Events/README.md`: `Miner-scripts/Docker-Events/README.md` still referenced `source/manual_start_gpu.sh`/`source/manual_stop_gpu.sh`, and `Miner-scripts/README.md`'s platform-specific monitors table referenced `source/no-container-docker_events_monitor-vast.sh` and `source/podman_events_monitor.sh`. None of these paths exist - there's no `source/` directory anywhere in the repo.
+
+**Fixed:**
+- `Docker-Events/README.md`: `'source/manual_start_gpu.sh', 'source/manual_stop_gpu.sh'` -> `'manual_start_gpu.sh', 'manual_stop_gpu.sh' (in Miner-scripts/)`.
+- `Miner-scripts/README.md`'s table: `source/no-container-docker_events_monitor-vast.sh` -> `Docker-Events/platform-specific/no-container-docker_events_monitor-vast.sh`; `source/podman_events_monitor.sh` -> `Docker-Events/platform-specific/podman_events_monitor.sh` - the actual current locations.
+
+**Verified:** re-grepped the whole tree for `source/` afterward - the only remaining hit is unrelated prose in `themes/README.md` ("original source/license is usually lost," about Pinterest re-uploads), not a path reference.
+
+## READMEs: hardcoded GitHub URLs converted to relative links
+
+**What:** every README's "Get started" and image links hardcoded `https://github.com/greenfirn/RigControl#get-started` or `.../RigControl-public#get-started` (and similarly for image blob URLs). Both `RigControl` and `RigControl-public` are real, separate repos, and the same README file lives in both, so a hardcoded link to one repo name is wrong when viewed from the other.
+
+**Fixed:** converted all 17 occurrences across 9 README files to relative links instead (`../README.md#get-started`, `../../README.md#get-started` for the 2-levels-deep `Docker-Events/README.md`, and `../images/...png` for image blobs) so every link resolves identically no matter which repo/mirror it's viewed from.
+
+**Verified:** a Python script resolved every relative link against the actual file tree - all clear.
+
+## READMEs: bare filename mentions converted to clickable links
+
+**What:** most READMEs referenced script/config filenames as plain quoted text (`'rigcontrol-agent-local.sh'`) instead of as clickable markdown links, and a full audit surfaced several stale/wrong filenames left over from earlier reorganizations.
+
+**Fixed:**
+- Converted bare-quoted filenames to `[name](relative/path)` links across `rigcontrol_agent/README.md`, `Miner-scripts/README.md`, `Miner-scripts/Docker-Events/README.md`, `Miner-scripts/rig-confs/README.md`, `Notify/README.md`, and `rigcontrol_dashboard_server_windows/README.md`.
+- `Miner-scripts/README.md`: fixed a broken link target (`no-container-docker_events_monitor--no-screen-log.sh` -> the actual `...-aux-FIXED.sh` file) and a wrong `py-nvtool` filename (`py-nvtool.txt` -> `py-nvtool-install-usage.txt`, same fix already applied to `Docker-Events/README.md` earlier).
+- `Fan-control/README.md`: fixed 4 occurrences of a wrong filename, `fan-curve_service.sh` (underscore) -> the real `fan-curve.service.sh` (dot), and linked the Files table's real repo files (`nvtool.py`, `fan_curve.sh`, `install_fan-curve.sh`, `fan-curve.service.sh`). Left `fan_curve.py`/`fan-curve.service` as plain code text (not links) since those are deploy-time filenames written into `/usr/local/bin/` or `/etc/systemd/system/` by the scripts, not files that exist in the repo - added a short note to the table clarifying which script writes each.
+- `rigcontrol_dashboard_server_windows/README.md`: fixed `accessKeys.csv` -> `accessKeys.csv.example` (the actual file; matches the existing `.env.example` rename-after-download pattern).
+- Removed `'keryx-dummy-cpu-service.sh'` from `Docker-Events/README.md` and `'nosana_monitor-1.sh'` from `Miner-scripts/README.md`'s platform table - neither file exists anywhere in the repo and the user confirmed to drop them (Nosana/Podman row now points only at the real `podman_events_monitor.sh`).
+- `run.bat` (referenced 3x in `rigcontrol_dashboard_server_windows/README.md`) also doesn't exist in the repo - left as plain text, not yet resolved.
+
+**Verified:** re-ran the link-resolution script across all `.md` files in the repo after every batch of edits - 0 broken links at final check.
+
+## Docker-Events / Miner-scripts READMEs: added missing `--no-screen` script variants
+
+**What:** the user pointed out `Miner-scripts/Docker-Events/platform-specific/` has `--no-screen` variants for clore, vast, and podman that weren't mentioned in either README - only the screen-session versions were referenced. This is also why the earlier removed `'nosana_monitor-1.sh'` reference existed in the first place - it was a stale/wrong name for what should have pointed at the real `podman_events_monitor--no-screen.sh`.
+
+**Fixed:** added links for `podman_events_monitor--no-screen.sh`, `no-container-docker_events_monitor--no-screen-clore.sh`, and `no-container-docker_events_monitor--no-screen-vast.sh` alongside their existing screen-session counterparts in both `Miner-scripts/README.md`'s platform table and `Miner-scripts/Docker-Events/README.md`'s notes.
+
+**Verified:** re-ran the link-resolution script - 0 broken links.
+
+## READMEs: root-relative links converted to genuine relative paths
+
+**What:** 7 links across `Miner-scripts/README.md`, `Miner-scripts/Docker-Events/README.md`, `rigcontrol_agent/README.md`, and `rigcontrol_dashboard_server_windows/README.md` used a leading-slash "root-relative" path (e.g. `/py-nvtool/py-nvtool-install-usage.txt`, `/images/Screenshot-test-windows.png`). These render fine on github.com (GitHub resolves a leading `/` against whichever repo is currently being browsed), but the user flagged one rendering as a hardcoded `github.com/greenfirn/RigControl/blob/main/...` URL - and a leading-slash path isn't portable outside GitHub's renderer (local markdown viewers, other git hosts, or a plain file browser would treat it as an absolute filesystem path and break).
+
+**Fixed:** converted all 7 to genuine dot-relative paths (`../py-nvtool/...`, `../images/...`, `Docker-Events/no-container-...`, etc.) computed from each file's actual location, matching the style already used for the "Get started" links. Also clarified the py-nvtool note in `Miner-scripts/README.md` to explicitly say "not Fan-control/py-nvtool/" since two folders share that name.
+
+**Verified:** re-ran the link-resolution script and a separate check for any remaining leading-slash links - 0 broken links, 0 root-relative links left.
+
+## README links: label text trimmed to just the filename
+
+**What:** the platform-specific monitors table in `Miner-scripts/README.md` and the two `py-nvtool-install-usage.txt` links were using the full relative path as the visible link text (e.g. `[Docker-Events/platform-specific/podman_events_monitor.sh](...)`), making the table cramped and harder to scan.
+
+**Fixed:** shortened every link's visible label to just the filename (`[podman_events_monitor.sh](...)`), keeping the full path only in the link target. Applied to the VastAI/Nosana-Podman table rows in `Miner-scripts/README.md` and the `py-nvtool-install-usage.txt` links in both `Miner-scripts/README.md` and `Miner-scripts/Docker-Events/README.md`.
+
+**Verified:** re-ran the link-resolution script plus a check for any remaining link label containing a `/` - 0 broken links, 0 path-containing labels left.
+
+## py-nvtool link: dropped the redundant disambiguation note
+
+**What:** the `py-nvtool-install-usage.txt` links in `Miner-scripts/README.md` and `Miner-scripts/Docker-Events/README.md` carried a `(repo-root py-nvtool/, not Fan-control/py-nvtool/)` note added when the reference was still plain text. Now that it's a working relative link, the target path itself (`../py-nvtool/...` vs `Fan-control/py-nvtool/...`) already makes clear which folder it points to - the note was redundant clutter.
+
+**Fixed:** removed the parenthetical from both mentions.
+
+**Verified:** link-resolution script still 0 broken links.

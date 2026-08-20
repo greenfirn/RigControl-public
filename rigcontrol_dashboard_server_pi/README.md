@@ -1,4 +1,4 @@
-[Get started](https://github.com/greenfirn/RigControl#get-started)
+[Get started](../README.md#get-started)
 
 website host/backend, mqtt, caddy
 

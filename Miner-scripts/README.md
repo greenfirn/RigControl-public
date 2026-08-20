@@ -1,4 +1,4 @@
-[Get started](https://github.com/greenfirn/RigControl#get-started)
+[Get started](../README.md#get-started)
 
 # Miner-scripts
 
@@ -29,14 +29,14 @@ sudo systemctl start docker_events_gpu.service
   
 ## Notes
 
--- [no-container-docker_events_monitor--LATEST-log.sh](/Miner-scripts/Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) is best for keryx-miner with screen session and logs --
+-- [no-container-docker_events_monitor--LATEST-log.sh](Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) is best for keryx-miner with screen session and logs --
 
--- [no-container-docker_events_monitor--no-screen-log.sh](/Miner-scripts/Docker-Events/no-container-docker_events_monitor--no-screen-log.sh) --
+-- [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](Docker-Events/no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh) --
 
 * most recent updated, others may not work as is
 * naming/layout may have changed for clore, nosana, etc
  
--- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see 'py-nvtool/py-nvtool.txt' for nvtool oc control --
+-- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
 
 - may need 'sudo apt install unzip' for custom miner zip archieves
 
@@ -55,8 +55,8 @@ sudo systemctl start docker_events_gpu.service
 
 | Platform | Script | `TARGET_NAME` |
 |---|---|---|
-| VastAI (CPU mining only, testing) | `source/no-container-docker_events_monitor-vast.sh` | `vast` |
-| Nosana / Podman (testing) | `nosana_monitor-1.sh`, `source/podman_events_monitor.sh` | `podman` |
+| VastAI (CPU mining only, testing) | [no-container-docker_events_monitor--no-screen-vast.sh](Docker-Events/platform-specific/no-container-docker_events_monitor--no-screen-vast.sh), [no-container-docker_events_monitor-vast.sh](Docker-Events/platform-specific/no-container-docker_events_monitor-vast.sh) | `vast` |
+| Nosana / Podman (testing) | [podman_events_monitor--no-screen.sh](Docker-Events/platform-specific/podman_events_monitor--no-screen.sh), [podman_events_monitor.sh](Docker-Events/platform-specific/podman_events_monitor.sh) | `podman` |
 
 > VastAI Note: gpu idle mining not possible using this method, will interfere with benchmarking... a short server test seems to run around benchmark time — likely the platform confirming host specs.
 

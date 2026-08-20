@@ -1,13 +1,13 @@
-[Get started](https://github.com/greenfirn/RigControl#get-started)
+[Get started](../README.md#get-started)
 
 Alien...
-![Screenshot-wp-alien.png](https://github.com/greenfirn/RigControl/blob/main/images/Screenshot-wp-alien.png)
+![Screenshot-wp-alien.png](../images/Screenshot-wp-alien.png)
 
 Phantom Menace...
-![phantom-menace](https://github.com/greenfirn/RigControl/blob/main/images/Screenshot-wp-phantom-menace.png)
+![phantom-menace](../images/Screenshot-wp-phantom-menace.png)
 
 X-Files...
-![x-files](https://github.com/greenfirn/RigControl/blob/main/images/Screenshot-wp-x-files.png)
+![x-files](../images/Screenshot-wp-x-files.png)
 
 # RigControl Dashboard Theme Assets
 

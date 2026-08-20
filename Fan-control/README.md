@@ -1,4 +1,4 @@
-[Get started](https://github.com/greenfirn/RigControl#get-started)
+[Get started](../README.md#get-started)
 
 -- service status, log -- developed with help from and description by claude.ai
 
@@ -28,12 +28,12 @@ the GPU is idle or fully loaded.
 
 | File | Purpose |
 |---|---|
-| `nvtool.py` | Python NVML bindings + a small standalone CLI (query/set clocks, power limit, fan speed per GPU). Imported as a library by `fan_curve.py`. |
-| `fan_curve.py` | The fan curve daemon. Polls GPU temps on an interval and drives fan speed via NVML according to a configurable temp→fan% curve. |
-| `fan-curve.service` | systemd unit to run the daemon on boot, with clean shutdown (resets fans to AUTO on stop). |
-| `install_fan-curve.sh` | One-time full setup for a new rig: writes `fan_curve.py` and `fan-curve.service`, enables and starts the service. |
-| `fan_curve.sh` | Standalone script that just (re)writes `/usr/local/bin/fan_curve.py`. Re-run this alone when the daemon's Python logic changes, without touching the service config. |
-| `fan-curve_service.sh` | Standalone script that just (re)writes `fan-curve.service` and reloads/restarts it. Re-run this alone to tweak `--curve`, `--hysteresis`, `--cooldown-*`, etc. per rig. |
+| [nvtool.py](py-nvtool/nvtool.py) | Python NVML bindings + a small standalone CLI (query/set clocks, power limit, fan speed per GPU). Imported as a library by `fan_curve.py`. |
+| `fan_curve.py` | The fan curve daemon. Polls GPU temps on an interval and drives fan speed via NVML according to a configurable temp→fan% curve. (written to `/usr/local/bin/` by [fan_curve.sh](py-nvtool/fan_curve.sh)) |
+| `fan-curve.service` | systemd unit to run the daemon on boot, with clean shutdown (resets fans to AUTO on stop). (written by [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) or [fan-curve.service.sh](py-nvtool/fan-curve.service.sh)) |
+| [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) | One-time full setup for a new rig: writes `fan_curve.py` and `fan-curve.service`, enables and starts the service. |
+| [fan_curve.sh](py-nvtool/fan_curve.sh) | Standalone script that just (re)writes `/usr/local/bin/fan_curve.py`. Re-run this alone when the daemon's Python logic changes, without touching the service config. |
+| [fan-curve.service.sh](py-nvtool/fan-curve.service.sh) | Standalone script that just (re)writes `fan-curve.service` and reloads/restarts it. Re-run this alone to tweak `--curve`, `--hysteresis`, `--cooldown-*`, etc. per rig. |
 
 ## Requirements
 
@@ -60,7 +60,7 @@ sudo cp -v /home/user/nvtool.py /usr/local/bin/nvtool.py
 
 ```
 
-`fan-curve_service.sh` rewrites the systemd unit and reloads/restarts it —
+[fan-curve.service.sh](py-nvtool/fan-curve.service.sh) rewrites the systemd unit and reloads/restarts it —
 edit the `--curve` (and other flags) in that script before running it.
 
 ## Usage - manual testing
@@ -89,11 +89,11 @@ back up in the meantime. Fan *increases* are always applied instantly, no delay.
 
 ### Editing the fan curve
 
-The curve is set in `fan-curve_service.sh`'s `ExecStart` line. Edit the `--curve`
+The curve is set in [fan-curve.service.sh](py-nvtool/fan-curve.service.sh)'s `ExecStart` line. Edit the `--curve`
 value in that script, then re-run it:
 
 ```bash
-sudo bash fan-curve_service.sh
+sudo bash fan-curve.service.sh
 
 ```
 
