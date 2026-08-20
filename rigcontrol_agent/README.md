@@ -50,6 +50,11 @@ AUX_SERVICE_NAME=keryxd.service
 #CUSTOM_MINER_BIN_GPU=/opt/miners/my-custom-miner/current/my-custom-miner
 #CUSTOM_MINER_BIN_CPU=/opt/miners/my-custom-miner/current/my-custom-miner
 CUSTOM_MINER_BIN_AUX=/opt/miners/keryx-node/keryxd
+# Per-custom-miner overrides, keyed by the miner's own name (from CUSTOM_MINER
+# in rig-gpu/cpu/aux.conf or .json, sanitized to A-Z0-9_) - <NAME>_BIN for the
+# binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API,
+# or <NAME>_LOG_PATH for log scraping (<NAME>_LOG_STYLE=blocks for
+# keryxd-style "Accepted N blocks" counting instead of generic hashrate scraping)
 KERYXD_LOG_PATH=/tmp/keryxd.log
 KERYXD_LOG_STYLE=blocks
 #KERYX_MINER_API_HOST=127.0.0.1
