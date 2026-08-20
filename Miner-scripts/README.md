@@ -43,7 +43,7 @@ sudo systemctl start docker_events_gpu.service
 ## What the scripts can do
 
 - Watch Docker/Podman container events on a rig and automatically start/stop mining and/or apply overclocks based on container state — Clore, Octaspace, Nosana (Podman), VastAI (CPU mining only, testing)
-- more recent files in source, easiest to use 'no-container-docker_events_monitor'
+- easiest to use 'no-container-docker_events_monitor'
 - Start/stop mining when no containers are running / when an active idle container appears or disappears
 - Apply or reset GPU overclocks based on container state
 - for testing: start, stop, or pause an idle job on platform, watch logs etc to confirm expected behavior
