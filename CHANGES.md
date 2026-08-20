@@ -396,3 +396,19 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Fixed:** wrote `migrate_flightsheets_to_json.bat` from scratch (no original recovered), modeled directly on `rename_flightsheet_conf_paths.bat`'s exact structure - DB_PATH/SCRIPT_PATH variables, existence checks, dry-run first, y/N confirm before writing - but wired to `migrate_flightsheets_to_json.py`'s actual CLI (`--list` to classify, `--show-diff` for the dry-run preview, `--apply` to write, matching its real argparse interface rather than guessing flag names).
 
 **Deliberately not done:** did not add a `migration-helper-scripts/` folder or `rename_flightsheet_conf_paths.py`/`.bat` to the repo - user confirmed these are one-off/personal migration tools not meant for the tracked repo, not a missing-file gap to fix.
+
+## app.js: handled the offline_threshold_changed WebSocket broadcast
+
+**What:** the user shared a browser console screenshot from a fresh Windows dashboard server install showing `WebSocket: Unexpected message format: (4) ['offline_threshold_changed', 'old_threshold', 'new_threshold', 'timestamp']`. That log line is `console.warn('WebSocket: Unexpected message format:', Object.keys(msg))` - so the warning was printing the message's key names, not a malformed payload. Checked `rigcontrol_dashboard_server.py` and confirmed the server broadcasts a well-formed object (`{offline_threshold_changed: true, old_threshold, new_threshold, timestamp}`) whenever the offline threshold setting changes - `app.js`'s WebSocket `onmessage` handler just had no branch for it (only `status_log_event`, `rigs`, and `interval_changed` were handled), so every legitimate broadcast fell through to the "unexpected format" warning.
+
+**Fixed:** added a `msg.offline_threshold_changed` branch to the `onmessage` dispatcher and a new `handleOfflineThresholdChangeNotification()` function, mirroring the existing `handleIntervalChangeNotification()` pattern exactly: updates `localStorage.offlineThreshold` and the `#offline-threshold` input (both already used elsewhere in `app.js`), guarded by the same `#refresh-modal` visibility check so it won't stomp on a value the user is actively editing in the Settings tab (the offline-threshold input lives in that same modal).
+
+**Verified:** `node --check` clean on `app.js`.
+
+## app.js: handled the offline_ping_interval_changed WebSocket broadcast too
+
+**What:** same "Unexpected message format" warning showed up again for a second broadcast type, `offline_ping_interval_changed`. Grepped the server for every `"*_changed": True` broadcast to check there weren't more: only 3 exist total (`interval_changed`, `offline_threshold_changed`, `offline_ping_interval_changed`) - the first two were now handled, this was the last unhandled one.
+
+**Fixed:** added a `msg.offline_ping_interval_changed` branch and `handleOfflinePingIntervalChangeNotification()`, same pattern as the other two - updates `localStorage.offlinePingInterval` and the `#offline-ping-interval` input, guarded by the same `#refresh-modal` visibility check.
+
+**Verified:** `node --check` clean; confirmed via grep that all 3 server-side `_changed` broadcast types now have a matching `app.js` handler, none left falling through to the warning.

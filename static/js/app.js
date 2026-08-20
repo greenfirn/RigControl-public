@@ -3246,6 +3246,14 @@ function initWebSocket() {
                     handleIntervalChangeNotification(msg);
                     return;
                 }
+                if (msg.offline_threshold_changed) {
+                    handleOfflineThresholdChangeNotification(msg);
+                    return;
+                }
+                if (msg.offline_ping_interval_changed) {
+                    handleOfflinePingIntervalChangeNotification(msg);
+                    return;
+                }
                 console.warn('WebSocket: Unexpected message format:', Object.keys(msg));
             } catch (e) {
                 console.error('WebSocket: Parse error:', e);
@@ -5473,6 +5481,30 @@ function handleIntervalChangeNotification(msg) {
         }
         localStorage.setItem("refreshInterval", currentInterval.toString());
         updateRefreshTimerUI();
+    }
+}
+function handleOfflineThresholdChangeNotification(msg) {
+    if (msg.offline_threshold_changed) {
+        const modal = document.getElementById("refresh-modal");
+        const userIsEditing = modal && !modal.classList.contains("hidden");
+        console.log(`Server offline threshold changed from ${msg.old_threshold}s to ${msg.new_threshold}s`);
+        localStorage.setItem("offlineThreshold", msg.new_threshold.toString());
+        const offlineThresholdInput = document.getElementById("offline-threshold");
+        if (!userIsEditing && offlineThresholdInput) {
+            offlineThresholdInput.value = msg.new_threshold;
+        }
+    }
+}
+function handleOfflinePingIntervalChangeNotification(msg) {
+    if (msg.offline_ping_interval_changed) {
+        const modal = document.getElementById("refresh-modal");
+        const userIsEditing = modal && !modal.classList.contains("hidden");
+        console.log(`Server offline ping interval changed from ${msg.old_interval}s to ${msg.new_interval}s`);
+        localStorage.setItem("offlinePingInterval", msg.new_interval.toString());
+        const offlinePingInput = document.getElementById("offline-ping-interval");
+        if (!userIsEditing && offlinePingInput) {
+            offlinePingInput.value = msg.new_interval;
+        }
     }
 }
 async function sendCommandToSelectedRigs(command) {
