@@ -2,6 +2,11 @@
 
 website host/backend, mqtt, caddy
 
+docker-compose: note needed extras
+- homeassistant:
+- nodered:
+- zigbee2mqtt:
+
 # IMPORTANT 
 
 create database files,config.json before first run:
