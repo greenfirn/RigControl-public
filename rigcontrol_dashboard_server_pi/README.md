@@ -7,7 +7,7 @@ docker-compose.yml: note needed extras
 - nodered:
 - zigbee2mqtt:
 
-/mosquitto/config/conf.d/bridge-windows.conf - [mosquitto-bridge mode.txt](mosquitto-bridge%20mode.txt)
+[bridge-windows.conf](mosquitto/config/conf.d/bridge-windows.conf) - [mosquitto-bridge mode.txt](mosquitto-bridge%20mode.txt)
 - forwards mqtt data to another mqtt broker on windows for development/testing a dashboard server on windows
 
 # IMPORTANT 
