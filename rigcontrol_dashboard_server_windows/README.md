@@ -20,7 +20,7 @@
 
 6. download/replace latest [index.html](../static/index.html), [landing.html](../static/landing.html), [app.js](../static/js/app.js), [app.css](../static/css/app.css) from static locations
 
-7. download the other needed files: [.env.example](.env.example), [requirements.txt](requirements.txt), [rigcontrol_dashboard_server.py](rigcontrol_dashboard_server.py), [rigcontrol_config.json](rigcontrol_config.json), 'run.bat'
+7. download the other needed files: [.env.example](.env.example), [requirements.txt](requirements.txt), [rigcontrol_dashboard_server.py](rigcontrol_dashboard_server.py), [rigcontrol_config.json](rigcontrol_config.json), [run.bat](run.bat)
 
 (.env.example rename back to .env once downloaded)
 
