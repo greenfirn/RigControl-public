@@ -39,8 +39,7 @@ no screen verion:
 - [no-docker_launcher--no-screen-aux-FIXED.sh](no-docker_launcher--no-screen-aux-FIXED.sh)
 - [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](Docker-Events/no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh)
 
-* most recent updated, others may not work as is
-* naming/layout may have changed for clore, nosana, etc
+* naming/layout may have changed for platform specific clore, nosana, etc
  
 -- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
 
