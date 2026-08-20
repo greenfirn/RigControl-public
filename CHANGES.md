@@ -155,3 +155,11 @@ Overwriting the files alone does nothing - the running Python process doesn't ho
 **Fixed:** added the option/label/command-builder/no-lines-input entry in the 4 places every other `.conf` type appears - `static/index.html`'s `<select id="logs-type-select">`, and `static/js/app.js`'s `LOGS_TYPE_LABELS`, `LOGS_TYPES_WITHOUT_LINES`, `LOGS_COMMAND_BUILDERS`. Placed next to `watchdog.svclog`, matching the pairing pattern used for the cpu/gpu/aux slots and `agent.conf`/`agent.svclog`.
 
 **Verified:** `node --check` clean on `app.js`; diffed the dropdown's option values against `LOGS_TYPE_LABELS` and `LOGS_COMMAND_BUILDERS` keys - all 21 entries match exactly in both directions (no dropdown option without a label/builder, no label/builder without a dropdown option).
+
+## Logs / Config: added Fan curve conf
+
+**What:** matching the Watchdog conf addition above, `fancurve.svclog` (journalctl of `fan-curve.service`) had no config-viewing counterpart. Unlike the watchdog/cpu/gpu/aux slots, the fan curve has no separate `/etc/rigcontrol/*.conf` file - its curve points live directly in the `ExecStart=` line of `/etc/systemd/system/fan-curve.service` (`Fan-control/py-nvtool/fan-curve.service.sh` writes it there, edited per-rig by hand per that script's own comment).
+
+**Fixed:** added `fancurve.conf` -> `cat /etc/systemd/system/fan-curve.service` in the same 4 places (`static/index.html`'s dropdown, `LOGS_TYPE_LABELS`, `LOGS_TYPES_WITHOUT_LINES`, `LOGS_COMMAND_BUILDERS`), placed next to `fancurve.svclog`. Used `cat` rather than `tail` - the unit file is ~44 lines and `tail`'s default 10-line window would risk cutting off the `ExecStart` curve line depending on exact length, while `cat` always shows the whole thing.
+
+**Verified:** `node --check` clean; dropdown options vs `LOGS_TYPE_LABELS`/`LOGS_COMMAND_BUILDERS` keys diffed again - still an exact match in both directions (22 entries now).

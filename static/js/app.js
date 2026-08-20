@@ -884,13 +884,14 @@ const LOGS_TYPE_LABELS = {
     "agent.svclog": "Agent log",
     "watchdog.conf": "Watchdog conf",
     "watchdog.svclog": "Watchdog log",
+    "fancurve.conf": "Fan curve conf",
     "fancurve.svclog": "Fan curve log",
     "sys.nvidiasmi": "nvidia-smi",
     "sys.rocmsmi": "rocm-smi",
     "sys.df": "Disk usage (df -h)",
     "sys.top": "Processes (ps, by CPU)",
 };
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "watchdog.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "watchdog.conf", "fancurve.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
 const LOGS_TYPES_PRESERVE_SCROLL = new Set(["sys.top"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
@@ -909,6 +910,7 @@ const LOGS_COMMAND_BUILDERS = {
     "agent.svclog": (n) => `journalctl -u rigcontrol-agent.service -n ${n} --no-pager`,
     "watchdog.conf": () => "cat /etc/rigcontrol/rigcontrol-watchdog.conf",
     "watchdog.svclog": (n) => `journalctl -u "$WATCHDOG_SERVICE_NAME" -n ${n} --no-pager`,
+    "fancurve.conf": () => "cat /etc/systemd/system/fan-curve.service",
     "fancurve.svclog": (n) => `journalctl -u fan-curve.service -n ${n} --no-pager`,
     "sys.nvidiasmi": () => "nvidia-smi",
     "sys.rocmsmi": () => "rocm-smi",
