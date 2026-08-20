@@ -31,12 +31,12 @@ sudo systemctl start docker_events_gpu.service
 
 best for keryx-miner with screen session and logs:
 
-- [no-docker_launcher.sh](Miner-scripts/no-docker_launcher.sh)
+- [no-docker_launcher.sh](no-docker_launcher.sh)
 - [no-container-docker_events_monitor--LATEST-log.sh](Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) 
 
 no screen verion:
 
-- [no-docker_launcher.sh](Miner-scripts/no-docker_launcher.sh)
+- [no-docker_launcher--no-screen-aux-FIXED.sh](no-docker_launcher--no-screen-aux-FIXED.sh)
 - [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](Docker-Events/no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh)
 
 * most recent updated, others may not work as is
