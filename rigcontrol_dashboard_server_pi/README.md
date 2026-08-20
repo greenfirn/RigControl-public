@@ -2,7 +2,7 @@
 
 website host/backend, mqtt, caddy
 
-docker-compose.yml: note needed extras
+[docker-compose.yml](docker-compose.yml) not needed extras:
 - homeassistant:
 - nodered:
 - zigbee2mqtt:
