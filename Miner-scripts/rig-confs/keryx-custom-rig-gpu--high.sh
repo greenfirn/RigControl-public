@@ -14,7 +14,7 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
         "template": "",
         "miner": "keryx-miner",
         "install_url": "https://github.com/Keryx-Labs/keryx-miner/releases/download/v0.5.0-PoM/keryx-miner-v0.5.0-PoM-linux-amd64.zip",
-        "user_config": "--resident-tree --models-dir /opt/miners/models --escrow-key-file /opt/miners/escrow.key --mining-address %WAL% --keryxd-address %URL%",
+        "user_config": "--high --resident-tree --models-dir /opt/miners/models --escrow-key-file /opt/miners/escrow.key --mining-address %WAL% --keryxd-address %URL%",
         "wallet_address": "keryx:***********"
       },
       "pool_urls": [
