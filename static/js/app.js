@@ -7386,14 +7386,23 @@ function fsMinerVersionKey(minerName) {
 // how the rig-side agent expects MINERNAME_VERSION "x.y.z" entries. No-op
 // (returns blockText unchanged) when the version field is left blank.
 function fsApplyVersionBlock(blockText, version, minerName) {
-    const v = (version || "").trim();
+    const v = (version || "").trim().replace(/'/g, "");
     if (!v) return blockText;
-    const key = fsMinerVersionKey(minerName);
+    const key = `${fsMinerVersionKey(minerName)}_VERSION`;
+    const line = `${key} "${v}"`;
+    // Updates just this miner's line in /etc/rigcontrol/miner.conf in place
+    // (via sed) if it's already there, or appends it if not - other
+    // miners' version lines in the file are left untouched, unlike a
+    // `tee`-based full-file overwrite.
+    const sedReplacement = line.replace(/[\\/&]/g, "\\$&");
     const confBlock =
         "sudo mkdir -p /etc/rigcontrol\n" +
-        "sudo tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'\n" +
-        `${key}_VERSION "${v}"\n` +
-        "EOF";
+        "sudo touch /etc/rigcontrol/miner.conf\n" +
+        `if sudo grep -q '^${key} ' /etc/rigcontrol/miner.conf; then\n` +
+        `    sudo sed -i 's/^${key} .*/${sedReplacement}/' /etc/rigcontrol/miner.conf\n` +
+        "else\n" +
+        `    echo '${line}' | sudo tee -a /etc/rigcontrol/miner.conf > /dev/null\n` +
+        "fi";
     return `${confBlock}\n${blockText}`;
 }
 function buildFsBlock(mode) {
