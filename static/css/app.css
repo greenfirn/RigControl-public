@@ -5506,6 +5506,6 @@ body.layout-left .rig-header {
    Scoping display:none to only while still a child of #fs-fields-panel means
    they simply reappear, fully visible, once the JS relocates them into the
    modal - no extra show/hide bookkeeping needed. */
-#fs-fields-panel > .fs-mc-portal-hidden {
+#fs-fields-panel .fs-mc-portal-hidden {
     display: none;
 }

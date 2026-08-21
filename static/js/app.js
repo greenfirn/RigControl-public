@@ -6222,8 +6222,8 @@ let fsMinerConfigFork = "";
 let fsXmrigOcJsonUserConfig = "";
 let fsXmrigCpuConfigJson = "";
 let fsMinerConfigOriginal = null;
-let fsPoolUrlToken = "";
-let fsPoolUrlNeedsToken = false;
+let fsPoolUrlToken = "%URL%";
+let fsPoolUrlNeedsToken = true;
 let fsRigGpuItemOriginal = null;
 let fsMinerRawOriginal = "";
 let fsDualModeActive = false;
@@ -6399,8 +6399,8 @@ function clearFsFields() {
     fsXmrigOcJsonUserConfig = "";
     fsXmrigCpuConfigJson = "";
     fsMinerConfigOriginal = null;
-    fsPoolUrlToken = "";
-    fsPoolUrlNeedsToken = false;
+    fsPoolUrlToken = "%URL%";
+    fsPoolUrlNeedsToken = true;
     fsRigGpuItemOriginal = null;
     fsMinerRawOriginal = "";
     fsDualModeActive = false;
@@ -6416,6 +6416,8 @@ function clearFsFields() {
         const el = document.getElementById(id);
         if (el) el.checked = false;
     }
+    const poolTokenEl = document.getElementById("fs-mc-pool-token");
+    if (poolTokenEl) poolTokenEl.value = "%URL%";
 }
 let managePoolsDialogMode = "flightsheet";
 const FS_POOLS_DIALOG_SIZE_KEY_FLIGHTSHEET = "rigcontrol_fs_pools_dialog_size_flightsheet";
@@ -6574,7 +6576,30 @@ function buildRigGpuItemObject(values, stash) {
         poolUrl = poolUrl.slice("stratum+tcp://".length);
     }
     if (poolUrls.length > 0) poolUrls[0] = poolUrl;
-    const resolvedMinerUrl = (!isCustom && stash.fsPoolUrlNeedsToken) ? stash.fsPoolUrlToken : poolUrl;
+    const poolUrlOverrideRaw = (stash.fsPoolUrlToken || "").trim();
+    const hasLiteralPoolOverride = !isCustom && poolUrlOverrideRaw !== "" && poolUrlOverrideRaw !== "%URL%";
+    let resolvedMinerUrl;
+    if (isCustom) {
+        resolvedMinerUrl = poolUrl;
+    } else if (hasLiteralPoolOverride) {
+        // An explicit literal pool typed into the Miner Config modal overrides
+        // the pool entirely - no backup/failover pools are sent, matching the
+        // "ignores pool list" behavior requested for a hand-set pool address.
+        let overrideUrl = poolUrlOverrideRaw;
+        if (overrideUrl.startsWith("stratum+ssl://")) {
+            poolSsl = true;
+            overrideUrl = overrideUrl.slice("stratum+ssl://".length);
+        } else if (overrideUrl.startsWith("stratum+tcp://")) {
+            poolSsl = false;
+            overrideUrl = overrideUrl.slice("stratum+tcp://".length);
+        }
+        poolUrls = [overrideUrl];
+        resolvedMinerUrl = overrideUrl;
+    } else {
+        // Default "%URL%" token: resolved at deploy time from the full
+        // pool_urls list below, backups included.
+        resolvedMinerUrl = "%URL%";
+    }
     const minerConfig = {
         ...(stash.fsMinerConfigOriginal ? stash.fsMinerConfigOriginal : {}),
         url: resolvedMinerUrl,
@@ -7466,8 +7491,8 @@ function resetFsFieldInputsForNewSlot() {
     fsXmrigOcJsonUserConfig = "";
     fsXmrigCpuConfigJson = "";
     fsMinerConfigOriginal = null;
-    fsPoolUrlToken = "";
-    fsPoolUrlNeedsToken = false;
+    fsPoolUrlToken = "%URL%";
+    fsPoolUrlNeedsToken = true;
     fsRigGpuItemOriginal = null;
     fsMinerRawOriginal = "";
     refreshFsPoolFieldDisplay();
@@ -7481,6 +7506,11 @@ function resetFsFieldInputsForNewSlot() {
         const el = document.getElementById(id);
         if (el) el.checked = false;
     }
+    syncFsMcPoolTokenField();
+}
+function syncFsMcPoolTokenField() {
+    const el = document.getElementById("fs-mc-pool-token");
+    if (el) el.value = fsPoolUrlToken || "%URL%";
 }
 function handleFsServiceSwitch(newServiceRaw) {
     const rawNewService = (newServiceRaw || "").trim().toLowerCase();
@@ -7504,6 +7534,7 @@ function handleFsServiceSwitch(newServiceRaw) {
         applyFsFieldValuesToForm(targetSlot.values);
         refreshFsPoolFieldDisplay();
         updateManagePoolsBtnLabel();
+        syncFsMcPoolTokenField();
     } else {
         resetFsFieldInputsForNewSlot();
     }
@@ -7594,7 +7625,6 @@ function openFsMinerConfigModal() {
     if (!modal) return;
     fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-algo"), "fs-mc-slot-algo");
     fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-template"), "fs-mc-slot-wallet");
-    fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-pool"), "fs-mc-slot-pool");
     fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-pass"), "fs-mc-slot-pass");
     fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-args"), "fs-mc-slot-args");
     fsMcMoveIntoSlot(document.getElementById("fs-custom-miner-row"), "fs-mc-slot-custom");
@@ -7615,6 +7645,7 @@ function openFsMinerConfigModal() {
     updateFsMinerConfigTitle();
     updateFsMinerConfigCustomVisibility();
     fsMcSetActiveTab(getCurrentFsServiceType());
+    syncFsMcPoolTokenField();
     modal.classList.remove("hidden");
 }
 function closeFsMinerConfigModal() {
@@ -7635,6 +7666,7 @@ function fsMcCancel() {
         if (serviceTypeEl) serviceTypeEl.value = fsMcCancelSnapshot.liveValues.SERVICE_TYPE || "gpu";
         refreshFsPoolFieldDisplay();
         updateManagePoolsBtnLabel();
+        syncFsMcPoolTokenField();
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             rawEl.value = fsMcCancelSnapshot.rawValue;
@@ -7736,9 +7768,11 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
         : null;
     {
         const origUrlRaw = (jsonItem.miner_config || {}).url;
-        const origUrl = typeof origUrlRaw === "string" ? origUrlRaw : "";
-        fsPoolUrlNeedsToken = jsonItem.miner !== "custom" && (origUrl === "" || origUrl === "%URL%");
-        fsPoolUrlToken = fsPoolUrlNeedsToken ? origUrl : "";
+        const origUrlTrimmed = typeof origUrlRaw === "string" ? origUrlRaw.trim() : "";
+        fsPoolUrlToken = origUrlTrimmed !== "" ? origUrlTrimmed : "%URL%";
+        fsPoolUrlNeedsToken = fsPoolUrlToken === "%URL%";
+        const poolTokenEl = document.getElementById("fs-mc-pool-token");
+        if (poolTokenEl) poolTokenEl.value = fsPoolUrlToken;
     }
     fsRigGpuItemOriginal = (() => {
         const clone = JSON.parse(JSON.stringify(jsonItem));
@@ -7822,6 +7856,7 @@ function populateFsFieldsFromRaw(rawText) {
             applyFsFieldValuesToForm(savedValues);
             refreshFsPoolFieldDisplay();
             updateManagePoolsBtnLabel();
+            syncFsMcPoolTokenField();
         }
         if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
             const rawEl = document.getElementById("fs-raw");
@@ -10972,6 +11007,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("fs-miner-config-modal")?.addEventListener("input", (e) => {
         updateRawFromFieldChange(e.target);
     });
+    // fs-mc-pool-token isn't a live-bound flightsheet field (it mirrors
+    // miner_config.url, not pool_urls), so it needs its own listener: update
+    // the stash var directly, then piggyback on the real POOL field's id to
+    // trigger the shared JSON-rebuild path in updateRawFromFieldChange.
+    document.getElementById("fs-mc-pool-token")?.addEventListener("input", (e) => {
+        fsPoolUrlToken = e.target.value;
+        const poolEl = document.getElementById("fs-field-pool");
+        if (poolEl) updateRawFromFieldChange(poolEl);
+    });
     document.getElementById("fs-field-miner")?.addEventListener("input", () => {
         if (!document.getElementById("fs-miner-config-modal")?.classList.contains("hidden")) {
             updateFsMinerConfigTitle();
@@ -11022,8 +11066,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         renderFsPassSuggestions(e.target.value);
     });
     document.getElementById("fs-field-pool")?.addEventListener("input", (e) => {
-        fsPoolUrlToken = "";
-        fsPoolUrlNeedsToken = false;
         fsPrimaryPoolUrl = e.target.value;
         renderFsPoolSuggestions(e.target.value);
     });
@@ -11039,8 +11081,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (addrs.length === 0) return;
         if (addrs.length === 1 && addrs[0] === text.trim()) return;
         e.preventDefault();
-        fsPoolUrlToken = "";
-        fsPoolUrlNeedsToken = false;
         const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
         const poolEl = e.target;
         if (addrs.length === 1) {

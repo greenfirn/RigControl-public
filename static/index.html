@@ -173,7 +173,12 @@
                 <div class="fs-miner-config-slot hidden" id="fs-mc-slot-custom"></div>
                 <div class="fs-miner-config-slot" id="fs-mc-slot-algo"></div>
                 <div class="fs-miner-config-slot" id="fs-mc-slot-wallet"></div>
-                <div class="fs-miner-config-slot" id="fs-mc-slot-pool"></div>
+                <div class="fs-miner-config-slot">
+                    <div class="field-group">
+                        <label for="fs-mc-pool-token">POOL <span class="input-help-inline">- %URL% pulls from the full pool_urls list on the main page (with backups); enter an actual pool address here to override it and ignore backups</span></label>
+                        <input type="text" id="fs-mc-pool-token" class="fs-field-input" value="%URL%" autocomplete="off" />
+                    </div>
+                </div>
                 <div class="fs-miner-config-slot" id="fs-mc-slot-pass"></div>
                 <div class="fs-miner-config-slot" id="fs-mc-slot-args"></div>
                 <div class="fs-miner-config-slot fs-miner-config-slot-tokens" id="fs-mc-slot-tokens"></div>
@@ -1524,7 +1529,7 @@ nvidia-smi
                                     <button type="button" id="btn-save-fs-wallet" class="fs-pool-add-btn" title="Save to wallets">&#128190;</button>
                                 </div>
                             </div>
-                            <div class="field-group field-half">
+                            <div class="field-group field-half fs-mc-portal-hidden">
                                 <label for="fs-field-pass">PASS</label>
                                 <div class="fs-pass-autocomplete">
                                     <input type="text" id="fs-field-pass" class="fs-field-input" value="x" autocomplete="off" />
@@ -1540,18 +1545,20 @@ nvidia-smi
                                 </div>
                             </div>
                         </div>
-                        <div class="fs-fields-row fs-mc-portal-hidden">
-                            <div class="field-group field-double">
-                                <label for="fs-field-template">TEMPLATE <span class="input-help-inline">- miner wallet</span></label>
-                                <input type="text" id="fs-field-template" class="fs-field-input" autocomplete="off" placeholder="%WAL%.%WORKER_NAME%" />
-                            </div>
-                            <div class="field-group field-grow">
+                        <div class="fs-fields-row full-width">
+                            <div class="field-group">
                                 <label for="fs-field-pool">POOL <span class="input-help-inline">- pool_urls list, only first pool is used for custom miner unless specified with %URL%[#]</span></label>
                                 <div class="fs-pool-autocomplete">
                                     <input type="text" id="fs-field-pool" class="fs-field-input" autocomplete="off" />
                                     <button type="button" id="btn-manage-pools" class="fs-pool-add-btn" title="Add/edit backup pools for failover">✏️</button>
                                     <div id="fs-pool-suggestions" class="fs-pool-suggestions hidden"></div>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="fs-fields-row fs-mc-portal-hidden">
+                            <div class="field-group field-double">
+                                <label for="fs-field-template">TEMPLATE <span class="input-help-inline">- miner wallet</span></label>
+                                <input type="text" id="fs-field-template" class="fs-field-input" autocomplete="off" placeholder="%WAL%.%WORKER_NAME%" />
                             </div>
                         </div>
                         <div class="fs-fields-row full-width fs-mc-portal-hidden">
