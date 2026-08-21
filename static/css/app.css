@@ -2660,6 +2660,9 @@ h1 {
     width: auto;
     min-width: 50px;
 }
+#fs-modal .fs-toolbar-row-top .fs-name-group {
+    flex: 0 1 260px;
+}
 #fs-modal .fs-toolbar-row-top .fs-apply-to-group {
     margin-left: auto;
 }
@@ -2777,7 +2780,7 @@ h1 {
 #fs-modal .fs-fields-row .field-group.fs-wallet-field-group {
     flex: 1 1 344px;
     max-width: none;
-    min-width: 210px;
+    min-width: 90px;
 }
 #fs-modal .fs-fields-row label[for="fs-field-template"] {
     white-space: normal;
