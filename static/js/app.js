@@ -10898,10 +10898,20 @@ function renderStatsCharts(resp) {
         return out;
     });
     renderStatsChart("stats-chart-gpu-util", gpuUtil.labels, gpuUtil.seriesMap, "%");
+    const gpuVram = buildLabelsAndSeries(entries, (d) => {
+        const out = {};
+        (d.gpus || []).forEach((g) => {
+            out[`GPU${g.index}`] = g.vram_total ? (g.vram_used / g.vram_total * 100) : undefined;
+        });
+        return out;
+    });
+    renderStatsChart("stats-chart-gpu-vram", gpuVram.labels, gpuVram.seriesMap, "%");
     const cpuTemp = buildLabelsAndSeries(entries, (d) => ({ "CPU Temp": d.cpu_temp }));
     renderStatsChart("stats-chart-cpu-temp", cpuTemp.labels, cpuTemp.seriesMap, "°C");
     const cpuUsage = buildLabelsAndSeries(entries, (d) => ({ "CPU Usage": d.cpu_usage }));
     renderStatsChart("stats-chart-cpu-util", cpuUsage.labels, cpuUsage.seriesMap, "%");
+    const ramUsage = buildLabelsAndSeries(entries, (d) => ({ "RAM Usage": (d.memory || {}).percent }));
+    renderStatsChart("stats-chart-ram", ramUsage.labels, ramUsage.seriesMap, "%");
     const load = buildLabelsAndSeries(entries, (d) => {
         const l = d.load || {};
         return { "1m": l["1m"], "5m": l["5m"], "15m": l["15m"] };
