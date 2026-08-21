@@ -2850,7 +2850,8 @@ h1 {
     border-color: var(--text-danger, #c0392b);
     color: var(--text-white);
 }
-#fs-modal .fs-field-input {
+#fs-modal .fs-field-input,
+#fs-miner-config-modal .fs-field-input {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
@@ -2862,7 +2863,8 @@ h1 {
     font-size: var(--font-size-input);
     transition: border-color 0.2s ease;
 }
-#fs-modal .fs-field-input:focus {
+#fs-modal .fs-field-input:focus,
+#fs-miner-config-modal .fs-field-input:focus {
     outline: none;
     border-color: var(--text-accent);
 }
@@ -5434,7 +5436,7 @@ body.layout-left .rig-header {
     padding: 2px 6px;
 }
 .fs-miner-config-close:hover {
-    color: var(--text-white);
+    color: var(--text-primary);
 }
 .fs-miner-config-tabs {
     flex: 0 0 auto;
@@ -5454,10 +5456,10 @@ body.layout-left .rig-header {
     cursor: pointer;
 }
 .fs-miner-config-tab:hover {
-    color: var(--text-white);
+    color: var(--text-primary);
 }
 .fs-miner-config-tab.active {
-    color: var(--text-white);
+    color: var(--text-primary);
     border-bottom-color: var(--text-accent);
     font-weight: 600;
 }
@@ -5481,12 +5483,28 @@ body.layout-left .rig-header {
     cursor: pointer;
 }
 .fs-service-tab:hover {
-    color: var(--text-white);
+    color: var(--text-primary);
 }
 .fs-service-tab.active {
-    color: var(--text-white);
+    color: var(--text-primary);
     border-bottom-color: var(--text-accent);
     font-weight: 600;
+}
+/* Tabs (both the main-page bar and the modal's own) turn green when that
+   service's RESTART checkbox is checked, so it's obvious at a glance which
+   of GPU/CPU/AUX will restart docker_events after apply. */
+.fs-service-tab.restart-on,
+.fs-miner-config-tab.restart-on {
+    color: var(--text-success);
+}
+.fs-service-tab.restart-on:hover,
+.fs-miner-config-tab.restart-on:hover {
+    color: var(--text-success);
+}
+.fs-service-tab.restart-on.active,
+.fs-miner-config-tab.restart-on.active {
+    color: var(--text-success);
+    border-bottom-color: var(--text-success);
 }
 .fs-miner-config-body {
     flex: 1 1 auto;

@@ -7766,13 +7766,25 @@ function fsMcRestoreCustomLabels() {
 // Keeps both tab bars - the modal's GPU/CPU/AUX tabs and the main-page tabs
 // that replaced the old Service dropdown - showing the same active service,
 // since they both drive the same fsCurrentServiceType.
+// Whether a given service's RESTART checkbox is checked - the active
+// service's live checkbox for itself, or whatever was stashed for any other
+// service that's been visited/configured this session.
+function fsTabHasRestart(svc) {
+    if (svc === getCurrentFsServiceType()) {
+        return !!document.getElementById("fs-field-restart")?.checked;
+    }
+    const slot = fsDualModeSlots[svc];
+    return !!(slot && slot.values && slot.values.RESTART === "true");
+}
 function fsSyncServiceTabsUI() {
     const active = getCurrentFsServiceType();
     document.querySelectorAll("#fs-miner-config-tabs .fs-miner-config-tab").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.service === active);
+        btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });
     document.querySelectorAll("#fs-service-tabs .fs-service-tab").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.service === active);
+        btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });
 }
 // Click handler for the main-page GPU/CPU/AUX tabs (replaces the old Service
@@ -7852,6 +7864,7 @@ function fsMcClearCurrentTab() {
     fsDualModeActive = fsHasOtherRealSlot(service);
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = service;
+    fsSyncServiceTabsUI();
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
         // Clearing a tab always leaves it blank, so the live preview goes
@@ -8098,6 +8111,11 @@ function updateRawFromFieldChange(target) {
         // stashing/resetting per service.
         handleFsServiceSwitch(target.value);
         return;
+    }
+    if (target.id === "fs-field-restart") {
+        // Keep the tabs' green "will restart" indicator live as the
+        // checkbox is toggled, not just on tab switches.
+        fsSyncServiceTabsUI();
     }
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl) return;
