@@ -12,6 +12,11 @@ Flightsheets... Apply to
 
 # Work in progress...
 
+> redesigned install paths...
+```
+sudo mkdir -p /opt/miners/custom
+sudo cp -a /opt/miners/keryx-miner /opt/miners/custom/keryx-miner
+```
 >
 > added centered layout by default, toggle left/center in themes
 >
