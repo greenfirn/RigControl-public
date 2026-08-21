@@ -7720,6 +7720,10 @@ function fsUpdateRestartCheckboxDisabled() {
     el.disabled = !hasContent;
     if (!hasContent) el.checked = false;
     fsSyncServiceTabsUI();
+    // VERSION shares the same "is there actually a miner configured" gate,
+    // plus its own custom-miner check - keep it in sync at every point
+    // RESTART's enabled state gets re-evaluated.
+    updateFsMinerConfigCustomVisibility();
 }
 function handleFsServiceSwitch(newServiceRaw) {
     const rawNewService = (newServiceRaw || "").trim().toLowerCase();
@@ -7808,12 +7812,15 @@ function updateFsMinerConfigCustomVisibility() {
     const isCustom = (document.getElementById("fs-field-miner")?.value || "").trim().toLowerCase() === "custom";
     const slot = document.getElementById("fs-mc-slot-custom");
     if (slot) slot.classList.toggle("hidden", !isCustom);
-    // Custom miners have no entry in /etc/rigcontrol/miner.conf, so pinning
-    // a version doesn't mean anything for them - disable the field.
+    // VERSION doesn't mean anything for custom miners (no entry in
+    // /etc/rigcontrol/miner.conf) or when this tab has no miner defined at
+    // all yet - same "real content" gate RESTART uses.
     const versionEl = document.getElementById("fs-field-miner-version");
     if (versionEl) {
-        versionEl.disabled = isCustom;
-        if (isCustom) versionEl.value = "";
+        const hasNoMiner = !fsSlotHasRealContent(collectFsFieldValues());
+        const shouldDisable = isCustom || hasNoMiner;
+        versionEl.disabled = shouldDisable;
+        if (shouldDisable) versionEl.value = "";
     }
 }
 const FS_MC_CUSTOM_LABEL_OVERRIDES = {
