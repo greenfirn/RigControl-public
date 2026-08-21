@@ -5804,8 +5804,7 @@ function collectFlightsheetEntries() {
     }
     console.log("Saving flightsheet with command length:", cmd.length);
     return [
-        { key: "RAW_COMMAND", gpu: 0, value: cmd },
-        { key: "APPLY_TO_WORKERS", gpu: 0, value: JSON.stringify(Array.from(fsApplyToRigs)) }
+        { key: "RAW_COMMAND", gpu: 0, value: cmd }
     ];
 }
 let fsApplyToRigs = new Set();
@@ -5863,6 +5862,7 @@ function populateFsApplyToWorkerList() {
             }
             updateFsApplyToToggleLabel();
             updateFsApplyToWorkersOptionCheckedState();
+            syncFsRawAfterApplyToChange();
         });
         const span = document.createElement("span");
         span.textContent = name;
@@ -5882,6 +5882,29 @@ function clearFsApplyToSelection() {
     fsApplyToRigs.clear();
     updateFsApplyToToggleLabel();
     populateFsApplyToWorkerList();
+    syncFsRawAfterApplyToChange();
+}
+function syncFsRawAfterApplyToChange() {
+    const rawEl = document.getElementById("fs-raw");
+    if (!rawEl || rawEl.value.trim() === "") return;
+    if (fsDualModeActive) {
+        rawEl.value = buildFsDualBlock();
+        autoResizeFsRaw();
+        return;
+    }
+    const jsonItem = parseRigGpuJsonFromRaw(rawEl.value);
+    if (!jsonItem) return;
+    const values = collectFsFieldValues();
+    const newBody = buildRigGpuJsonBody(values);
+    if (/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawEl.value)) {
+        rawEl.value = rawEl.value.replace(
+            /(<<'EOF'\n)[\s\S]*?(\nEOF\n)/,
+            (_full, pre, post) => `${pre}${newBody}${post}`
+        );
+    } else {
+        rawEl.value = newBody;
+    }
+    autoResizeFsRaw();
 }
 async function loadFlightsheets() {
     const res = await fetch(`${API}/api/flightsheets`);
@@ -5920,6 +5943,11 @@ function extractFsPoolListDisplay(rawText) {
     }
     return extractFsRawValue(rawText, "POOL");
 }
+function extractFsApplyToFromRaw(rawText) {
+    if (!rawText) return [];
+    const parsed = parseRigGpuItemsFromRaw(rawText);
+    return (parsed && Array.isArray(parsed.apply_to_workers)) ? parsed.apply_to_workers : [];
+}
 function renderFlightsheets() {
     const list = document.getElementById("fs-list");
     list.innerHTML = "";
@@ -5933,7 +5961,7 @@ function renderFlightsheets() {
         const coin = extractFsRawValue(raw, "ALGO");
         const pool = extractFsPoolListDisplay(raw);
         const miner = extractFsRawValue(raw, "MINER") || extractFsRawValue(raw, "CUSTOM_MINER");
-        const applyToWorkers = Array.isArray(fs.ApplyToWorkers) ? fs.ApplyToWorkers : [];
+        const applyToWorkers = extractFsApplyToFromRaw(raw);
         const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
         row.innerHTML = `
             <input type="checkbox" class="rig-select-checkbox fs-select-checkbox" title="Select flightsheet">
@@ -5973,7 +6001,6 @@ function renderFlightsheets() {
             document.getElementById("fs-name").value = fs.FlightsheetId;
             document.getElementById("fs-raw").value = fs.Value || "";
             populateFsFieldsFromRaw(fs.Value || "");
-            setFsApplyToRigs(fs.ApplyToWorkers);
             autoResizeFsRaw();
         });
         list.appendChild(row);
@@ -6613,7 +6640,9 @@ function buildRigGpuItemObject(values, stash) {
 }
 function buildRigGpuJsonBody(values) {
     const item = buildRigGpuItemObject(values, snapshotFsLiveStash());
-    return JSON.stringify({ items: [item] }, null, 2);
+    const body = { items: [item] };
+    if (fsApplyToRigs.size > 0) body.apply_to_workers = Array.from(fsApplyToRigs);
+    return JSON.stringify(body, null, 2);
 }
 function parseNativeRigGpuItemsFromRaw(rawText) {
     if (!rawText) return null;
@@ -6625,7 +6654,11 @@ function parseNativeRigGpuItemsFromRaw(rawText) {
         if (parsed && Array.isArray(parsed.items)) {
             const items = parsed.items.filter((it) => it && typeof it === "object");
             if (items.length > 0) {
-                return { items, name: parsed.name };
+                return {
+                    items,
+                    name: parsed.name,
+                    apply_to_workers: Array.isArray(parsed.apply_to_workers) ? parsed.apply_to_workers : [],
+                };
             }
         }
     } catch (err) {
@@ -7198,8 +7231,10 @@ function buildFsDualBlock() {
     if (!otherSlot) return activeBlock;
     const otherItem = buildRigGpuItemObject(otherSlot.values, otherSlot.stash);
     const otherTemplate = otherService === "cpu" ? fsCfg.cpu_template : fsCfg.gpu_template;
+    const otherBody = { items: [otherItem] };
+    if (fsApplyToRigs.size > 0) otherBody.apply_to_workers = Array.from(fsApplyToRigs);
     const otherBlock = fillPlaceholders(otherTemplate, {
-        RIG_GPU_JSON: JSON.stringify({ items: [otherItem] }, null, 2),
+        RIG_GPU_JSON: JSON.stringify(otherBody, null, 2),
     });
     return `${activeBlock}\n${otherBlock}`;
 }
@@ -7330,7 +7365,9 @@ function buildFsCombinedJson() {
     if (activeService === "aux") {
         const withPoolSlugAux = addPoolSlugForClipboard([activeItem]);
         const clipboardItemsAux = resolveUrlTokenForClipboard(withPoolSlugAux);
-        return JSON.stringify({ items: clipboardItemsAux }, null, 2);
+        const bodyAux = { items: clipboardItemsAux };
+        if (fsApplyToRigs.size > 0) bodyAux.apply_to_workers = Array.from(fsApplyToRigs);
+        return JSON.stringify(bodyAux, null, 2);
     }
     const otherService = activeService === "cpu" ? "gpu" : "cpu";
     const otherSlot = fsDualModeSlots[otherService];
@@ -7340,7 +7377,9 @@ function buildFsCombinedJson() {
         : [activeItem];
     const withPoolSlug = addPoolSlugForClipboard(items);
     const clipboardItems = resolveUrlTokenForClipboard(withPoolSlug);
-    return JSON.stringify({ items: clipboardItems }, null, 2);
+    const body = { items: clipboardItems };
+    if (fsApplyToRigs.size > 0) body.apply_to_workers = Array.from(fsApplyToRigs);
+    return JSON.stringify(body, null, 2);
 }
 async function copyFsCombinedJsonToClipboard() {
     const btn = document.getElementById("btn-fs-copy-json");
@@ -7558,9 +7597,11 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
 }
 function populateFsFieldsFromRaw(rawText) {
     clearFsFields();
+    setFsApplyToRigs([]);
     if (!rawText) return;
     const parsedItems = parseRigGpuItemsFromRaw(rawText);
     if (parsedItems) {
+        setFsApplyToRigs(parsedItems.apply_to_workers || []);
         const classified = parsedItems.items.map((it) => ({
             item: it,
             service: classifyFsItemService(it, rawText),
@@ -10688,6 +10729,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         fsApplyToRigs.clear();
         updateFsApplyToToggleLabel();
         closeFsApplyToDropdown();
+        syncFsRawAfterApplyToChange();
     });
     document.getElementById("fs-apply-to-clear-btn")?.addEventListener("click", () => {
         clearFsApplyToSelection();
