@@ -10834,7 +10834,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-stats-load")?.addEventListener("click", loadStatsForSelectedRig);
     document.getElementById("stats-rig-select")?.addEventListener("change", loadStatsForSelectedRig);
     document.getElementById("logs-rig-select")?.addEventListener("change", () => {
-        lastSyncedLogsRig = getLogsTargetRig();
         fetchLogs();
     });
     document.getElementById("stats-hashrate-unit-select")?.addEventListener("change", () => {
