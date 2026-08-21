@@ -18,6 +18,7 @@ declare -A REPO=(
     [BZMINER_VERSION]="bzminer/bzminer"
     [WILDRIG_VERSION]="andru-kun/wildrig-multi"
     [SRBMINER_VERSION]="doktor83/SRBMiner-Multi"
+    [SRBMINER-CPU_VERSION]="doktor83/SRBMiner-Multi"
     [RIGEL_VERSION]="rigelminer/rigel"
     [LOLMINER_VERSION]="Lolliedieb/lolMiner-releases"
     [ONEZEROMINER_VERSION]="OneZeroMiner/OneZeroMiner"
@@ -30,6 +31,7 @@ KEY_ORDER=(
     BZMINER_VERSION
     WILDRIG_VERSION
     SRBMINER_VERSION
+    SRBMINER-CPU_VERSION
     RIGEL_VERSION
     LOLMINER_VERSION
     ONEZEROMINER_VERSION
@@ -44,9 +46,9 @@ declare -A NAME_TO_KEY=(
     [bzminer]="BZMINER_VERSION"
     [wildrig]="WILDRIG_VERSION"
     [srbminer]="SRBMINER_VERSION"
-    [srbminer-cpu]="SRBMINER_VERSION"
     [srbminer-gpu]="SRBMINER_VERSION"
     [srbminer-multi]="SRBMINER_VERSION"
+    [srbminer-cpu]="SRBMINER-CPU_VERSION"
     [rigel]="RIGEL_VERSION"
     [lolminer]="LOLMINER_VERSION"
     [onezerominer]="ONEZEROMINER_VERSION"
@@ -62,7 +64,7 @@ usage() {
     echo "  No arguments      - check/update ALL known miners"
     echo "  miner_name ...    - check/update only the named miner(s), leaving all others untouched"
     echo ""
-    echo "Valid miner names: xmrig, bzminer, wildrig, srbminer, rigel, lolminer, onezerominer, gminer, teamredminer, t-rex (aliases: trex, trexminer)"
+    echo "Valid miner names: xmrig, bzminer, wildrig, srbminer, srbminer-cpu, rigel, lolminer, onezerominer, gminer, teamredminer, t-rex (aliases: trex, trexminer)"
 }
 if [[ $# -eq 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
     usage
@@ -192,6 +194,7 @@ XMRIG_VERSION "${NEW_VERSION[XMRIG_VERSION]}"
 BZMINER_VERSION "${NEW_VERSION[BZMINER_VERSION]}"
 WILDRIG_VERSION "${NEW_VERSION[WILDRIG_VERSION]}"
 SRBMINER_VERSION "${NEW_VERSION[SRBMINER_VERSION]}"
+SRBMINER-CPU_VERSION "${NEW_VERSION[SRBMINER-CPU_VERSION]}"
 RIGEL_VERSION "${NEW_VERSION[RIGEL_VERSION]}"
 LOLMINER_VERSION "${NEW_VERSION[LOLMINER_VERSION]}"
 ONEZEROMINER_VERSION "${NEW_VERSION[ONEZEROMINER_VERSION]}"

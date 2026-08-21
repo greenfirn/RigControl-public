@@ -813,7 +813,7 @@ const MAX_ACTION_OUTPUT_ROWS = 50;
 const NOTES_URL_REGEX = /(https?:\/\/[^\s<]+)/g;
 const FS_WALLET_SUGGESTIONS_MAX = 8;
 const FS_MINER_LIST = [
-    "xmrig", "wildrig", "bzminer", "srbminer", "rigel",
+    "xmrig", "wildrig", "bzminer", "srbminer", "srbminer-cpu", "rigel",
     "lolminer", "onezerominer", "gminer", "teamredminer", "trex"
 ];
 const FS_PASS_LIST = ["x", "%WORKER_NAME%"];
@@ -6261,7 +6261,7 @@ function updateManagePoolsBtnLabel() {
         : "Add/edit backup pools for failover";
 }
 const FS_POOL_PREVIEW_BARE_ADDR = new Set([
-    "xmrig", "wildrig-multi", "wildrig", "gminer", "srbminer", "srbminer-multi",
+    "xmrig", "wildrig-multi", "wildrig", "gminer", "srbminer", "srbminer-multi", "srbminer-cpu", "srbminer-gpu",
 ]);
 function buildFsPoolCmdPreview(minerName, bareUrls, sslOn) {
     const bare = bareUrls.length > 0 ? bareUrls : [""];
@@ -6287,6 +6287,8 @@ function buildFsPoolCmdPreview(minerName, bareUrls, sslOn) {
             return prefixed.map((u) => `-o ${u} -u ${W}`).join(" ");
         case "srbminer":
         case "srbminer-multi":
+        case "srbminer-cpu":
+        case "srbminer-gpu":
             return bare.join(",");
         case "bzminer":
             return prefixed.join(" ");
@@ -6366,6 +6368,9 @@ function applyFsFieldValuesToForm(values) {
     if (sslEl) sslEl.checked = values.SSL === "true";
     const tlsEl = document.getElementById("fs-field-tls");
     if (tlsEl) tlsEl.checked = values.TLS === "true";
+}
+function isSrbminerFamily(minerName) {
+    return (minerName || "").toLowerCase().startsWith("srbminer");
 }
 function classifyFsItemService(item, rawTextHint) {
     const mc = (item && item.miner_config) || {};
@@ -6586,7 +6591,7 @@ function buildRigGpuItemObject(values, stash) {
     const userConfigForJson =
         (!isCustom && minerLowerForStash === "bzminer" && stash.fsBzminerOcJsonUserConfig) ? stash.fsBzminerOcJsonUserConfig
         : (!isCustom && minerLowerForStash === "xmrig" && stash.fsXmrigOcJsonUserConfig) ? stash.fsXmrigOcJsonUserConfig
-        : (!isCustom && minerLowerForStash === "srbminer" && stash.fsSrbminerOriginalUserConfig) ? stash.fsSrbminerOriginalUserConfig
+        : (!isCustom && isSrbminerFamily(minerLowerForStash) && stash.fsSrbminerOriginalUserConfig) ? stash.fsSrbminerOriginalUserConfig
         : values.ARGS;
     if (userConfigForJson) {
         minerConfig.user_config = userConfigForJson;
@@ -6603,7 +6608,7 @@ function buildRigGpuItemObject(values, stash) {
     if (!isCustom && minerLowerForStash === "xmrig" && stash.fsXmrigHugepages) {
         minerConfig.hugepages = Number(stash.fsXmrigHugepages);
     }
-    if (!isCustom && (minerLowerForStash === "xmrig" || minerLowerForStash === "srbminer")) {
+    if (!isCustom && (minerLowerForStash === "xmrig" || isSrbminerFamily(minerLowerForStash))) {
         if (values.TLS === "true") {
             minerConfig.tls = 1;
         } else if ("tls" in minerConfig) {
@@ -7198,7 +7203,7 @@ function fsFieldsFromRigGpuJsonItem(item) {
                 }
                 return args;
             }
-            if (resolvedMinerLower === "srbminer") {
+            if (isSrbminerFamily(resolvedMinerLower)) {
                 let args = (mc.user_config || "").replace(/\r\n|\r|\n/g, " ").replace(/\s+/g, " ").trim();
                 const tlsRequested = mc.tls === 1 || mc.tls === true || mc.tls === "1" || mc.tls === "true";
                 if (tlsRequested && !/(^|\s)--tls(\s|$)/.test(args)) {
@@ -7473,17 +7478,17 @@ function handleFsServiceSwitch(newServiceRaw) {
 }
 function injectMinerTlsFlag(minerName, poolSsl, args) {
     const a = args || "";
+    if (isSrbminerFamily(minerName)) {
+        if (/--tls\s+(true|false)/.test(a)) return a;
+        const val = poolSsl ? "true" : "false";
+        return (a ? a + " " : "") + `--tls ${val}`;
+    }
     switch (minerName) {
         case "xmrig":
             if (poolSsl && !/(^|\s)--tls(\s|$)/.test(a)) {
                 return (a ? a + " " : "") + "--tls";
             }
             return a;
-        case "srbminer": {
-            if (/--tls\s+(true|false)/.test(a)) return a;
-            const val = poolSsl ? "true" : "false";
-            return (a ? a + " " : "") + `--tls ${val}`;
-        }
         case "gminer": {
             if (/--ssl\s+[01]/.test(a)) return a;
             const val = poolSsl ? "1" : "0";
@@ -7508,7 +7513,7 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     {
         const mcForSrbStash = jsonItem.miner_config || {};
         fsSrbminerOriginalUserConfig =
-            (jsonItem.miner === "custom" || (jsonItem.miner || "").toLowerCase() !== "srbminer")
+            (jsonItem.miner === "custom" || !isSrbminerFamily(jsonItem.miner))
                 ? ""
                 : (mcForSrbStash.user_config || "");
     }
@@ -10850,7 +10855,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const argsEl = document.getElementById("fs-field-args");
         const minerLowerForTls = (document.getElementById("fs-field-miner")?.value || "").toLowerCase();
         if (argsEl) {
-            if (minerLowerForTls === "srbminer") {
+            if (isSrbminerFamily(minerLowerForTls)) {
                 const hasTls = /(^|\s)--tls\s+\S+/.test(argsEl.value);
                 if (e.target.checked) {
                     argsEl.value = hasTls

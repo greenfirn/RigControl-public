@@ -8,7 +8,7 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
         "ca.quai.herominers.com:1185",
         "us2.quai.herominers.com:1185"
       ],
-      "miner": "srbminer-gpu",
+      "miner": "srbminer",
       "target_image": "ubuntu:24.04",
       "target_name": "clore-default-",
       "reset_oc": "false",

@@ -9,7 +9,8 @@ get_miner_bin() {
         bzminer)      echo "$BZMINER_BIN" ;;
         wildrig-multi) echo "$WILDRIG_BIN" ;;
         xmrig)        echo "$XMRIG_BIN" ;;
-        srbminer)     echo "$SRBMINER_BIN" ;;
+        srbminer|srbminer-gpu) echo "$SRBMINER_BIN" ;;
+        srbminer-cpu) echo "$SRBMINER_CPU_BIN" ;;
         rigel)        echo "$RIGEL_BIN" ;;
         lolminer)     echo "$LOLMINER_BIN" ;;
         onezerominer) echo "$ONEZEROMINER_BIN" ;;
@@ -81,7 +82,7 @@ build_pool_cmd_args() {
                 out+=" --pool $u --user $WALLET --pass $PASS"
             done
             ;;
-        srbminer)
+        srbminer|srbminer-cpu|srbminer-gpu)
             local joined
             joined=$(IFS=,; echo "${bare_list[*]}")
             out=" --pool $joined --wallet $WALLET"
@@ -300,14 +301,17 @@ get_start_cmd() {
             apply_xmrig_hugepages "$HUGEPAGES"
             cmd="$MINER_BIN $tls_flag -a $ALGO$(build_pool_cmd_args xmrig) $xmrig_args"
             ;;
-        srbminer)
+        srbminer|srbminer-cpu|srbminer-gpu)
             local srb_tls_flag=""
             if [[ "$ARGS" != *"--tls "* ]]; then
                 local srb_tls="false"
                 [[ "$POOL_SSL" == "true" || "$TLS" == "1" || "$TLS" == "true" ]] && srb_tls="true"
                 srb_tls_flag="--tls $srb_tls"
             fi
-            cmd="$MINER_BIN $srb_tls_flag --algorithm $ALGO$(build_pool_cmd_args srbminer) --password $PASS $ARGS"
+            local srb_algo_flag="--algorithm"
+            [[ "$name" == "srbminer-cpu" ]] && srb_algo_flag="--algorithm-cpu"
+            [[ "$name" == "srbminer-gpu" ]] && srb_algo_flag="--algorithm-gpu"
+            cmd="$MINER_BIN $srb_tls_flag $srb_algo_flag $ALGO$(build_pool_cmd_args srbminer) --password $PASS $ARGS"
             ;;
         rigel)
             # Accepts stratum+ssl:// directly in the pool address.

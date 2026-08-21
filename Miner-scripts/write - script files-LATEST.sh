@@ -236,6 +236,7 @@ XMRIG_VERSION=$(get_rig_conf "$MINER_CONF" "XMRIG_VERSION" "0")
 BZMINER_VERSION=$(get_rig_conf "$MINER_CONF" "BZMINER_VERSION" "0")
 WILDRIG_VERSION=$(get_rig_conf "$MINER_CONF" "WILDRIG_VERSION" "0")
 SRBMINER_VERSION=$(get_rig_conf "$MINER_CONF" "SRBMINER_VERSION" "0")
+SRBMINER_CPU_VERSION=$(get_rig_conf "$MINER_CONF" "SRBMINER-CPU_VERSION" "0")
 RIGEL_VERSION=$(get_rig_conf "$MINER_CONF" "RIGEL_VERSION" "0")
 LOLMINER_VERSION=$(get_rig_conf "$MINER_CONF" "LOLMINER_VERSION" "0")
 ONEZEROMINER_VERSION=$(get_rig_conf "$MINER_CONF" "ONEZEROMINER_VERSION" "0")
@@ -273,6 +274,7 @@ echo "  XMRig:        $XMRIG_VERSION"
 echo "  BzMiner:      $BZMINER_VERSION"
 echo "  WildRig:      $WILDRIG_VERSION"
 echo "  SRBMiner:     $SRBMINER_VERSION"
+echo "  SRBMiner-CPU: $SRBMINER_CPU_VERSION"
 echo "  Rigel:        $RIGEL_VERSION"
 echo "  lolMiner:     $LOLMINER_VERSION"
 echo "  OneZeroMiner: $ONEZEROMINER_VERSION"
@@ -452,6 +454,13 @@ if should_install "srbminer"; then
       "https://github.com/doktor83/SRBMiner-Multi/releases/download/${SRBMINER_VERSION}/${SRB_TAR}" \
       "$SRB_TAR" "--strip-components=1" "SRBMiner-MULTI"
 fi
+if should_install "srbminer-cpu"; then
+    SRB_CPU_DASH="${SRBMINER_CPU_VERSION//./-}"
+    SRB_CPU_TAR="SRBMiner-Multi-${SRB_CPU_DASH}-Linux.tar.gz"
+    install_miner "srbminer-cpu" "$SRBMINER_CPU_VERSION" \
+      "https://github.com/doktor83/SRBMiner-Multi/releases/download/${SRBMINER_CPU_VERSION}/${SRB_CPU_TAR}" \
+      "$SRB_CPU_TAR" "--strip-components=1" "SRBMiner-MULTI"
+fi
 if should_install "rigel"; then
     RIGEL_TAR="rigel-${RIGEL_VERSION}-linux.tar.gz"
     install_miner "rigel" "$RIGEL_VERSION" \
@@ -501,6 +510,7 @@ $(if [ -f "$BASE_DIR/xmrig/current/xmrig" ]; then echo 'XMRIG_BIN="$BASE_DIR/xmr
 $(if [ -f "$BASE_DIR/wildrig-multi/current/wildrig-multi" ]; then echo 'WILDRIG_BIN="$BASE_DIR/wildrig-multi/current/wildrig-multi"'; fi)
 $(if [ -f "$BASE_DIR/bzminer/current/bzminer" ]; then echo 'BZMINER_BIN="$BASE_DIR/bzminer/current/bzminer"'; fi)
 $(if [ -f "$BASE_DIR/srbminer/current/SRBMiner-MULTI" ]; then echo 'SRBMINER_BIN="$BASE_DIR/srbminer/current/SRBMiner-MULTI"'; fi)
+$(if [ -f "$BASE_DIR/srbminer-cpu/current/SRBMiner-MULTI" ]; then echo 'SRBMINER_CPU_BIN="$BASE_DIR/srbminer-cpu/current/SRBMiner-MULTI"'; fi)
 $(if [ -f "$BASE_DIR/rigel/current/rigel" ]; then echo 'RIGEL_BIN="$BASE_DIR/rigel/current/rigel"'; fi)
 $(if [ -f "$BASE_DIR/lolminer/current/lolMiner" ]; then echo 'LOLMINER_BIN="$BASE_DIR/lolminer/current/lolMiner"'; fi)
 $(if [ -f "$BASE_DIR/onezerominer/current/onezerominer" ]; then echo 'ONEZEROMINER_BIN="$BASE_DIR/onezerominer/current/onezerominer"'; fi)
@@ -530,7 +540,8 @@ get_miner_bin() {
         bzminer)      echo "$BZMINER_BIN" ;;
         wildrig-multi) echo "$WILDRIG_BIN" ;;
         xmrig)        echo "$XMRIG_BIN" ;;
-        srbminer)     echo "$SRBMINER_BIN" ;;
+        srbminer|srbminer-gpu) echo "$SRBMINER_BIN" ;;
+        srbminer-cpu) echo "$SRBMINER_CPU_BIN" ;;
         rigel)        echo "$RIGEL_BIN" ;;
         lolminer)     echo "$LOLMINER_BIN" ;;
         onezerominer) echo "$ONEZEROMINER_BIN" ;;
@@ -602,7 +613,7 @@ build_pool_cmd_args() {
                 out+=" --pool $u --user $WALLET --pass $PASS"
             done
             ;;
-        srbminer)
+        srbminer|srbminer-cpu|srbminer-gpu)
             local joined
             joined=$(IFS=,; echo "${bare_list[*]}")
             out=" --pool $joined --wallet $WALLET"
@@ -821,14 +832,17 @@ get_start_cmd() {
             apply_xmrig_hugepages "$HUGEPAGES"
             cmd="$MINER_BIN $tls_flag -a $ALGO$(build_pool_cmd_args xmrig) $xmrig_args"
             ;;
-        srbminer)
+        srbminer|srbminer-cpu|srbminer-gpu)
             local srb_tls_flag=""
             if [[ "$ARGS" != *"--tls "* ]]; then
                 local srb_tls="false"
                 [[ "$POOL_SSL" == "true" || "$TLS" == "1" || "$TLS" == "true" ]] && srb_tls="true"
                 srb_tls_flag="--tls $srb_tls"
             fi
-            cmd="$MINER_BIN $srb_tls_flag --algorithm $ALGO$(build_pool_cmd_args srbminer) --password $PASS $ARGS"
+            local srb_algo_flag="--algorithm"
+            [[ "$name" == "srbminer-cpu" ]] && srb_algo_flag="--algorithm-cpu"
+            [[ "$name" == "srbminer-gpu" ]] && srb_algo_flag="--algorithm-gpu"
+            cmd="$MINER_BIN $srb_tls_flag $srb_algo_flag $ALGO$(build_pool_cmd_args srbminer) --password $PASS $ARGS"
             ;;
         rigel)
             # Accepts stratum+ssl:// directly in the pool address.
