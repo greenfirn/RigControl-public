@@ -4544,17 +4544,42 @@ function isLogsModuleVisible() {
     return !!modal && !modal.classList.contains("hidden");
 }
 function getLogsTargetRig() {
-    return selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
+    const sel = document.getElementById("logs-rig-select");
+    return sel && sel.value ? sel.value : null;
+}
+function populateLogsRigSelect() {
+    const sel = document.getElementById("logs-rig-select");
+    if (!sel) return;
+    const prevValue = sel.value;
+    const rigNames = Object.keys(rigsState || {})
+        .filter(name => name !== "rigs")
+        .sort();
+    sel.innerHTML = "";
+    rigNames.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+    });
+    if (selectedRigs && selectedRigs.size === 1) {
+        const [only] = selectedRigs;
+        if (rigNames.includes(only)) {
+            sel.value = only;
+            return;
+        }
+    }
+    if (rigNames.includes(prevValue)) {
+        sel.value = prevValue;
+    }
 }
 function openLogsModal() {
+    populateLogsRigSelect();
     const rig = getLogsTargetRig();
     if (!rig) {
-        alert("Select exactly one worker first to view its logs");
+        alert("No workers available to view logs for");
         return;
     }
     lastSyncedLogsRig = rig;
-    const rigLabel = document.getElementById("logs-target-rig");
-    if (rigLabel) rigLabel.textContent = rig;
     document.getElementById("logs-modal")?.classList.remove("hidden");
     fetchLogs();
     if (document.getElementById("logs-auto-refresh-checkbox")?.checked) {
@@ -4570,7 +4595,7 @@ function fetchLogs() {
     const rig = getLogsTargetRig();
     const statusEl = document.getElementById("logs-status");
     if (!rig) {
-        if (statusEl) statusEl.textContent = "Select exactly one worker";
+        if (statusEl) statusEl.textContent = "Select a worker";
         return;
     }
     const type = document.getElementById("logs-type-select")?.value || "gpu.log";
@@ -4579,8 +4604,6 @@ function fetchLogs() {
     lines = Math.min(Math.max(lines, 10), 5000);
     const linesInput = document.getElementById("logs-lines-input");
     if (linesInput) linesInput.value = lines;
-    const rigLabel = document.getElementById("logs-target-rig");
-    if (rigLabel) rigLabel.textContent = rig;
     pendingLogsFetchRig = rig;
     if (statusEl) statusEl.textContent = `Loading ${LOGS_TYPE_LABELS[type] || type}...`;
     const builder = LOGS_COMMAND_BUILDERS[type] || LOGS_COMMAND_BUILDERS["gpu.log"];
@@ -10423,11 +10446,13 @@ function syncOpenModulesToSelection() {
     }
     if (isLogsModuleVisible() && count === 1) {
         const [onlyLogs] = selectedRigs;
-        const rigLabel = document.getElementById("logs-target-rig");
-        if (rigLabel) rigLabel.textContent = onlyLogs;
         if (onlyLogs !== lastSyncedLogsRig) {
             lastSyncedLogsRig = onlyLogs;
-            fetchLogs();
+            const sel = document.getElementById("logs-rig-select");
+            if (sel && Array.from(sel.options).some(opt => opt.value === onlyLogs)) {
+                sel.value = onlyLogs;
+                fetchLogs();
+            }
         }
     }
 }
@@ -10808,6 +10833,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("btn-stats-load")?.addEventListener("click", loadStatsForSelectedRig);
     document.getElementById("stats-rig-select")?.addEventListener("change", loadStatsForSelectedRig);
+    document.getElementById("logs-rig-select")?.addEventListener("change", () => {
+        lastSyncedLogsRig = getLogsTargetRig();
+        fetchLogs();
+    });
     document.getElementById("stats-hashrate-unit-select")?.addEventListener("change", () => {
         if (_lastStatsResp) renderStatsCharts(_lastStatsResp);
     });

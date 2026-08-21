@@ -942,6 +942,16 @@ h1 {
     font-size: var(--font-size-output-meta);
     color: var(--text-secondary);
 }
+.cmd-target-select {
+    margin-left: 8px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: var(--font-size-output-meta);
+    max-width: 200px;
+}
 .cmd-header-close {
     flex: 0 0 auto;
     min-width: 24px;
