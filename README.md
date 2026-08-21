@@ -7,6 +7,9 @@ A self-hosted rig monitoring dashboard for Ubuntu Server / Windows rigs, Clore A
 Dashboard... Docker / miner details popout
 ![dashboard](images/Screenshot-dashboard.png)
 
+Flightsheets... Apply to
+![fs-apply-to](images/Screenshot-fs-apply-to.png)
+
 # Work in progress...
 
 >
