@@ -10,7 +10,12 @@ fi
 convert_old_miner_name() {
     local name="$1"
     case "$name" in
-        wildrig) echo "wildrig-multi" ;;
+        wildrig)              echo "wildrig-multi" ;;
+        SRBMiner-MULTI)       echo "srbminer" ;;
+        SRBMiner-MULTI-cpu)   echo "srbminer-cpu" ;;
+        SRBMiner-MULTI-gpu)   echo "srbminer-gpu" ;;
+        lolMiner)              echo "lolminer" ;;
+        t-rex)                 echo "trex" ;;
         *)       echo "$name" ;;
     esac
 }
@@ -349,7 +354,7 @@ install_custom_miner() {
     file="$(basename "$url")"
     local version
     version="$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-    local miner_dir="$BASE_DIR/$bin_name/current"
+    local miner_dir="$BASE_DIR/custom/$bin_name/current"
     local bin_path="$miner_dir/$bin_name"
     local version_file="$miner_dir/.installed_version"
     local installed_version=""
@@ -517,7 +522,7 @@ $(if [ -f "$BASE_DIR/onezerominer/current/onezerominer" ]; then echo 'ONEZEROMIN
 $(if [ -f "$BASE_DIR/gminer/current/miner" ]; then echo 'GMINER_BIN="$BASE_DIR/gminer/current/miner"'; fi)
 $(if [ -f "$BASE_DIR/teamredminer/current/teamredminer" ]; then echo 'TEAMREDMINER_BIN="$BASE_DIR/teamredminer/current/teamredminer"'; fi)
 $(if [ -f "$BASE_DIR/trexminer/current/t-rex" ]; then echo 'TREXMINER_BIN="$BASE_DIR/trexminer/current/t-rex"'; fi)
-$(if [ -n "$CUSTOM_MINER_NAME" ] && [ "$CUSTOM_MINER_NAME" != "0" ] && [ -f "$BASE_DIR/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME" ]; then echo "CUSTOM_MINER_BIN=\"\$BASE_DIR/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME\""; fi)
+$(if [ -n "$CUSTOM_MINER_NAME" ] && [ "$CUSTOM_MINER_NAME" != "0" ] && [ -f "$BASE_DIR/custom/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME" ]; then echo "CUSTOM_MINER_BIN=\"\$BASE_DIR/custom/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME\""; fi)
 EXPORTS
 echo ""
 echo "Miner paths saved to: $BASE_DIR/miner_paths.env"
@@ -533,7 +538,7 @@ get_miner_bin() {
     local name="$1"
     local custom=$(get_rig_conf "CUSTOM_MINER" "0")
     if [[ -n "$custom" && "$custom" != "0" ]]; then
-        echo "$BASE_DIR/$custom/current/$custom"
+        echo "$BASE_DIR/custom/$custom/current/$custom"
         return
     fi
     case "$name" in
@@ -798,7 +803,7 @@ get_start_cmd() {
     local cmd=""
     local custom=$(get_rig_conf "CUSTOM_MINER" "0")
     if [[ -n "$custom" && "$custom" != "0" ]]; then
-        cmd="$BASE_DIR/$custom/current/$custom $ARGS"
+        cmd="$BASE_DIR/custom/$custom/current/$custom $ARGS"
         echo "$cmd"
         return
     fi
@@ -892,7 +897,7 @@ MINER_NAME=$(convert_old_miner_name "$MINER_NAME")
 CUSTOM_MINER=$(get_rig_conf "CUSTOM_MINER" "0")
 if [[ -n "$CUSTOM_MINER" && "$CUSTOM_MINER" != "0" ]]; then
     echo "[miner] CUSTOM_MINER set — skipping built-in miner name/binary checks"
-    MINER_BIN="$BASE_DIR/$CUSTOM_MINER/current/$CUSTOM_MINER"
+    MINER_BIN="$BASE_DIR/custom/$CUSTOM_MINER/current/$CUSTOM_MINER"
     if [[ ! -f "$MINER_BIN" ]]; then
         echo "$(date): ERROR — CUSTOM_MINER binary not found at '$MINER_BIN'. Did 01-miner_install.sh run with CUSTOM_MINER_URL set?" >&2
         return 1 2>/dev/null || exit 1

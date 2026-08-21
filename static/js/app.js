@@ -813,8 +813,8 @@ const MAX_ACTION_OUTPUT_ROWS = 50;
 const NOTES_URL_REGEX = /(https?:\/\/[^\s<]+)/g;
 const FS_WALLET_SUGGESTIONS_MAX = 8;
 const FS_MINER_LIST = [
-    "xmrig", "wildrig", "bzminer", "srbminer", "srbminer-cpu", "rigel",
-    "lolminer", "onezerominer", "gminer", "teamredminer", "trex"
+    "xmrig", "wildrig-multi", "bzminer", "SRBMiner-MULTI", "SRBMiner-MULTI-cpu", "rigel",
+    "lolMiner", "onezerominer", "gminer", "teamredminer", "t-rex"
 ];
 const FS_PASS_LIST = ["x", "%WORKER_NAME%"];
 let pendingStatsRequests = {};
@@ -6261,7 +6261,8 @@ function updateManagePoolsBtnLabel() {
         : "Add/edit backup pools for failover";
 }
 const FS_POOL_PREVIEW_BARE_ADDR = new Set([
-    "xmrig", "wildrig-multi", "wildrig", "gminer", "srbminer", "srbminer-multi", "srbminer-cpu", "srbminer-gpu",
+    "xmrig", "wildrig-multi", "wildrig", "gminer",
+    "srbminer", "srbminer-multi", "srbminer-cpu", "srbminer-gpu", "srbminer-multi-cpu",
 ]);
 function buildFsPoolCmdPreview(minerName, bareUrls, sslOn) {
     const bare = bareUrls.length > 0 ? bareUrls : [""];
@@ -6276,6 +6277,7 @@ function buildFsPoolCmdPreview(minerName, bareUrls, sslOn) {
         case "wildrig":
             return bare.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
         case "trex":
+        case "t-rex":
             return prefixed.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
         case "teamredminer":
             return prefixed.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
@@ -6289,6 +6291,7 @@ function buildFsPoolCmdPreview(minerName, bareUrls, sslOn) {
         case "srbminer-multi":
         case "srbminer-cpu":
         case "srbminer-gpu":
+        case "srbminer-multi-cpu":
             return bare.join(",");
         case "bzminer":
             return prefixed.join(" ");
@@ -6671,13 +6674,24 @@ function parseNativeRigGpuItemsFromRaw(rawText) {
     return null;
 }
 const FS_KNOWN_MINER_NAMES = [
-    "xmrig", "wildrig", "t-rex", "trex", "rigel", "bzminer", "gminer",
-    "lolminer", "teamredminer", "onezerominer", "srbminer", "nbminer", "keryx",
+    "xmrig", "wildrig-multi", "wildrig", "t-rex", "trex", "rigel", "bzminer", "gminer",
+    "lolminer", "teamredminer", "onezerominer",
+    "srbminer-multi-cpu", "srbminer-cpu", "srbminer-multi", "srbminer",
+    "nbminer", "keryx",
 ];
+const FS_MINER_NAME_CANONICAL = {
+    "trex": "t-rex",
+    "wildrig": "wildrig-multi",
+    "srbminer": "SRBMiner-MULTI",
+    "srbminer-multi": "SRBMiner-MULTI",
+    "srbminer-cpu": "SRBMiner-MULTI-cpu",
+    "srbminer-multi-cpu": "SRBMiner-MULTI-cpu",
+    "lolminer": "lolMiner",
+};
 function guessMinerNameFromText(rawText) {
     const lower = rawText.toLowerCase();
     for (const name of FS_KNOWN_MINER_NAMES) {
-        if (lower.includes(name)) return name === "t-rex" ? "trex" : name;
+        if (lower.includes(name)) return FS_MINER_NAME_CANONICAL[name] || name;
     }
     return "";
 }

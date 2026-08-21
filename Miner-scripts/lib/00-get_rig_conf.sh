@@ -8,7 +8,12 @@ fi
 convert_old_miner_name() {
     local name="$1"
     case "$name" in
-        wildrig) echo "wildrig-multi" ;;
+        wildrig)              echo "wildrig-multi" ;;
+        SRBMiner-MULTI)       echo "srbminer" ;;
+        SRBMiner-MULTI-cpu)   echo "srbminer-cpu" ;;
+        SRBMiner-MULTI-gpu)   echo "srbminer-gpu" ;;
+        lolMiner)              echo "lolminer" ;;
+        t-rex)                 echo "trex" ;;
         *)       echo "$name" ;;
     esac
 }

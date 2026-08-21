@@ -2,7 +2,7 @@ get_miner_bin() {
     local name="$1"
     local custom=$(get_rig_conf "CUSTOM_MINER" "0")
     if [[ -n "$custom" && "$custom" != "0" ]]; then
-        echo "$BASE_DIR/$custom/current/$custom"
+        echo "$BASE_DIR/custom/$custom/current/$custom"
         return
     fi
     case "$name" in
@@ -267,7 +267,7 @@ get_start_cmd() {
     local cmd=""
     local custom=$(get_rig_conf "CUSTOM_MINER" "0")
     if [[ -n "$custom" && "$custom" != "0" ]]; then
-        cmd="$BASE_DIR/$custom/current/$custom $ARGS"
+        cmd="$BASE_DIR/custom/$custom/current/$custom $ARGS"
         echo "$cmd"
         return
     fi
@@ -361,7 +361,7 @@ MINER_NAME=$(convert_old_miner_name "$MINER_NAME")
 CUSTOM_MINER=$(get_rig_conf "CUSTOM_MINER" "0")
 if [[ -n "$CUSTOM_MINER" && "$CUSTOM_MINER" != "0" ]]; then
     echo "[miner] CUSTOM_MINER set — skipping built-in miner name/binary checks"
-    MINER_BIN="$BASE_DIR/$CUSTOM_MINER/current/$CUSTOM_MINER"
+    MINER_BIN="$BASE_DIR/custom/$CUSTOM_MINER/current/$CUSTOM_MINER"
     if [[ ! -f "$MINER_BIN" ]]; then
         echo "$(date): ERROR — CUSTOM_MINER binary not found at '$MINER_BIN'. Did 01-miner_install.sh run with CUSTOM_MINER_URL set?" >&2
         return 1 2>/dev/null || exit 1

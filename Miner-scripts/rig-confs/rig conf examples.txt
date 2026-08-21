@@ -127,7 +127,7 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
   "items": [
     {
       "pool_ssl": true,
-      "miner": "trex",
+      "miner": "t-rex",
       "target_image": "ubuntu:24.04",
       "target_name": "clore-default-",
       "reset_oc": "false",
@@ -159,7 +159,7 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
         "ca.xelis.herominers.com:1225",
         "us2.xelis.herominers.com:1225"
       ],
-      "miner": "srbminer",
+      "miner": "SRBMiner-MULTI",
       "target_image": "ubuntu:24.04",
       "target_name": "clore-default-",
       "reset_oc": "false",

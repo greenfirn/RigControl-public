@@ -115,7 +115,7 @@ install_custom_miner() {
     file="$(basename "$url")"
     local version
     version="$(echo -n "$url" | md5sum | cut -d' ' -f1)"
-    local miner_dir="$BASE_DIR/$bin_name/current"
+    local miner_dir="$BASE_DIR/custom/$bin_name/current"
     local bin_path="$miner_dir/$bin_name"
     local version_file="$miner_dir/.installed_version"
     local installed_version=""
@@ -283,7 +283,7 @@ $(if [ -f "$BASE_DIR/onezerominer/current/onezerominer" ]; then echo 'ONEZEROMIN
 $(if [ -f "$BASE_DIR/gminer/current/miner" ]; then echo 'GMINER_BIN="$BASE_DIR/gminer/current/miner"'; fi)
 $(if [ -f "$BASE_DIR/teamredminer/current/teamredminer" ]; then echo 'TEAMREDMINER_BIN="$BASE_DIR/teamredminer/current/teamredminer"'; fi)
 $(if [ -f "$BASE_DIR/trexminer/current/t-rex" ]; then echo 'TREXMINER_BIN="$BASE_DIR/trexminer/current/t-rex"'; fi)
-$(if [ -n "$CUSTOM_MINER_NAME" ] && [ "$CUSTOM_MINER_NAME" != "0" ] && [ -f "$BASE_DIR/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME" ]; then echo "CUSTOM_MINER_BIN=\"\$BASE_DIR/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME\""; fi)
+$(if [ -n "$CUSTOM_MINER_NAME" ] && [ "$CUSTOM_MINER_NAME" != "0" ] && [ -f "$BASE_DIR/custom/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME" ]; then echo "CUSTOM_MINER_BIN=\"\$BASE_DIR/custom/$CUSTOM_MINER_NAME/current/$CUSTOM_MINER_NAME\""; fi)
 EXPORTS
 echo ""
 echo "Miner paths saved to: $BASE_DIR/miner_paths.env"
