@@ -778,7 +778,8 @@ const FS_FIELD_DEFAULTS = {
     "fs-field-wallet": "",
     "fs-field-template": "",
     "fs-field-pass": "x",
-    "fs-field-args": ""
+    "fs-field-args": "",
+    "fs-field-miner-version": ""
 };
 const FS_CHECKBOX_FIELD_DEFAULTS = {
     "fs-field-reset-oc": true,
@@ -794,6 +795,7 @@ const FS_RAW_KEY_MAP = {
     "RESET_OC": { id: "fs-field-reset-oc", type: "checkbox" },
     "APPLY_OC": { id: "fs-field-apply-oc", type: "checkbox" },
     "RESTART": { id: "fs-field-restart", type: "checkbox" },
+    "VERSION": { id: "fs-field-miner-version", type: "text" },
     "SERVICE_TYPE": { id: "fs-field-service-type", type: "text" },
     "CUSTOM_MINER_URL": { id: "fs-field-custom-miner-url", type: "text" },
     "CUSTOM_MINER": { id: "fs-field-custom-miner", type: "text" },
@@ -807,7 +809,7 @@ const FS_RAW_KEY_MAP = {
 };
 const FS_FIELD_ID_TO_KEY = {};
 const FS_KEY_ORDER = [
-    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC", "RESTART",
+    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC", "RESTART", "VERSION",
     "MINER", "ALGO", "PASS", "POOL", "WALLET", "TEMPLATE", "ARGS",
     "CUSTOM_MINER", "CUSTOM_MINER_URL"
 ];
@@ -6612,6 +6614,7 @@ function collectFsFieldValues() {
         APPLY_OC: boolVal("fs-field-apply-oc"),
         RESET_OC: boolVal("fs-field-reset-oc"),
         RESTART: boolVal("fs-field-restart"),
+        VERSION: val("fs-field-miner-version"),
         MINER: val("fs-field-miner"),
         ALGO: val("fs-field-algo"),
         PASS: val("fs-field-pass"),
@@ -6741,6 +6744,7 @@ function buildRigGpuItemObject(values, stash) {
     if (values.RESET_OC) item.reset_oc = values.RESET_OC;
     if (values.APPLY_OC) item.apply_oc = values.APPLY_OC;
     if (values.RESTART) item.restart = values.RESTART;
+    if (values.VERSION && values.VERSION.trim()) item.version = values.VERSION.trim();
     item.pool_urls = poolUrls;
     item.miner_config = minerConfig;
     return item;
@@ -7291,6 +7295,7 @@ function fsFieldsFromRigGpuJsonItem(item) {
         RESET_OC: item.reset_oc || "",
         APPLY_OC: item.apply_oc || "",
         RESTART: item.restart || "",
+        VERSION: item.version || "",
         MINER: isCustom ? "custom" : (item.miner_alt || mc.fork || item.miner || ""),
         ALGO: mc.algo || "",
         POOL: pool,
@@ -7346,12 +7351,58 @@ function fsTemplateForService(svc) {
     const fsCfg = TEMPLATES_CONFIG.flightsheet;
     return svc === "cpu" ? fsCfg.cpu_template : svc === "aux" ? fsCfg.aux_template : fsCfg.gpu_template;
 }
+// Maps the app's internal miner name to the key used in
+// /etc/rigcontrol/miner.conf (e.g. "lolminer" -> "LOLMINER_VERSION"). Not a
+// simple uppercase transform for every entry (SRBMiner's CPU build uses
+// "SRBMINER-CPU", trex/t-rex uses "TREXMINER"), so known miners are looked
+// up explicitly; anything else falls back to an uppercased, alnum-only guess.
+const FS_MINER_VERSION_KEY_MAP = {
+    "xmrig": "XMRIG",
+    "wildrig-multi": "WILDRIG",
+    "wildrig": "WILDRIG",
+    "t-rex": "TREXMINER",
+    "trex": "TREXMINER",
+    "rigel": "RIGEL",
+    "bzminer": "BZMINER",
+    "gminer": "GMINER",
+    "lolminer": "LOLMINER",
+    "teamredminer": "TEAMREDMINER",
+    "onezerominer": "ONEZEROMINER",
+    "srbminer": "SRBMINER",
+    "srbminer-multi": "SRBMINER",
+    "srbminer-gpu": "SRBMINER",
+    "srbminer-cpu": "SRBMINER-CPU",
+    "srbminer-multi-cpu": "SRBMINER-CPU",
+    "nbminer": "NBMINER",
+};
+function fsMinerVersionKey(minerName) {
+    const lower = (minerName || "").trim().toLowerCase();
+    if (FS_MINER_VERSION_KEY_MAP[lower]) return FS_MINER_VERSION_KEY_MAP[lower];
+    const fallback = lower.replace(/[^a-z0-9]+/g, "").toUpperCase();
+    return fallback || "MINER";
+}
+// Pins a miner's version by writing it to /etc/rigcontrol/miner.conf,
+// prepended before the rest of the block (the JSON tee command) - matches
+// how the rig-side agent expects MINERNAME_VERSION "x.y.z" entries. No-op
+// (returns blockText unchanged) when the version field is left blank.
+function fsApplyVersionBlock(blockText, version, minerName) {
+    const v = (version || "").trim();
+    if (!v) return blockText;
+    const key = fsMinerVersionKey(minerName);
+    const confBlock =
+        "sudo mkdir -p /etc/rigcontrol\n" +
+        "sudo tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'\n" +
+        `${key}_VERSION "${v}"\n` +
+        "EOF";
+    return `${confBlock}\n${blockText}`;
+}
 function buildFsBlock(mode) {
     const values = collectFsFieldValues();
     const block = fillPlaceholders(fsTemplateForService(mode), {
         RIG_GPU_JSON: buildRigGpuJsonBody(values),
     });
-    return fsApplyRestartLine(block, mode, values.RESTART === "true");
+    const withRestart = fsApplyRestartLine(block, mode, values.RESTART === "true");
+    return fsApplyVersionBlock(withRestart, values.VERSION, values.MINER);
 }
 // Builds the raw content sent on "Send it": one tee/systemctl block per
 // service (gpu/cpu/aux) that actually has a miner configured - the currently
@@ -7369,7 +7420,8 @@ function buildFsCombinedBlock() {
             const block = fillPlaceholders(fsTemplateForService(svc), {
                 RIG_GPU_JSON: buildRigGpuJsonBody(values),
             });
-            blocks.push(fsApplyRestartLine(block, svc, values.RESTART === "true"));
+            const withRestart = fsApplyRestartLine(block, svc, values.RESTART === "true");
+            blocks.push(fsApplyVersionBlock(withRestart, values.VERSION, values.MINER));
             continue;
         }
         const slot = fsDualModeSlots[svc];
@@ -7380,7 +7432,8 @@ function buildFsCombinedBlock() {
         const block = fillPlaceholders(fsTemplateForService(svc), {
             RIG_GPU_JSON: JSON.stringify(body, null, 2),
         });
-        blocks.push(fsApplyRestartLine(block, svc, slot.values.RESTART === "true"));
+        const withRestart = fsApplyRestartLine(block, svc, slot.values.RESTART === "true");
+        blocks.push(fsApplyVersionBlock(withRestart, slot.values.VERSION, slot.values.MINER));
     }
     return blocks.join("\n");
 }
@@ -7752,10 +7805,16 @@ function updateFsMinerConfigTitle() {
     }
 }
 function updateFsMinerConfigCustomVisibility() {
-    const slot = document.getElementById("fs-mc-slot-custom");
-    if (!slot) return;
     const isCustom = (document.getElementById("fs-field-miner")?.value || "").trim().toLowerCase() === "custom";
-    slot.classList.toggle("hidden", !isCustom);
+    const slot = document.getElementById("fs-mc-slot-custom");
+    if (slot) slot.classList.toggle("hidden", !isCustom);
+    // Custom miners have no entry in /etc/rigcontrol/miner.conf, so pinning
+    // a version doesn't mean anything for them - disable the field.
+    const versionEl = document.getElementById("fs-field-miner-version");
+    if (versionEl) {
+        versionEl.disabled = isCustom;
+        if (isCustom) versionEl.value = "";
+    }
 }
 const FS_MC_CUSTOM_LABEL_OVERRIDES = {
     "fs-field-custom-miner": "Miner name",
@@ -8137,6 +8196,18 @@ function updateRawFromFieldChange(target) {
         // MINER/CUSTOM_MINER are what determine whether this tab has "real"
         // content - keep RESTART's enabled state live as they're typed into.
         fsUpdateRestartCheckboxDisabled();
+    }
+    if (target.id === "fs-field-miner-version") {
+        // The miner.conf tee block sits BEFORE the JSON heredoc, outside
+        // what the regex-replace path below can reach - always do a full
+        // rebuild so it appears/updates/disappears correctly as this is
+        // typed into.
+        const rawEl = document.getElementById("fs-raw");
+        if (rawEl) {
+            rawEl.value = buildFsActivePreview();
+            autoResizeFsRaw();
+        }
+        return;
     }
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl) return;

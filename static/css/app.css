@@ -5582,6 +5582,21 @@ body.layout-left .rig-header {
     justify-content: flex-end;
     align-items: center;
 }
+/* Miner version pin - sits on the opposite end of the footer from the
+   action buttons via margin-right: auto, so it doesn't disturb the
+   right-aligned RESTART/Clear/Cancel/Apply group. */
+.fs-mc-version-field {
+    flex: 0 0 auto;
+    margin-right: auto;
+    width: 120px;
+}
+.fs-mc-version-field .fs-field-input {
+    height: 28px;
+}
+.fs-mc-version-field .fs-field-input:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 .fs-mc-restart-slot {
     display: flex;
     align-items: center;
