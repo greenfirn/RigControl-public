@@ -7599,7 +7599,14 @@ function handleFsServiceSwitch(newServiceRaw) {
 
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        rawEl.value = newService === "aux" ? buildFsBlock("aux")
+        // A blank tab (no miner configured) shouldn't manufacture a raw
+        // "tee ... EOF" template out of nothing - leave the raw box empty
+        // until there's something real to show. Dual mode only ever gets
+        // here with real content on both sides (fsDualModeSlots only holds
+        // non-null entries for services that actually have a miner set).
+        const hasContent = fsDualModeActive || fsSlotHasRealContent(collectFsFieldValuesWithExtras());
+        rawEl.value = !hasContent ? ""
+            : newService === "aux" ? buildFsBlock("aux")
             : fsDualModeActive ? buildFsDualBlock()
             : buildFsBlock(newService);
         autoResizeFsRaw();
@@ -7731,14 +7738,14 @@ function fsMcClearCurrentTab() {
     const service = getCurrentFsServiceType();
     resetFsFieldInputsForNewSlot();
     fsDualModeSlots[service] = null;
-    fsDualModeActive = !!(fsDualModeSlots.gpu && fsDualModeSlots.cpu);
+    fsDualModeActive = service !== "aux" && !!(fsDualModeSlots.gpu && fsDualModeSlots.cpu);
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = service;
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        rawEl.value = service === "aux" ? buildFsBlock("aux")
-            : fsDualModeActive ? buildFsDualBlock()
-            : buildFsBlock(service);
+        // Clearing a tab always leaves it blank, so there's nothing to
+        // preview unless dual mode still has real content on the other side.
+        rawEl.value = fsDualModeActive ? buildFsDualBlock() : "";
         autoResizeFsRaw();
     }
 }
