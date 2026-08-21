@@ -2920,10 +2920,19 @@ h1 {
     color: var(--text-accent);
     font-weight: 600;
 }
-#fs-modal .fs-miner-autocomplete,
 #fs-modal .fs-algo-autocomplete,
 #fs-modal .fs-pass-autocomplete {
     position: relative;
+}
+#fs-modal .fs-miner-autocomplete {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+#fs-modal .fs-miner-autocomplete .fs-field-input {
+    flex: 1 1 auto;
+    min-width: 60px;
 }
 #fs-modal .fs-pool-autocomplete {
     position: relative;
@@ -5393,4 +5402,110 @@ body.layout-left .rig-row,
 body.layout-left .rig-header {
     margin-left: 0;
     margin-right: auto;
+}
+#fs-miner-config-modal {
+    z-index: 1100;
+}
+#fs-miner-config-modal .fs-miner-config-dialog {
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-modal);
+    border: 1px solid var(--border-modal);
+    border-radius: 5px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+#fs-miner-config-modal .cmd-header {
+    font-size: 1.05rem;
+}
+.fs-miner-config-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.fs-miner-config-close:hover {
+    color: var(--text-white);
+}
+.fs-miner-config-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    padding: 10px 12px 0;
+    border-bottom: 1px solid var(--border-modal);
+    background: var(--surface-modal);
+}
+.fs-miner-config-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    padding: 6px 12px 10px;
+    font-size: var(--font-size-input);
+    cursor: pointer;
+}
+.fs-miner-config-tab:hover {
+    color: var(--text-white);
+}
+.fs-miner-config-tab.active {
+    color: var(--text-white);
+    border-bottom-color: var(--text-accent);
+    font-weight: 600;
+}
+.fs-miner-config-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    overflow-y: auto;
+}
+.fs-miner-config-slot {
+    display: flex;
+    flex-direction: column;
+}
+.fs-miner-config-slot.hidden {
+    display: none;
+}
+.fs-miner-config-slot .field-group {
+    width: 100%;
+}
+.fs-miner-config-slot#fs-mc-slot-custom {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.fs-miner-config-slot#fs-mc-slot-custom.hidden {
+    display: none;
+}
+.fs-miner-config-slot-checks {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 14px 20px;
+}
+.fs-miner-config-slot-tokens {
+    border-top: 1px solid var(--border-modal);
+    padding-top: 10px;
+}
+.fs-miner-config-footer {
+    justify-content: space-between;
+}
+.fs-miner-config-footer-right {
+    display: flex;
+    gap: 10px;
+}
+/* These field-rows normally live in #fs-fields-panel but are moved into the
+   Miner Config modal (see fsMcMoveIntoSlot in app.js) whenever it's opened.
+   Scoping display:none to only while still a child of #fs-fields-panel means
+   they simply reappear, fully visible, once the JS relocates them into the
+   modal - no extra show/hide bookkeeping needed. */
+#fs-fields-panel > .fs-mc-portal-hidden {
+    display: none;
 }

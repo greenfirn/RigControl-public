@@ -158,6 +158,36 @@
             </div>
         </div>
     </div>
+    <div class="cmd-modal hidden" id="fs-miner-config-modal">
+        <div class="cmd-dialog fs-miner-config-dialog">
+            <div class="cmd-header">
+                <span id="fs-miner-config-title">Miner configuration</span>
+                <button type="button" class="fs-miner-config-close" id="btn-fs-miner-config-close" title="Close">&times;</button>
+            </div>
+            <div class="fs-miner-config-tabs" id="fs-miner-config-tabs">
+                <button type="button" class="fs-miner-config-tab" data-service="gpu">GPU</button>
+                <button type="button" class="fs-miner-config-tab" data-service="cpu">CPU</button>
+                <button type="button" class="fs-miner-config-tab" data-service="aux">AUX</button>
+            </div>
+            <div class="cmd-body fs-miner-config-body">
+                <div class="fs-miner-config-slot hidden" id="fs-mc-slot-custom"></div>
+                <div class="fs-miner-config-slot" id="fs-mc-slot-algo"></div>
+                <div class="fs-miner-config-slot" id="fs-mc-slot-wallet"></div>
+                <div class="fs-miner-config-slot" id="fs-mc-slot-pool"></div>
+                <div class="fs-miner-config-slot" id="fs-mc-slot-pass"></div>
+                <div class="fs-miner-config-slot" id="fs-mc-slot-args"></div>
+                <div class="fs-miner-config-slot fs-miner-config-slot-tokens" id="fs-mc-slot-tokens"></div>
+                <div class="fs-miner-config-slot fs-miner-config-slot-checks" id="fs-mc-slot-checks"></div>
+            </div>
+            <div class="cmd-footer fs-miner-config-footer">
+                <button class="cmd-btn" id="btn-fs-mc-clear">Clear</button>
+                <div class="fs-miner-config-footer-right">
+                    <button class="cmd-btn cancel" id="btn-fs-mc-cancel">Cancel</button>
+                    <button class="cmd-btn ok" id="btn-fs-mc-apply">Apply Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="view-tab-panel hidden" id="wdconfig-modal" data-tab-panel="watchdog">
         <div class="cmd-dialog">
             <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
@@ -1480,13 +1510,6 @@ nvidia-smi
                                 </select>
                             </div>
                             <div class="field-group field-half">
-                                <label for="fs-field-miner">MINER</label>
-                                <div class="fs-miner-autocomplete">
-                                    <input type="text" id="fs-field-miner" class="fs-field-input" autocomplete="off" />
-                                    <div id="fs-miner-suggestions" class="fs-miner-suggestions hidden"></div>
-                                </div>
-                            </div>
-                            <div class="field-group field-half">
                                 <label for="fs-field-algo">ALGO</label>
                                 <div class="fs-algo-autocomplete">
                                     <input type="text" id="fs-field-algo" class="fs-field-input" autocomplete="off" />
@@ -1508,8 +1531,16 @@ nvidia-smi
                                     <div id="fs-pass-suggestions" class="fs-pass-suggestions hidden"></div>
                                 </div>
                             </div>
+                            <div class="field-group field-half">
+                                <label for="fs-field-miner">MINER</label>
+                                <div class="fs-miner-autocomplete">
+                                    <input type="text" id="fs-field-miner" class="fs-field-input" autocomplete="off" />
+                                    <button type="button" class="fs-pool-add-btn fs-miner-config-gear-btn" id="btn-fs-open-miner-config" title="Open a focused, tabbed miner configuration view (GPU/CPU/AUX)">&#9881;</button>
+                                    <div id="fs-miner-suggestions" class="fs-miner-suggestions hidden"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="fs-fields-row">
+                        <div class="fs-fields-row fs-mc-portal-hidden">
                             <div class="field-group field-double">
                                 <label for="fs-field-template">TEMPLATE <span class="input-help-inline">- miner wallet</span></label>
                                 <input type="text" id="fs-field-template" class="fs-field-input" autocomplete="off" placeholder="%WAL%.%WORKER_NAME%" />
@@ -1523,13 +1554,13 @@ nvidia-smi
                                 </div>
                             </div>
                         </div>
-                        <div class="fs-fields-row full-width">
+                        <div class="fs-fields-row full-width fs-mc-portal-hidden">
                             <div class="field-group">
                                 <label for="fs-field-args">ARGS <span class="input-help-inline">- known miners: extra args appended to the fields above. Custom miners: args is the whole command - the fields above are only used if referenced with a %XX% token in args.</span></label>
                                 <input type="text" id="fs-field-args" class="fs-field-input" autocomplete="off" />
                             </div>
                         </div>
-                        <div class="fs-fields-row full-width">
+                        <div class="fs-fields-row full-width fs-mc-portal-hidden">
                             <div class="field-group fs-click-to-fill-group">
                                 <label>Click to insert into the active field:</label>
                                 <div class="fs-click-to-fill-tokens">
@@ -1544,7 +1575,7 @@ nvidia-smi
                                 </div>
                             </div>
                         </div>
-                        <div class="fs-fields-row">
+                        <div class="fs-fields-row fs-mc-portal-hidden" id="fs-custom-miner-row">
                             <div class="field-group field-half">
                                 <label for="fs-field-custom-miner" title="The miner binary's file name, as it ends up named after being downloaded/extracted from CUSTOM_MINER_URL - not an arbitrary label">CUSTOM_MINER <span class="input-help-inline">- binary</span></label>
                                 <input type="text" id="fs-field-custom-miner" class="fs-field-input" autocomplete="off" />

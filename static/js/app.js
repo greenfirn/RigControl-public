@@ -813,6 +813,7 @@ const MAX_ACTION_OUTPUT_ROWS = 50;
 const NOTES_URL_REGEX = /(https?:\/\/[^\s<]+)/g;
 const FS_WALLET_SUGGESTIONS_MAX = 8;
 const FS_MINER_LIST = [
+    "custom",
     "xmrig", "wildrig-multi", "bzminer", "SRBMiner-MULTI", "SRBMiner-MULTI-cpu", "rigel",
     "lolMiner", "onezerominer", "gminer", "teamredminer", "t-rex"
 ];
@@ -6226,7 +6227,7 @@ let fsPoolUrlNeedsToken = false;
 let fsRigGpuItemOriginal = null;
 let fsMinerRawOriginal = "";
 let fsDualModeActive = false;
-let fsDualModeSlots = { gpu: null, cpu: null };
+let fsDualModeSlots = { gpu: null, cpu: null, aux: null };
 function bareFsPoolUrl(url) {
     return (url || "").trim()
         .replace(/^stratum\+ssl:\/\//, "")
@@ -6403,7 +6404,7 @@ function clearFsFields() {
     fsRigGpuItemOriginal = null;
     fsMinerRawOriginal = "";
     fsDualModeActive = false;
-    fsDualModeSlots = { gpu: null, cpu: null };
+    fsDualModeSlots = { gpu: null, cpu: null, aux: null };
     refreshFsPoolFieldDisplay();
     updateManagePoolsBtnLabel();
     for (const id of Object.keys(FS_FIELD_DEFAULTS)) {
@@ -7446,49 +7447,222 @@ async function copyFsCombinedJsonToClipboard() {
         console.error("Unable to copy flightsheet JSON to clipboard - no clipboard API available and the execCommand fallback also failed");
     }
 }
+function getCurrentFsServiceType() {
+    const v = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase();
+    return (v === "cpu" || v === "aux") ? v : "gpu";
+}
+function resetFsFieldInputsForNewSlot() {
+    // Same field/checkbox reset as clearFsFields(), but deliberately leaves
+    // fsDualModeSlots and fsApplyToRigs untouched - used when switching to a
+    // GPU/CPU/AUX tab that has no stashed data yet, so we don't wipe out
+    // whatever's stashed in the *other* tabs.
+    fsExtraPoolUrls = [];
+    fsPrimaryPoolUrl = "";
+    fsPoolUrlsExplicitlySet = false;
+    fsBzminerOcJsonUserConfig = "";
+    fsSrbminerOriginalUserConfig = "";
+    fsXmrigHugepages = "";
+    fsMinerConfigFork = "";
+    fsXmrigOcJsonUserConfig = "";
+    fsXmrigCpuConfigJson = "";
+    fsMinerConfigOriginal = null;
+    fsPoolUrlToken = "";
+    fsPoolUrlNeedsToken = false;
+    fsRigGpuItemOriginal = null;
+    fsMinerRawOriginal = "";
+    refreshFsPoolFieldDisplay();
+    updateManagePoolsBtnLabel();
+    for (const id of Object.keys(FS_FIELD_DEFAULTS)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.value = id === "fs-field-service-type" ? "gpu" : "";
+    }
+    for (const id of Object.keys(FS_CHECKBOX_FIELD_DEFAULTS)) {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+    }
+}
 function handleFsServiceSwitch(newServiceRaw) {
     const rawNewService = (newServiceRaw || "").trim().toLowerCase();
-    if (rawNewService === "aux") {
-        const priorService = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase() === "cpu" ? "cpu" : "gpu";
-        const priorValues = collectFsFieldValuesWithExtras();
-        priorValues.SERVICE_TYPE = priorService;
-        fsDualModeSlots[priorService] = {
-            stash: snapshotFsLiveStash(),
-            values: priorValues,
-        };
-        fsDualModeActive = false;
-        clearFsFields();
-        const serviceTypeElAux = document.getElementById("fs-field-service-type");
-        if (serviceTypeElAux) serviceTypeElAux.value = "aux";
-        const rawElAux = document.getElementById("fs-raw");
-        if (rawElAux) {
-            rawElAux.value = buildFsBlock("aux");
-            autoResizeFsRaw();
-        }
-        return;
-    }
-    const newService = rawNewService === "cpu" ? "cpu" : "gpu";
-    const oldService = newService === "cpu" ? "gpu" : "cpu";
+    const newService = rawNewService === "cpu" ? "cpu" : rawNewService === "aux" ? "aux" : "gpu";
+    const oldService = getCurrentFsServiceType();
+    if (newService === oldService) return;
+
+    // Stash whatever's currently live into its own slot, regardless of which
+    // service we're coming from - this is what makes GPU/CPU/AUX symmetric
+    // instead of only GPU<->CPU being remembered.
     const oldValues = collectFsFieldValuesWithExtras();
     oldValues.SERVICE_TYPE = oldService;
     fsDualModeSlots[oldService] = {
         stash: snapshotFsLiveStash(),
         values: oldValues,
     };
+
     const targetSlot = fsDualModeSlots[newService];
     if (targetSlot) {
         restoreFsLiveStash(targetSlot.stash);
         applyFsFieldValuesToForm(targetSlot.values);
         refreshFsPoolFieldDisplay();
         updateManagePoolsBtnLabel();
+    } else {
+        resetFsFieldInputsForNewSlot();
     }
+
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = newService;
+
+    // AUX is always its own standalone block - GPU/CPU can combine into one
+    // dual block once both have been visited/have data.
+    fsDualModeActive = newService !== "aux" && !!(fsDualModeSlots.gpu && fsDualModeSlots.cpu);
+
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        rawEl.value = buildFsDualBlock();
+        rawEl.value = newService === "aux" ? buildFsBlock("aux")
+            : fsDualModeActive ? buildFsDualBlock()
+            : buildFsBlock(newService);
         autoResizeFsRaw();
     }
+}
+let fsMcCancelSnapshot = null;
+let fsMcPortalRecords = [];
+function fsMcMoveIntoSlot(el, slotId) {
+    if (!el) return;
+    const slot = document.getElementById(slotId);
+    if (!slot) return;
+    fsMcPortalRecords.push({ el, parent: el.parentNode, nextSibling: el.nextSibling });
+    slot.appendChild(el);
+}
+function fsMcRestoreAllPortals() {
+    for (let i = fsMcPortalRecords.length - 1; i >= 0; i--) {
+        const rec = fsMcPortalRecords[i];
+        if (!rec.parent) continue;
+        rec.parent.insertBefore(rec.el, rec.nextSibling);
+    }
+    fsMcPortalRecords = [];
+}
+function fsMcFieldGroup(inputId) {
+    const el = document.getElementById(inputId);
+    return el ? el.closest(".field-group") : null;
+}
+function updateFsMinerConfigTitle() {
+    const titleEl = document.getElementById("fs-miner-config-title");
+    if (!titleEl) return;
+    const minerName = (document.getElementById("fs-field-miner")?.value || "").trim();
+    if (!minerName) {
+        titleEl.textContent = "Miner configuration";
+    } else if (minerName.toLowerCase() === "custom") {
+        titleEl.textContent = "Custom configuration";
+    } else {
+        titleEl.textContent = `${minerName} configuration`;
+    }
+}
+function updateFsMinerConfigCustomVisibility() {
+    const slot = document.getElementById("fs-mc-slot-custom");
+    if (!slot) return;
+    const isCustom = (document.getElementById("fs-field-miner")?.value || "").trim().toLowerCase() === "custom";
+    slot.classList.toggle("hidden", !isCustom);
+}
+const FS_MC_CUSTOM_LABEL_OVERRIDES = {
+    "fs-field-custom-miner": "Miner name",
+    "fs-field-custom-miner-url": "Installation URL",
+    "fs-field-template": "Wallet and worker template",
+};
+let fsMcLabelOriginals = {};
+function fsMcApplyCustomLabels() {
+    for (const [inputId, newText] of Object.entries(FS_MC_CUSTOM_LABEL_OVERRIDES)) {
+        const label = document.querySelector(`label[for="${inputId}"]`);
+        if (!label) continue;
+        if (!(inputId in fsMcLabelOriginals)) fsMcLabelOriginals[inputId] = label.innerHTML;
+        label.textContent = newText;
+    }
+}
+function fsMcRestoreCustomLabels() {
+    for (const [inputId, originalHtml] of Object.entries(fsMcLabelOriginals)) {
+        const label = document.querySelector(`label[for="${inputId}"]`);
+        if (label) label.innerHTML = originalHtml;
+    }
+    fsMcLabelOriginals = {};
+}
+function fsMcSetActiveTab(service) {
+    const tabs = document.querySelectorAll("#fs-miner-config-tabs .fs-miner-config-tab");
+    tabs.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.service === service);
+    });
+}
+function openFsMinerConfigModal() {
+    const modal = document.getElementById("fs-miner-config-modal");
+    if (!modal) return;
+    fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-algo"), "fs-mc-slot-algo");
+    fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-template"), "fs-mc-slot-wallet");
+    fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-pool"), "fs-mc-slot-pool");
+    fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-pass"), "fs-mc-slot-pass");
+    fsMcMoveIntoSlot(fsMcFieldGroup("fs-field-args"), "fs-mc-slot-args");
+    fsMcMoveIntoSlot(document.getElementById("fs-custom-miner-row"), "fs-mc-slot-custom");
+    fsMcMoveIntoSlot(document.querySelector(".fs-click-to-fill-group"), "fs-mc-slot-tokens");
+    for (const id of ["fs-field-ssl", "fs-field-tls", "fs-field-apply-oc", "fs-field-reset-oc"]) {
+        const inputEl = document.getElementById(id);
+        const label = inputEl ? inputEl.closest("label.checkbox-label") : null;
+        fsMcMoveIntoSlot(label, "fs-mc-slot-checks");
+    }
+    fsMcCancelSnapshot = {
+        slots: JSON.parse(JSON.stringify(fsDualModeSlots)),
+        dualActive: fsDualModeActive,
+        liveStash: snapshotFsLiveStash(),
+        liveValues: collectFsFieldValuesWithExtras(),
+        rawValue: document.getElementById("fs-raw")?.value ?? "",
+    };
+    fsMcApplyCustomLabels();
+    updateFsMinerConfigTitle();
+    updateFsMinerConfigCustomVisibility();
+    fsMcSetActiveTab(getCurrentFsServiceType());
+    modal.classList.remove("hidden");
+}
+function closeFsMinerConfigModal() {
+    const modal = document.getElementById("fs-miner-config-modal");
+    if (!modal) return;
+    fsMcRestoreCustomLabels();
+    fsMcRestoreAllPortals();
+    modal.classList.add("hidden");
+    fsMcCancelSnapshot = null;
+}
+function fsMcCancel() {
+    if (fsMcCancelSnapshot) {
+        fsDualModeSlots = JSON.parse(JSON.stringify(fsMcCancelSnapshot.slots));
+        fsDualModeActive = fsMcCancelSnapshot.dualActive;
+        restoreFsLiveStash(fsMcCancelSnapshot.liveStash);
+        applyFsFieldValuesToForm(fsMcCancelSnapshot.liveValues);
+        const serviceTypeEl = document.getElementById("fs-field-service-type");
+        if (serviceTypeEl) serviceTypeEl.value = fsMcCancelSnapshot.liveValues.SERVICE_TYPE || "gpu";
+        refreshFsPoolFieldDisplay();
+        updateManagePoolsBtnLabel();
+        const rawEl = document.getElementById("fs-raw");
+        if (rawEl) {
+            rawEl.value = fsMcCancelSnapshot.rawValue;
+            autoResizeFsRaw();
+        }
+    }
+    closeFsMinerConfigModal();
+}
+function fsMcClearCurrentTab() {
+    const service = getCurrentFsServiceType();
+    resetFsFieldInputsForNewSlot();
+    fsDualModeSlots[service] = null;
+    fsDualModeActive = !!(fsDualModeSlots.gpu && fsDualModeSlots.cpu);
+    const serviceTypeEl = document.getElementById("fs-field-service-type");
+    if (serviceTypeEl) serviceTypeEl.value = service;
+    const rawEl = document.getElementById("fs-raw");
+    if (rawEl) {
+        rawEl.value = service === "aux" ? buildFsBlock("aux")
+            : fsDualModeActive ? buildFsDualBlock()
+            : buildFsBlock(service);
+        autoResizeFsRaw();
+    }
+}
+function fsMcSwitchTab(service) {
+    handleFsServiceSwitch(service);
+    fsMcSetActiveTab(getCurrentFsServiceType());
+    updateFsMinerConfigTitle();
+    updateFsMinerConfigCustomVisibility();
 }
 function injectMinerTlsFlag(minerName, poolSsl, args) {
     const a = args || "";
@@ -10740,6 +10914,26 @@ document.addEventListener("DOMContentLoaded", async () => {
         autoResizeFsRaw();
         populateFsFieldsFromRaw(e.target.value);
     });
+    document.getElementById("btn-fs-open-miner-config")?.addEventListener("click", () => {
+        openFsMinerConfigModal();
+    });
+    document.getElementById("btn-fs-miner-config-close")?.addEventListener("click", () => {
+        closeFsMinerConfigModal();
+    });
+    document.getElementById("btn-fs-mc-apply")?.addEventListener("click", () => {
+        closeFsMinerConfigModal();
+    });
+    document.getElementById("btn-fs-mc-cancel")?.addEventListener("click", () => {
+        fsMcCancel();
+    });
+    document.getElementById("btn-fs-mc-clear")?.addEventListener("click", () => {
+        fsMcClearCurrentTab();
+    });
+    document.getElementById("fs-miner-config-tabs")?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".fs-miner-config-tab");
+        if (!btn) return;
+        fsMcSwitchTab(btn.dataset.service);
+    });
     document.getElementById("btn-fs-apply-to-toggle")?.addEventListener("click", (evt) => {
         evt.stopPropagation();
         toggleFsApplyToDropdown();
@@ -10769,6 +10963,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("fs-miner-filter")?.addEventListener("change", filterFlightsheetList);
     document.getElementById("fs-fields-panel")?.addEventListener("input", (e) => {
         updateRawFromFieldChange(e.target);
+    });
+    // Fields get physically relocated into the miner-config modal while it's
+    // open (see openFsMinerConfigModal), which takes them out from under
+    // #fs-fields-panel's delegated listener above - mirror it here so live
+    // raw-JSON sync keeps working for whichever fields are currently inside
+    // the modal.
+    document.getElementById("fs-miner-config-modal")?.addEventListener("input", (e) => {
+        updateRawFromFieldChange(e.target);
+    });
+    document.getElementById("fs-field-miner")?.addEventListener("input", () => {
+        if (!document.getElementById("fs-miner-config-modal")?.classList.contains("hidden")) {
+            updateFsMinerConfigTitle();
+            updateFsMinerConfigCustomVisibility();
+        }
     });
     ["fs-field-wallet", "fs-field-miner", "fs-field-algo", "fs-field-pass", "fs-field-pool"].forEach((id) => {
         document.querySelector(`label[for="${id}"]`)?.addEventListener("click", (e) => {
