@@ -2,7 +2,7 @@ sudo mkdir -p /etc/rigcontrol
 sudo tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'
 XMRIG_VERSION "6.26.0"
 BZMINER_VERSION "v25.0.1b2"
-WILDRIG_VERSION "0.50.1"
+WILDRIG_VERSION "0.50.2"
 SRBMINER_VERSION "3.5.4"
 SRBMINER-CPU_VERSION "3.5.4"
 RIGEL_VERSION "1.23.2"
