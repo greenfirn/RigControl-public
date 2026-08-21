@@ -10867,6 +10867,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                         .replace(/\s+/g, " ")
                         .trim();
                 }
+                // The stashed original srbminer user_config (used to preserve
+                // exotic raw formatting on passthrough) would otherwise win over
+                // this edit when the JSON body is rebuilt, since a plain .value
+                // assignment doesn't fire the "input" listener that normally
+                // clears it. Clear it here so the live, TLS-corrected ARGS text
+                // above is what actually gets written out.
+                fsSrbminerOriginalUserConfig = "";
             } else {
                 const hasTls = /(^|\s)--tls(\s|$)/.test(argsEl.value);
                 if (e.target.checked && !hasTls) {
