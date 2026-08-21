@@ -784,7 +784,8 @@ const FS_CHECKBOX_FIELD_DEFAULTS = {
     "fs-field-reset-oc": true,
     "fs-field-apply-oc": false,
     "fs-field-ssl": false,
-    "fs-field-tls": false
+    "fs-field-tls": false,
+    "fs-field-restart": false
 };
 const FS_RAW_KEY_MAP = {
     "COIN": { id: "fs-field-coin", type: "text" },
@@ -792,6 +793,7 @@ const FS_RAW_KEY_MAP = {
     "TARGET_NAME": { id: "fs-field-target-name", type: "text" },
     "RESET_OC": { id: "fs-field-reset-oc", type: "checkbox" },
     "APPLY_OC": { id: "fs-field-apply-oc", type: "checkbox" },
+    "RESTART": { id: "fs-field-restart", type: "checkbox" },
     "SERVICE_TYPE": { id: "fs-field-service-type", type: "text" },
     "CUSTOM_MINER_URL": { id: "fs-field-custom-miner-url", type: "text" },
     "CUSTOM_MINER": { id: "fs-field-custom-miner", type: "text" },
@@ -805,7 +807,7 @@ const FS_RAW_KEY_MAP = {
 };
 const FS_FIELD_ID_TO_KEY = {};
 const FS_KEY_ORDER = [
-    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC",
+    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC", "RESTART",
     "MINER", "ALGO", "PASS", "POOL", "WALLET", "TEMPLATE", "ARGS",
     "CUSTOM_MINER", "CUSTOM_MINER_URL"
 ];
@@ -5889,7 +5891,7 @@ function syncFsRawAfterApplyToChange() {
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl || rawEl.value.trim() === "") return;
     if (fsDualModeActive) {
-        rawEl.value = buildFsDualBlock();
+        rawEl.value = buildFsCombinedBlock();
         autoResizeFsRaw();
         return;
     }
@@ -5949,6 +5951,21 @@ function extractFsApplyToFromRaw(rawText) {
     const parsed = parseRigGpuItemsFromRaw(rawText);
     return (parsed && Array.isArray(parsed.apply_to_workers)) ? parsed.apply_to_workers : [];
 }
+const FS_RESTART_SERVICE_LABELS = { gpu: "GPU", cpu: "CPU", aux: "AUX" };
+function extractFsRestartDisplay(rawText) {
+    if (!rawText) return "";
+    const parsed = parseRigGpuItemsFromRaw(rawText);
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return "";
+    const restarting = new Set();
+    for (const item of parsed.items) {
+        if (!item || typeof item !== "object") continue;
+        const isOn = item.restart === true || item.restart === "true" || item.restart === 1 || item.restart === "1";
+        if (!isOn) continue;
+        const svc = classifyFsItemService(item, rawText);
+        restarting.add(FS_RESTART_SERVICE_LABELS[svc] || "GPU");
+    }
+    return ["GPU", "CPU", "AUX"].filter((label) => restarting.has(label)).join(" ");
+}
 function renderFlightsheets() {
     const list = document.getElementById("fs-list");
     list.innerHTML = "";
@@ -5964,11 +5981,13 @@ function renderFlightsheets() {
         const miner = extractFsRawValue(raw, "MINER") || extractFsRawValue(raw, "CUSTOM_MINER");
         const applyToWorkers = extractFsApplyToFromRaw(raw);
         const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
+        const restart = extractFsRestartDisplay(raw);
         row.innerHTML = `
             <input type="checkbox" class="rig-select-checkbox fs-select-checkbox" title="Select flightsheet">
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(fs.FlightsheetId)}</span>
                 <span class="fs-item-col fs-item-col-applyto" title="${escapeHtml(applyToDisplay)}">${escapeHtml(applyToDisplay)}</span>
+                <span class="fs-item-col fs-item-col-restart" title="${escapeHtml(restart)}">${escapeHtml(restart)}</span>
                 <span class="fs-item-col fs-item-col-coin">${escapeHtml(coin)}</span>
                 <span class="fs-item-col fs-item-col-miner">${escapeHtml(miner)}</span>
                 <span class="fs-item-col fs-item-col-pool">${escapeHtml(pool)}</span>
@@ -5979,6 +5998,7 @@ function renderFlightsheets() {
         row.dataset.algo = coin;
         row.dataset.miner = miner;
         row.dataset.pool = pool;
+        row.dataset.restart = restart;
         if (fs.FlightsheetId === selectedFlightsheetId) {
             row.classList.add("selected");
         }
@@ -6049,20 +6069,25 @@ function autoSizeFsListColumns() {
     const rowGrids = document.querySelectorAll("#fs-list .fs-item .fs-item-grid");
     const headerNameEl = header.children[0];
     const headerApplyToEl = header.children[1];
-    const headerAlgoEl = header.children[2];
-    const headerMinerEl = header.children[3];
+    const headerRestartEl = header.children[2];
+    const headerAlgoEl = header.children[3];
+    const headerMinerEl = header.children[4];
     const headerFont = headerMinerEl ? fsListColumnFont(headerMinerEl) : null;
-    const sampleRowMinerEl = rowGrids.length > 0 ? rowGrids[0].children[3] : null;
+    const sampleRowMinerEl = rowGrids.length > 0 ? rowGrids[0].children[4] : null;
     const rowFont = sampleRowMinerEl ? fsListColumnFont(sampleRowMinerEl) : headerFont;
     let nameWidth = 0;
     let applyToWidth = 0;
     let minerWidth = 0;
     let algoWidth = 0;
+    let restartWidth = 0;
     if (headerNameEl && headerFont) {
         nameWidth = Math.max(nameWidth, fsListHeaderTextWidth(headerNameEl, headerFont));
     }
     if (headerApplyToEl && headerFont) {
         applyToWidth = Math.max(applyToWidth, fsListHeaderTextWidth(headerApplyToEl, headerFont));
+    }
+    if (headerRestartEl && headerFont) {
+        restartWidth = Math.max(restartWidth, fsListHeaderTextWidth(headerRestartEl, headerFont));
     }
     if (headerAlgoEl && headerFont) {
         algoWidth = Math.max(algoWidth, fsListHeaderTextWidth(headerAlgoEl, headerFont));
@@ -6074,15 +6099,17 @@ function autoSizeFsListColumns() {
         rowGrids.forEach((grid) => {
             if (grid.children[0]) nameWidth = Math.max(nameWidth, measureFsListTextWidth(grid.children[0].textContent, rowFont));
             if (grid.children[1]) applyToWidth = Math.max(applyToWidth, measureFsListTextWidth(grid.children[1].textContent, rowFont));
-            if (grid.children[2]) algoWidth = Math.max(algoWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
-            if (grid.children[3]) minerWidth = Math.max(minerWidth, measureFsListTextWidth(grid.children[3].textContent, rowFont));
+            if (grid.children[2]) restartWidth = Math.max(restartWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
+            if (grid.children[3]) algoWidth = Math.max(algoWidth, measureFsListTextWidth(grid.children[3].textContent, rowFont));
+            if (grid.children[4]) minerWidth = Math.max(minerWidth, measureFsListTextWidth(grid.children[4].textContent, rowFont));
         });
     }
     const namePx = Math.max(FS_LIST_NAME_MIN_PX, Math.ceil(nameWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
     const applyToPx = Math.min(FS_LIST_APPLYTO_MAX_PX, Math.ceil(applyToWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
     const algoPx = Math.ceil(algoWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
     const minerPx = Math.ceil(minerWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
-    const template = `${namePx}px ${applyToPx}px ${algoPx}px ${minerPx}px 1fr`;
+    const restartPx = Math.ceil(restartWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
+    const template = `${namePx}px ${applyToPx}px ${restartPx}px ${algoPx}px ${minerPx}px 1fr`;
     header.style.gridTemplateColumns = template;
     rowGrids.forEach((grid) => {
         grid.style.gridTemplateColumns = template;
@@ -6581,6 +6608,7 @@ function collectFsFieldValues() {
         TARGET_NAME: val("fs-field-target-name"),
         APPLY_OC: boolVal("fs-field-apply-oc"),
         RESET_OC: boolVal("fs-field-reset-oc"),
+        RESTART: boolVal("fs-field-restart"),
         MINER: val("fs-field-miner"),
         ALGO: val("fs-field-algo"),
         PASS: val("fs-field-pass"),
@@ -6709,6 +6737,7 @@ function buildRigGpuItemObject(values, stash) {
     if (values.TARGET_NAME) item.target_name = values.TARGET_NAME;
     if (values.RESET_OC) item.reset_oc = values.RESET_OC;
     if (values.APPLY_OC) item.apply_oc = values.APPLY_OC;
+    if (values.RESTART) item.restart = values.RESTART;
     item.pool_urls = poolUrls;
     item.miner_config = minerConfig;
     return item;
@@ -7258,6 +7287,7 @@ function fsFieldsFromRigGpuJsonItem(item) {
         TARGET_NAME: item.target_name || "",
         RESET_OC: item.reset_oc || "",
         APPLY_OC: item.apply_oc || "",
+        RESTART: item.restart || "",
         MINER: isCustom ? "custom" : (item.miner_alt || mc.fork || item.miner || ""),
         ALGO: mc.algo || "",
         POOL: pool,
@@ -7298,31 +7328,65 @@ function fsFieldsFromRigGpuJsonItem(item) {
         CUSTOM_MINER_URL: isCustom ? (mc.install_url || "") : "",
     };
 }
-function buildFsBlock(mode) {
-    const fsCfg = TEMPLATES_CONFIG.flightsheet;
-    const template = mode === "cpu" ? fsCfg.cpu_template : mode === "aux" ? fsCfg.aux_template : fsCfg.gpu_template;
-    return fillPlaceholders(template, {
-        RIG_GPU_JSON: buildRigGpuJsonBody(collectFsFieldValues()),
-    });
+// The RESTART checkbox controls whether each service's block actually
+// restarts docker_events_<svc> after writing the config - default unchecked
+// means "write only" (config gets saved to disk, but nothing is restarted
+// until the rig picks it up on its own or is restarted separately). This
+// strips/re-adds the restart line regardless of what the template itself
+// contains, so it works the same whether or not a deployment's
+// templates.json still bakes the restart command into the template.
+function fsApplyRestartLine(blockText, svc, restartOn) {
+    const stripped = blockText.replace(new RegExp(`\\n?sudo systemctl restart docker_events_${svc}\\s*$`), "");
+    return restartOn ? `${stripped}\nsudo systemctl restart docker_events_${svc}` : stripped;
 }
-function buildFsDualBlock() {
+function fsTemplateForService(svc) {
     const fsCfg = TEMPLATES_CONFIG.flightsheet;
-    const activeService = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase() === "cpu" ? "cpu" : "gpu";
-    const otherService = activeService === "cpu" ? "gpu" : "cpu";
-    const activeTemplate = activeService === "cpu" ? fsCfg.cpu_template : fsCfg.gpu_template;
-    const activeBlock = fillPlaceholders(activeTemplate, {
-        RIG_GPU_JSON: buildRigGpuJsonBody(collectFsFieldValues()),
+    return svc === "cpu" ? fsCfg.cpu_template : svc === "aux" ? fsCfg.aux_template : fsCfg.gpu_template;
+}
+function buildFsBlock(mode) {
+    const values = collectFsFieldValues();
+    const block = fillPlaceholders(fsTemplateForService(mode), {
+        RIG_GPU_JSON: buildRigGpuJsonBody(values),
     });
-    const otherSlot = fsDualModeSlots[otherService];
-    if (!otherSlot) return activeBlock;
-    const otherItem = buildRigGpuItemObject(otherSlot.values, otherSlot.stash);
-    const otherTemplate = otherService === "cpu" ? fsCfg.cpu_template : fsCfg.gpu_template;
-    const otherBody = { items: [otherItem] };
-    if (fsApplyToRigs.size > 0) otherBody.apply_to_workers = Array.from(fsApplyToRigs);
-    const otherBlock = fillPlaceholders(otherTemplate, {
-        RIG_GPU_JSON: JSON.stringify(otherBody, null, 2),
-    });
-    return `${activeBlock}\n${otherBlock}`;
+    return fsApplyRestartLine(block, mode, values.RESTART === "true");
+}
+// Builds the raw content sent on "Send it": one tee/systemctl block per
+// service (gpu/cpu/aux) that actually has a miner configured - the currently
+// active tab's live field values, plus whatever's stashed for any other
+// service visited this session. Services with nothing configured contribute
+// nothing, so this naturally collapses to "" (all blank), a single block
+// (only one populated), or up to three blocks joined together.
+function buildFsCombinedBlock() {
+    const activeService = getCurrentFsServiceType();
+    const blocks = [];
+    for (const svc of ["gpu", "cpu", "aux"]) {
+        if (svc === activeService) {
+            const values = collectFsFieldValues();
+            if (!fsSlotHasRealContent(values)) continue;
+            const block = fillPlaceholders(fsTemplateForService(svc), {
+                RIG_GPU_JSON: buildRigGpuJsonBody(values),
+            });
+            blocks.push(fsApplyRestartLine(block, svc, values.RESTART === "true"));
+            continue;
+        }
+        const slot = fsDualModeSlots[svc];
+        if (!slot) continue;
+        const item = buildRigGpuItemObject(slot.values, slot.stash);
+        const body = { items: [item] };
+        if (fsApplyToRigs.size > 0) body.apply_to_workers = Array.from(fsApplyToRigs);
+        const block = fillPlaceholders(fsTemplateForService(svc), {
+            RIG_GPU_JSON: JSON.stringify(body, null, 2),
+        });
+        blocks.push(fsApplyRestartLine(block, svc, slot.values.RESTART === "true"));
+    }
+    return blocks.join("\n");
+}
+// Whether any service OTHER than the given one currently has real stashed
+// content - used to decide whether raw edits need a full multi-block
+// rebuild (buildFsCombinedBlock) instead of the cheaper single-item
+// regex-replace path.
+function fsHasOtherRealSlot(activeService) {
+    return ["gpu", "cpu", "aux"].some((svc) => svc !== activeService && !!fsDualModeSlots[svc]);
 }
 function resolveUrlTokenForClipboard(items) {
     return items.map((item) => {
@@ -7593,22 +7657,18 @@ function handleFsServiceSwitch(newServiceRaw) {
     if (serviceTypeEl) serviceTypeEl.value = newService;
     fsCurrentServiceType = newService;
 
-    // AUX is always its own standalone block - GPU/CPU can combine into one
-    // dual block once both have been visited/have data.
-    fsDualModeActive = newService !== "aux" && !!(fsDualModeSlots.gpu && fsDualModeSlots.cpu);
+    // GPU/CPU/AUX all combine together into one multi-block raw output once
+    // more than one of them has real data - AUX included, so "Send it" ships
+    // whichever of the three are actually configured, not just GPU+CPU.
+    fsDualModeActive = fsHasOtherRealSlot(newService);
 
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // A blank tab (no miner configured) shouldn't manufacture a raw
-        // "tee ... EOF" template out of nothing - leave the raw box empty
-        // until there's something real to show. Dual mode only ever gets
-        // here with real content on both sides (fsDualModeSlots only holds
-        // non-null entries for services that actually have a miner set).
-        const hasContent = fsDualModeActive || fsSlotHasRealContent(collectFsFieldValuesWithExtras());
-        rawEl.value = !hasContent ? ""
-            : newService === "aux" ? buildFsBlock("aux")
-            : fsDualModeActive ? buildFsDualBlock()
-            : buildFsBlock(newService);
+        // buildFsCombinedBlock() naturally returns "" when nothing anywhere
+        // is configured, a single block when only one service has data, or
+        // multiple joined blocks otherwise - no separate blank-tab check
+        // needed.
+        rawEl.value = buildFsCombinedBlock();
         autoResizeFsRaw();
     }
 }
@@ -7692,6 +7752,13 @@ function openFsMinerConfigModal() {
         const label = inputEl ? inputEl.closest("label.checkbox-label") : null;
         fsMcMoveIntoSlot(label, "fs-mc-slot-checks");
     }
+    {
+        // RESTART lives in the footer, on the far left, rather than with the
+        // other checkboxes in the body.
+        const restartEl = document.getElementById("fs-field-restart");
+        const restartLabel = restartEl ? restartEl.closest("label.checkbox-label") : null;
+        fsMcMoveIntoSlot(restartLabel, "fs-mc-slot-restart");
+    }
     fsMcCancelSnapshot = {
         slots: JSON.parse(JSON.stringify(fsDualModeSlots)),
         dualActive: fsDualModeActive,
@@ -7738,14 +7805,14 @@ function fsMcClearCurrentTab() {
     const service = getCurrentFsServiceType();
     resetFsFieldInputsForNewSlot();
     fsDualModeSlots[service] = null;
-    fsDualModeActive = service !== "aux" && !!(fsDualModeSlots.gpu && fsDualModeSlots.cpu);
+    fsDualModeActive = fsHasOtherRealSlot(service);
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = service;
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
         // Clearing a tab always leaves it blank, so there's nothing to
-        // preview unless dual mode still has real content on the other side.
-        rawEl.value = fsDualModeActive ? buildFsDualBlock() : "";
+        // preview unless another service still has real content.
+        rawEl.value = buildFsCombinedBlock();
         autoResizeFsRaw();
     }
 }
@@ -7921,7 +7988,7 @@ function populateFsFieldsFromRaw(rawText) {
         if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
             const rawEl = document.getElementById("fs-raw");
             if (rawEl) {
-                rawEl.value = fsDualModeActive ? buildFsDualBlock() : buildFsBlock(activeValues.SERVICE_TYPE);
+                rawEl.value = fsDualModeActive ? buildFsCombinedBlock() : buildFsBlock(activeValues.SERVICE_TYPE);
                 autoResizeFsRaw();
             }
         }
@@ -7985,7 +8052,7 @@ function updateRawFromFieldChange(target) {
         return;
     }
     if (fsDualModeActive) {
-        rawEl.value = buildFsDualBlock();
+        rawEl.value = buildFsCombinedBlock();
         autoResizeFsRaw();
         return;
     }

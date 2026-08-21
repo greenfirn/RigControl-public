@@ -186,8 +186,9 @@
                 <div class="fs-miner-config-slot fs-miner-config-slot-checks" id="fs-mc-slot-checks"></div>
             </div>
             <div class="cmd-footer fs-miner-config-footer">
-                <button class="cmd-btn" id="btn-fs-mc-clear">Clear</button>
                 <div class="fs-miner-config-footer-right">
+                    <div class="fs-miner-config-slot fs-mc-restart-slot" id="fs-mc-slot-restart"></div>
+                    <button class="cmd-btn" id="btn-fs-mc-clear">Clear</button>
                     <button class="cmd-btn cancel" id="btn-fs-mc-cancel">Cancel</button>
                     <button class="cmd-btn ok" id="btn-fs-mc-apply">Apply</button>
                 </div>
@@ -1626,6 +1627,10 @@ nvidia-smi
                                 <input type="checkbox" id="fs-field-reset-oc" checked>
                                 <span class="checkbox-text">RESET_OC</span>
                             </label>
+                            <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden" title="Restart the docker_events service for this tab after applying">
+                                <input type="checkbox" id="fs-field-restart">
+                                <span class="checkbox-text">RESTART</span>
+                            </label>
                         </div>
                     </div>
                     <div class="fs-raw-label-row">
@@ -1695,6 +1700,7 @@ nvidia-smi
                         <div class="fs-item-grid">
                             <span class="fs-item-col fs-item-col-name">Flightsheet Name</span>
                             <span class="fs-item-col fs-item-col-applyto" title="Which worker(s) this flightsheet applies to when saved">Apply To</span>
+                            <span class="fs-item-col fs-item-col-restart" title="Which service(s) restart docker_events after apply - GPU/CPU/AUX">Restart</span>
                             <span class="fs-item-col fs-item-col-coin">Algo</span>
                             <span class="fs-item-col fs-item-col-miner">Miner</span>
                             <span class="fs-item-col fs-item-col-pool">Pool</span>
