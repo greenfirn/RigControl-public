@@ -2405,6 +2405,13 @@ h1 {
     cursor: pointer;
     accent-color: var(--text-accent);
 }
+.checkbox-label:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+.checkbox-label input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+}
 .checkbox-text {
     color: var(--text-secondary);
     font-size: var(--font-size-checkbox-label);
@@ -2872,17 +2879,20 @@ h1 {
 #wallet-modal .wallet-algo-autocomplete {
     position: relative;
 }
-#fs-modal .fs-wallet-autocomplete {
+#fs-modal .fs-wallet-autocomplete,
+#fs-miner-config-modal .fs-wallet-autocomplete {
     position: relative;
     display: flex;
     align-items: stretch;
     gap: 6px;
 }
-#fs-modal .fs-wallet-autocomplete .fs-field-input {
+#fs-modal .fs-wallet-autocomplete .fs-field-input,
+#fs-miner-config-modal .fs-wallet-autocomplete .fs-field-input {
     flex: 1 1 auto;
     min-width: 80px;
 }
 #fs-modal .fs-wallet-suggestions,
+#fs-miner-config-modal .fs-wallet-suggestions,
 #wallet-modal .fs-wallet-suggestions {
     position: absolute;
     left: 0;
@@ -2898,10 +2908,12 @@ h1 {
     box-shadow: 0 4px 12px var(--shadow-suggestions);
 }
 #fs-modal .fs-wallet-suggestions.hidden,
+#fs-miner-config-modal .fs-wallet-suggestions.hidden,
 #wallet-modal .fs-wallet-suggestions.hidden {
     display: none;
 }
 #fs-modal .fs-wallet-suggestion-item,
+#fs-miner-config-modal .fs-wallet-suggestion-item,
 #wallet-modal .fs-wallet-suggestion-item {
     padding: 5px 8px;
     font-size: var(--font-size-list-item);
@@ -2910,20 +2922,25 @@ h1 {
     border-bottom: 1px solid var(--border-divider-soft);
 }
 #fs-modal .fs-wallet-suggestion-item:last-child,
+#fs-miner-config-modal .fs-wallet-suggestion-item:last-child,
 #wallet-modal .fs-wallet-suggestion-item:last-child {
     border-bottom: none;
 }
 #fs-modal .fs-wallet-suggestion-item:hover,
+#fs-miner-config-modal .fs-wallet-suggestion-item:hover,
 #wallet-modal .fs-wallet-suggestion-item:hover {
     background: var(--list-item-hover);
     color: var(--text-accent);
 }
-#fs-modal .fs-wallet-suggestion-add {
+#fs-modal .fs-wallet-suggestion-add,
+#fs-miner-config-modal .fs-wallet-suggestion-add {
     color: var(--text-accent);
     font-weight: 600;
 }
 #fs-modal .fs-algo-autocomplete,
-#fs-modal .fs-pass-autocomplete {
+#fs-modal .fs-pass-autocomplete,
+#fs-miner-config-modal .fs-algo-autocomplete,
+#fs-miner-config-modal .fs-pass-autocomplete {
     position: relative;
 }
 #fs-modal .fs-miner-autocomplete {
@@ -2971,7 +2988,11 @@ h1 {
 #fs-modal .fs-miner-suggestions,
 #fs-modal .fs-algo-suggestions,
 #fs-modal .fs-pass-suggestions,
-#fs-modal .fs-pool-suggestions {
+#fs-modal .fs-pool-suggestions,
+#fs-miner-config-modal .fs-miner-suggestions,
+#fs-miner-config-modal .fs-algo-suggestions,
+#fs-miner-config-modal .fs-pass-suggestions,
+#fs-miner-config-modal .fs-pool-suggestions {
     position: absolute;
     left: 0;
     right: 0;
@@ -2988,13 +3009,21 @@ h1 {
 #fs-modal .fs-miner-suggestions.hidden,
 #fs-modal .fs-algo-suggestions.hidden,
 #fs-modal .fs-pass-suggestions.hidden,
-#fs-modal .fs-pool-suggestions.hidden {
+#fs-modal .fs-pool-suggestions.hidden,
+#fs-miner-config-modal .fs-miner-suggestions.hidden,
+#fs-miner-config-modal .fs-algo-suggestions.hidden,
+#fs-miner-config-modal .fs-pass-suggestions.hidden,
+#fs-miner-config-modal .fs-pool-suggestions.hidden {
     display: none;
 }
 #fs-modal .fs-miner-suggestion-item,
 #fs-modal .fs-algo-suggestion-item,
 #fs-modal .fs-pass-suggestion-item,
-#fs-modal .fs-pool-suggestion-item {
+#fs-modal .fs-pool-suggestion-item,
+#fs-miner-config-modal .fs-miner-suggestion-item,
+#fs-miner-config-modal .fs-algo-suggestion-item,
+#fs-miner-config-modal .fs-pass-suggestion-item,
+#fs-miner-config-modal .fs-pool-suggestion-item {
     padding: 5px 8px;
     font-size: var(--font-size-list-item);
     cursor: pointer;
@@ -3004,13 +3033,21 @@ h1 {
 #fs-modal .fs-miner-suggestion-item:last-child,
 #fs-modal .fs-algo-suggestion-item:last-child,
 #fs-modal .fs-pass-suggestion-item:last-child,
-#fs-modal .fs-pool-suggestion-item:last-child {
+#fs-modal .fs-pool-suggestion-item:last-child,
+#fs-miner-config-modal .fs-miner-suggestion-item:last-child,
+#fs-miner-config-modal .fs-algo-suggestion-item:last-child,
+#fs-miner-config-modal .fs-pass-suggestion-item:last-child,
+#fs-miner-config-modal .fs-pool-suggestion-item:last-child {
     border-bottom: none;
 }
 #fs-modal .fs-miner-suggestion-item:hover,
 #fs-modal .fs-algo-suggestion-item:hover,
 #fs-modal .fs-pass-suggestion-item:hover,
-#fs-modal .fs-pool-suggestion-item:hover {
+#fs-modal .fs-pool-suggestion-item:hover,
+#fs-miner-config-modal .fs-miner-suggestion-item:hover,
+#fs-miner-config-modal .fs-algo-suggestion-item:hover,
+#fs-miner-config-modal .fs-pass-suggestion-item:hover,
+#fs-miner-config-modal .fs-pool-suggestion-item:hover {
     background: var(--list-item-hover);
     color: var(--text-accent);
 }

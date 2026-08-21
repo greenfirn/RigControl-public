@@ -6407,6 +6407,7 @@ function applyFsFieldValuesToForm(values) {
     const tlsEl = document.getElementById("fs-field-tls");
     if (tlsEl) tlsEl.checked = values.TLS === "true";
     if ("SERVICE_TYPE" in values) setFsCurrentServiceType(values.SERVICE_TYPE);
+    fsUpdateRestartCheckboxDisabled();
 }
 function isSrbminerFamily(minerName) {
     return (minerName || "").toLowerCase().startsWith("srbminer");
@@ -6455,6 +6456,7 @@ function clearFsFields() {
     }
     const poolTokenEl = document.getElementById("fs-mc-pool-token");
     if (poolTokenEl) poolTokenEl.value = "%URL%";
+    fsUpdateRestartCheckboxDisabled();
 }
 let managePoolsDialogMode = "flightsheet";
 const FS_POOLS_DIALOG_SIZE_KEY_FLIGHTSHEET = "rigcontrol_fs_pools_dialog_size_flightsheet";
@@ -7645,6 +7647,7 @@ function resetFsFieldInputsForNewSlot() {
         if (el) el.checked = false;
     }
     syncFsMcPoolTokenField();
+    fsUpdateRestartCheckboxDisabled();
 }
 function syncFsMcPoolTokenField() {
     const el = document.getElementById("fs-mc-pool-token");
@@ -7652,6 +7655,18 @@ function syncFsMcPoolTokenField() {
 }
 function fsSlotHasRealContent(values) {
     return !!((values.MINER && values.MINER.trim()) || (values.CUSTOM_MINER && values.CUSTOM_MINER.trim()));
+}
+// RESTART only means something if this tab actually has a miner configured
+// (i.e. there's real raw content to apply/restart for) - disable and clear
+// it whenever the active tab is blank, and re-enable it once there's
+// something to restart.
+function fsUpdateRestartCheckboxDisabled() {
+    const el = document.getElementById("fs-field-restart");
+    if (!el) return;
+    const hasContent = fsSlotHasRealContent(collectFsFieldValues());
+    el.disabled = !hasContent;
+    if (!hasContent) el.checked = false;
+    fsSyncServiceTabsUI();
 }
 function handleFsServiceSwitch(newServiceRaw) {
     const rawNewService = (newServiceRaw || "").trim().toLowerCase();
@@ -8005,6 +8020,7 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     if (tlsEl) tlsEl.checked = tlsFromArgsPreview;
     refreshFsPoolFieldDisplay();
     if ("SERVICE_TYPE" in values) setFsCurrentServiceType(values.SERVICE_TYPE);
+    fsUpdateRestartCheckboxDisabled();
     return values;
 }
 function populateFsFieldsFromRaw(rawText) {
@@ -8116,6 +8132,11 @@ function updateRawFromFieldChange(target) {
         // Keep the tabs' green "will restart" indicator live as the
         // checkbox is toggled, not just on tab switches.
         fsSyncServiceTabsUI();
+    }
+    if (target.id === "fs-field-miner" || target.id === "fs-field-custom-miner") {
+        // MINER/CUSTOM_MINER are what determine whether this tab has "real"
+        // content - keep RESTART's enabled state live as they're typed into.
+        fsUpdateRestartCheckboxDisabled();
     }
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl) return;
