@@ -6228,6 +6228,13 @@ let fsRigGpuItemOriginal = null;
 let fsMinerRawOriginal = "";
 let fsDualModeActive = false;
 let fsDualModeSlots = { gpu: null, cpu: null, aux: null };
+// Tracks which service (gpu/cpu/aux) is "current" independently of the
+// service-type <select>'s live DOM value - browsers update a <select>'s
+// .value synchronously before the input/change event fires, so reading the
+// DOM inside the event handler would already see the *new* selection and
+// make it indistinguishable from the old one. This is set explicitly at
+// every point that changes which service is active.
+let fsCurrentServiceType = "gpu";
 function bareFsPoolUrl(url) {
     return (url || "").trim()
         .replace(/^stratum\+ssl:\/\//, "")
@@ -6372,6 +6379,7 @@ function applyFsFieldValuesToForm(values) {
     if (sslEl) sslEl.checked = values.SSL === "true";
     const tlsEl = document.getElementById("fs-field-tls");
     if (tlsEl) tlsEl.checked = values.TLS === "true";
+    if ("SERVICE_TYPE" in values) setFsCurrentServiceType(values.SERVICE_TYPE);
 }
 function isSrbminerFamily(minerName) {
     return (minerName || "").toLowerCase().startsWith("srbminer");
@@ -6405,6 +6413,7 @@ function clearFsFields() {
     fsMinerRawOriginal = "";
     fsDualModeActive = false;
     fsDualModeSlots = { gpu: null, cpu: null, aux: null };
+    fsCurrentServiceType = "gpu";
     refreshFsPoolFieldDisplay();
     updateManagePoolsBtnLabel();
     for (const id of Object.keys(FS_FIELD_DEFAULTS)) {
@@ -7505,8 +7514,11 @@ async function copyFsCombinedJsonToClipboard() {
     }
 }
 function getCurrentFsServiceType() {
-    const v = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase();
-    return (v === "cpu" || v === "aux") ? v : "gpu";
+    return fsCurrentServiceType;
+}
+function setFsCurrentServiceType(v) {
+    const norm = (v || "").trim().toLowerCase();
+    fsCurrentServiceType = (norm === "cpu" || norm === "aux") ? norm : "gpu";
 }
 function resetFsFieldInputsForNewSlot() {
     // Same field/checkbox reset as clearFsFields(), but deliberately leaves
@@ -7544,6 +7556,9 @@ function syncFsMcPoolTokenField() {
     const el = document.getElementById("fs-mc-pool-token");
     if (el) el.value = fsPoolUrlToken || "%URL%";
 }
+function fsSlotHasRealContent(values) {
+    return !!((values.MINER && values.MINER.trim()) || (values.CUSTOM_MINER && values.CUSTOM_MINER.trim()));
+}
 function handleFsServiceSwitch(newServiceRaw) {
     const rawNewService = (newServiceRaw || "").trim().toLowerCase();
     const newService = rawNewService === "cpu" ? "cpu" : rawNewService === "aux" ? "aux" : "gpu";
@@ -7552,13 +7567,16 @@ function handleFsServiceSwitch(newServiceRaw) {
 
     // Stash whatever's currently live into its own slot, regardless of which
     // service we're coming from - this is what makes GPU/CPU/AUX symmetric
-    // instead of only GPU<->CPU being remembered.
+    // instead of only GPU<->CPU being remembered. But only if there's an
+    // actual miner configured - just visiting a tab without entering
+    // anything shouldn't leave behind a phantom slot that later gets treated
+    // as a real config (e.g. triggering dual-mode and writing an empty
+    // block into the raw output).
     const oldValues = collectFsFieldValuesWithExtras();
     oldValues.SERVICE_TYPE = oldService;
-    fsDualModeSlots[oldService] = {
-        stash: snapshotFsLiveStash(),
-        values: oldValues,
-    };
+    fsDualModeSlots[oldService] = fsSlotHasRealContent(oldValues)
+        ? { stash: snapshotFsLiveStash(), values: oldValues }
+        : null;
 
     const targetSlot = fsDualModeSlots[newService];
     if (targetSlot) {
@@ -7573,6 +7591,7 @@ function handleFsServiceSwitch(newServiceRaw) {
 
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = newService;
+    fsCurrentServiceType = newService;
 
     // AUX is always its own standalone block - GPU/CPU can combine into one
     // dual block once both have been visited/have data.
@@ -7853,6 +7872,7 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     const tlsEl = document.getElementById("fs-field-tls");
     if (tlsEl) tlsEl.checked = tlsFromArgsPreview;
     refreshFsPoolFieldDisplay();
+    if ("SERVICE_TYPE" in values) setFsCurrentServiceType(values.SERVICE_TYPE);
     return values;
 }
 function populateFsFieldsFromRaw(rawText) {
@@ -7941,6 +7961,16 @@ function updateRawFromFieldChange(target) {
     if (!target || !target.id) return;
     const mapping = FS_FIELD_ID_TO_KEY[target.id];
     if (!mapping) return;
+    if (target.id === "fs-field-service-type") {
+        // Always route service switches through handleFsServiceSwitch, dual
+        // mode or not, so GPU/CPU/AUX behave as three independent configs
+        // (matching the Miner Config modal's own tabs) - without this, a
+        // single (non-dual) flightsheet's custom miner fields, ARGS, etc.
+        // would just carry over unchanged into the "new" service instead of
+        // stashing/resetting per service.
+        handleFsServiceSwitch(target.value);
+        return;
+    }
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl) return;
     if (rawEl.value.trim() === "") {
@@ -7948,12 +7978,8 @@ function updateRawFromFieldChange(target) {
         return;
     }
     if (fsDualModeActive) {
-        if (target.id === "fs-field-service-type") {
-            handleFsServiceSwitch(target.value);
-        } else {
-            rawEl.value = buildFsDualBlock();
-            autoResizeFsRaw();
-        }
+        rawEl.value = buildFsDualBlock();
+        autoResizeFsRaw();
         return;
     }
     const jsonItem = parseRigGpuJsonFromRaw(rawEl.value);
@@ -7964,17 +7990,6 @@ function updateRawFromFieldChange(target) {
             /(<<'EOF'\n)[\s\S]*?(\nEOF\n)/,
             (_full, pre, post) => `${pre}${newBody}${post}`
         );
-        if (target.id === "fs-field-service-type") {
-            const rawMode = (target.value || "").trim().toLowerCase();
-            const mode = ["cpu", "gpu", "aux"].includes(rawMode) ? rawMode : "gpu";
-            const currentMode = ["cpu", "gpu", "aux"].find((m) => new RegExp(`rig-${m}\\.json`).test(rawEl.value))
-                || (mode === "cpu" ? "gpu" : "cpu");
-            if (currentMode !== mode) {
-                rawEl.value = rawEl.value
-                    .replace(new RegExp(`rig-${currentMode}\\.json`, "g"), `rig-${mode}.json`)
-                    .replace(new RegExp(`docker_events_${currentMode}\\b`, "g"), `docker_events_${mode}`);
-            }
-        }
         autoResizeFsRaw();
         return;
     }
