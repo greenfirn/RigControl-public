@@ -188,7 +188,7 @@
                 <button class="cmd-btn" id="btn-fs-mc-clear">Clear</button>
                 <div class="fs-miner-config-footer-right">
                     <button class="cmd-btn cancel" id="btn-fs-mc-cancel">Cancel</button>
-                    <button class="cmd-btn ok" id="btn-fs-mc-apply">Apply Changes</button>
+                    <button class="cmd-btn ok" id="btn-fs-mc-apply">Apply</button>
                 </div>
             </div>
         </div>
@@ -1593,15 +1593,7 @@ nvidia-smi
                             </div>
                         </div>
                         <div class="fs-fields-row">
-                            <div class="field-group field-half">
-                                <label for="fs-field-target-image">TARGET_IMAGE</label>
-                                <input type="text" id="fs-field-target-image" class="fs-field-input" autocomplete="off" />
-                            </div>
-                            <div class="field-group field-half">
-                                <label for="fs-field-target-name">TARGET_NAME</label>
-                                <input type="text" id="fs-field-target-name" class="fs-field-input" autocomplete="off" />
-                            </div>
-                            <div class="field-group fs-coin-field fs-checkbox-push-right" title="Coin ticker for this flightsheet, e.g. XMR - used as-is when copying to clipboard, no guessing">
+                            <div class="field-group fs-coin-field" title="Coin ticker for this flightsheet, e.g. XMR - used as-is when copying to clipboard, no guessing">
                                 <label for="fs-field-coin">COIN</label>
                                 <input type="text" id="fs-field-coin" class="fs-field-input" autocomplete="off" placeholder="XMR" />
                             </div>
@@ -1609,19 +1601,27 @@ nvidia-smi
                                 <label class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
                                 <button type="button" class="fs-copy-json-btn" id="btn-fs-copy-json" title="Copies current raw content to clipboard in HiveOS compatible flightsheet JSON">&#128203; To clipboard</button>
                             </div>
-                            <label class="checkbox-label fs-checkbox-inline" title="SSL">
+                            <div class="field-group field-half fs-checkbox-push-right">
+                                <label for="fs-field-target-image">TARGET_IMAGE</label>
+                                <input type="text" id="fs-field-target-image" class="fs-field-input" autocomplete="off" />
+                            </div>
+                            <div class="field-group field-half">
+                                <label for="fs-field-target-name">TARGET_NAME</label>
+                                <input type="text" id="fs-field-target-name" class="fs-field-input" autocomplete="off" />
+                            </div>
+                            <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden" title="SSL">
                                 <input type="checkbox" id="fs-field-ssl">
                                 <span class="checkbox-text">SSL</span>
                             </label>
-                            <label class="checkbox-label fs-checkbox-inline" title="TLS">
+                            <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden" title="TLS">
                                 <input type="checkbox" id="fs-field-tls">
                                 <span class="checkbox-text">TLS</span>
                             </label>
-                            <label class="checkbox-label fs-checkbox-inline">
+                            <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden">
                                 <input type="checkbox" id="fs-field-apply-oc">
                                 <span class="checkbox-text">APPLY_OC</span>
                             </label>
-                            <label class="checkbox-label fs-checkbox-inline">
+                            <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden">
                                 <input type="checkbox" id="fs-field-reset-oc" checked>
                                 <span class="checkbox-text">RESET_OC</span>
                             </label>
