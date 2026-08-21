@@ -21,24 +21,30 @@ sudo mv -v /opt/miners/keryx-miner/current/models /opt/miners/
 sudo systemctl start docker_events_gpu.service
 ```
 
+## Notes
+
+best for keryx-miner with screen session and logs:
+
+- [no-docker_launcher.sh](no-docker_launcher.sh)
+- [no-container-docker_events_monitor--LATEST-log.sh](Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) 
+
+no screen versions: logs in service
+
+- [no-docker_launcher--no-screen-aux-FIXED.sh](no-docker_launcher--no-screen-aux-FIXED.sh)
+- [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](Docker-Events/no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh)
+
+* naming/layout may have changed for platform specific clore, nosana, etc
+ 
+-- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
+
+- run once 'sudo apt install -y unzip' for custom miner zip archives
+
 - Scripts use standard Linux (FHS) locations
 
 - configs live in /etc/rigcontrol/, miner installs in
   /opt/miners/, persistent state (stats DB, cmd log) in
   /var/lib/rigcontrol/, and PID/runtime miner logs in /run/rigcontrol/.
-  
-## Notes
 
--- [no-container-docker_events_monitor--LATEST-log.sh](Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) is best for keryx-miner with screen session and logs --
-
--- [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](Docker-Events/no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh) --
-
-* most recent updated, others may not work as is
-* naming/layout may have changed for clore, nosana, etc
- 
--- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
-
-- may need 'sudo apt install unzip' for custom miner zip archieves
 
 ## What the scripts can do
 
