@@ -6460,6 +6460,38 @@ function setupFsPoolsDialogSizeSaving() {
     });
     observer.observe(dialog);
 }
+const FS_MC_DIALOG_SIZE_KEY = "rigcontrol_fs_mc_dialog_size";
+function restoreFsMcDialogSize() {
+    const dialog = document.querySelector("#fs-miner-config-modal .fs-miner-config-dialog");
+    if (!dialog) return;
+    try {
+        const raw = localStorage.getItem(FS_MC_DIALOG_SIZE_KEY);
+        if (raw) {
+            const size = JSON.parse(raw);
+            dialog.style.width = size.width || "";
+        } else {
+            dialog.style.width = "";
+        }
+    } catch (err) {
+        console.error("Failed to restore saved Miner Config dialog size, ignoring it", err);
+    }
+}
+function setupFsMcDialogSizeSaving() {
+    const dialog = document.querySelector("#fs-miner-config-modal .fs-miner-config-dialog");
+    const modal = document.getElementById("fs-miner-config-modal");
+    if (!dialog || !modal || typeof ResizeObserver === "undefined") return;
+    let saveTimer = null;
+    const observer = new ResizeObserver(() => {
+        if (modal.classList.contains("hidden")) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            localStorage.setItem(FS_MC_DIALOG_SIZE_KEY, JSON.stringify({
+                width: dialog.style.width || `${dialog.offsetWidth}px`,
+            }));
+        }, 300);
+    });
+    observer.observe(dialog);
+}
 function setManagePoolsExplainer(mode) {
     const el = document.getElementById("fs-pools-explainer");
     if (!el) return;
@@ -7217,7 +7249,7 @@ function fsFieldsFromRigGpuJsonItem(item) {
         TARGET_NAME: item.target_name || "",
         RESET_OC: item.reset_oc || "",
         APPLY_OC: item.apply_oc || "",
-        MINER: isCustom ? "" : (item.miner_alt || mc.fork || item.miner || ""),
+        MINER: isCustom ? "custom" : (item.miner_alt || mc.fork || item.miner || ""),
         ALGO: mc.algo || "",
         POOL: pool,
         TEMPLATE: mc.template || "",
@@ -7646,6 +7678,7 @@ function openFsMinerConfigModal() {
     updateFsMinerConfigCustomVisibility();
     fsMcSetActiveTab(getCurrentFsServiceType());
     syncFsMcPoolTokenField();
+    restoreFsMcDialogSize();
     modal.classList.remove("hidden");
 }
 function closeFsMinerConfigModal() {
@@ -10847,6 +10880,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     initDialogResizeHandles();
     setupFsPoolsDialogSizeSaving();
+    setupFsMcDialogSizeSaving();
     initColorSchemeControls();
     initWallpaperControls();
     initStatPanelStyleControls();

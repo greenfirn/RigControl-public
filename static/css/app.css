@@ -5407,7 +5407,9 @@ body.layout-left .rig-header {
     z-index: 1100;
 }
 #fs-miner-config-modal .fs-miner-config-dialog {
+    position: relative;
     width: 480px;
+    min-width: 340px;
     max-width: 95vw;
     max-height: 90vh;
     margin: 0 auto;
