@@ -10901,17 +10901,32 @@ function renderStatsCharts(resp) {
     const gpuVram = buildLabelsAndSeries(entries, (d) => {
         const out = {};
         (d.gpus || []).forEach((g) => {
-            out[`GPU${g.index}`] = g.vram_total ? (g.vram_used / g.vram_total * 100) : undefined;
+            out[`GPU${g.index}`] = typeof g.vram_used === "number" ? (g.vram_used / 1024) : undefined;
         });
         return out;
     });
-    renderStatsChart("stats-chart-gpu-vram", gpuVram.labels, gpuVram.seriesMap, "%");
+    renderStatsChart("stats-chart-gpu-vram", gpuVram.labels, gpuVram.seriesMap, "GB");
+    const gpuCoreClock = buildLabelsAndSeries(entries, (d) => {
+        const out = {};
+        (d.gpus || []).forEach((g) => { out[`GPU${g.index}`] = g.sm_clock ?? g.core_clock; });
+        return out;
+    });
+    renderStatsChart("stats-chart-gpu-core-clock", gpuCoreClock.labels, gpuCoreClock.seriesMap, "MHz");
+    const gpuMemClock = buildLabelsAndSeries(entries, (d) => {
+        const out = {};
+        (d.gpus || []).forEach((g) => { out[`GPU${g.index}`] = g.mem_clock ?? g.memory_clock; });
+        return out;
+    });
+    renderStatsChart("stats-chart-gpu-mem-clock", gpuMemClock.labels, gpuMemClock.seriesMap, "MHz");
     const cpuTemp = buildLabelsAndSeries(entries, (d) => ({ "CPU Temp": d.cpu_temp }));
     renderStatsChart("stats-chart-cpu-temp", cpuTemp.labels, cpuTemp.seriesMap, "°C");
     const cpuUsage = buildLabelsAndSeries(entries, (d) => ({ "CPU Usage": d.cpu_usage }));
     renderStatsChart("stats-chart-cpu-util", cpuUsage.labels, cpuUsage.seriesMap, "%");
-    const ramUsage = buildLabelsAndSeries(entries, (d) => ({ "RAM Usage": (d.memory || {}).percent }));
-    renderStatsChart("stats-chart-ram", ramUsage.labels, ramUsage.seriesMap, "%");
+    const ramUsage = buildLabelsAndSeries(entries, (d) => {
+        const mem = d.memory || {};
+        return { "RAM Usage": typeof mem.used_mb === "number" ? (mem.used_mb / 1024) : undefined };
+    });
+    renderStatsChart("stats-chart-ram", ramUsage.labels, ramUsage.seriesMap, "GB");
     const load = buildLabelsAndSeries(entries, (d) => {
         const l = d.load || {};
         return { "1m": l["1m"], "5m": l["5m"], "15m": l["15m"] };
