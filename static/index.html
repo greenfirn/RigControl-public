@@ -1506,16 +1506,18 @@ nvidia-smi
             </div>
             <div class="cmd-body">
                 <div class="fs-editor-panel">
+                    <select id="fs-field-service-type" style="display:none" title="Miner type - controls whether this flightsheet targets rig-gpu.json/GPU miner service, rig-cpu.json/CPU miner service, or rig-aux.json/AUX miner service on the rig" aria-hidden="true">
+                        <option value="gpu">gpu</option>
+                        <option value="cpu">cpu</option>
+                        <option value="aux">aux</option>
+                    </select>
+                    <div class="fs-service-tabs" id="fs-service-tabs" title="Miner type - controls whether this flightsheet targets rig-gpu.json/GPU miner service, rig-cpu.json/CPU miner service, or rig-aux.json/AUX miner service on the rig">
+                        <button type="button" class="fs-service-tab" data-service="gpu">GPU</button>
+                        <button type="button" class="fs-service-tab" data-service="cpu">CPU</button>
+                        <button type="button" class="fs-service-tab" data-service="aux">AUX</button>
+                    </div>
                     <div class="fs-fields-panel" id="fs-fields-panel">
                         <div class="fs-fields-row">
-                            <div class="field-group field-half">
-                                <label for="fs-field-service-type">Service</label>
-                                <select id="fs-field-service-type" class="fs-field-input" title="Miner type - controls whether this flightsheet targets rig-gpu.json/GPU miner service, rig-cpu.json/CPU miner service, or rig-aux.json/AUX miner service on the rig">
-                                    <option value="gpu">gpu</option>
-                                    <option value="cpu">cpu</option>
-                                    <option value="aux">aux</option>
-                                </select>
-                            </div>
                             <div class="field-group field-half">
                                 <label for="fs-field-algo">ALGO</label>
                                 <div class="fs-algo-autocomplete">
@@ -1600,8 +1602,8 @@ nvidia-smi
                                 <button type="button" class="fs-copy-json-btn" id="btn-fs-copy-json" title="Copies current raw content to clipboard in HiveOS compatible flightsheet JSON">&#128203; To clipboard</button>
                             </div>
                             <div class="field-group fs-coin-field" title="Coin ticker for this flightsheet, e.g. XMR - used as-is when copying to clipboard, no guessing">
-                                <label for="fs-field-coin">COIN</label>
-                                <input type="text" id="fs-field-coin" class="fs-field-input" autocomplete="off" placeholder="XMR" />
+                                <label for="fs-field-coin" class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
+                                <input type="text" id="fs-field-coin" class="fs-field-input" autocomplete="off" placeholder="COIN" aria-label="COIN" />
                             </div>
                             <div class="field-group field-half fs-checkbox-push-right">
                                 <label for="fs-field-target-image">TARGET_IMAGE</label>

@@ -5461,6 +5461,33 @@ body.layout-left .rig-header {
     border-bottom-color: var(--text-accent);
     font-weight: 600;
 }
+/* Main-page GPU/CPU/AUX tabs (replaces the old Service dropdown) - sits as
+   its own full-width row at the top of the flightsheet editor, above the
+   fields and the raw content box, styled to match the Miner Config modal's
+   own tabs for consistency. */
+.fs-service-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-modal);
+}
+.fs-service-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    padding: 6px 12px 10px;
+    font-size: var(--font-size-input);
+    cursor: pointer;
+}
+.fs-service-tab:hover {
+    color: var(--text-white);
+}
+.fs-service-tab.active {
+    color: var(--text-white);
+    border-bottom-color: var(--text-accent);
+    font-weight: 600;
+}
 .fs-miner-config-body {
     flex: 1 1 auto;
     display: flex;

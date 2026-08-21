@@ -5800,7 +5800,7 @@ function getFlightsheetName() {
         .replace(/[^a-z0-9\-]/g, "");
 }
 function collectFlightsheetEntries() {
-    const cmd = document.getElementById("fs-raw").value.trim();
+    const cmd = fsFinalizeRawForAction().trim();
     if (!cmd) {
         alert("Cannot save empty flightsheet! Please enter a command in the flightsheet editor.");
         throw new Error("Empty command");
@@ -5891,7 +5891,7 @@ function syncFsRawAfterApplyToChange() {
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl || rawEl.value.trim() === "") return;
     if (fsDualModeActive) {
-        rawEl.value = buildFsCombinedBlock();
+        rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
         return;
     }
@@ -6441,6 +6441,7 @@ function clearFsFields() {
     fsDualModeActive = false;
     fsDualModeSlots = { gpu: null, cpu: null, aux: null };
     fsCurrentServiceType = "gpu";
+    fsSyncServiceTabsUI();
     refreshFsPoolFieldDisplay();
     updateManagePoolsBtnLabel();
     for (const id of Object.keys(FS_FIELD_DEFAULTS)) {
@@ -7388,6 +7389,34 @@ function buildFsCombinedBlock() {
 function fsHasOtherRealSlot(activeService) {
     return ["gpu", "cpu", "aux"].some((svc) => svc !== activeService && !!fsDualModeSlots[svc]);
 }
+// Live-editing preview: shows ONLY the currently active tab's block ("" if
+// that tab is blank), regardless of what's stashed in other tabs. This is
+// deliberately narrower than buildFsCombinedBlock() so switching to a blank
+// tab visibly clears the raw box instead of continuing to show whichever
+// other tab still has data - the full multi-service combine only happens
+// right before Save/Send, via fsFinalizeRawForAction().
+function buildFsActivePreview() {
+    const activeService = getCurrentFsServiceType();
+    const values = collectFsFieldValues();
+    if (!fsSlotHasRealContent(values)) return "";
+    return buildFsBlock(activeService);
+}
+// Called right before the raw content is actually used for something
+// (Save flightsheet, Send it) - recombines every service that has real data
+// (active tab's live values plus any stashed GPU/CPU/AUX slots) into the raw
+// box so what gets saved/sent always reflects all populated tabs, not just
+// whichever one is currently being edited. If nothing is field-driven (e.g.
+// the box holds a hand-typed/pasted custom command), leaves it untouched.
+function fsFinalizeRawForAction() {
+    const rawEl = document.getElementById("fs-raw");
+    if (!rawEl) return "";
+    const combined = buildFsCombinedBlock();
+    if (combined) {
+        rawEl.value = combined;
+        autoResizeFsRaw();
+    }
+    return rawEl.value;
+}
 function resolveUrlTokenForClipboard(items) {
     return items.map((item) => {
         if (!item || typeof item !== "object" || !item.miner_config) return item;
@@ -7583,6 +7612,7 @@ function getCurrentFsServiceType() {
 function setFsCurrentServiceType(v) {
     const norm = (v || "").trim().toLowerCase();
     fsCurrentServiceType = (norm === "cpu" || norm === "aux") ? norm : "gpu";
+    fsSyncServiceTabsUI();
 }
 function resetFsFieldInputsForNewSlot() {
     // Same field/checkbox reset as clearFsFields(), but deliberately leaves
@@ -7656,6 +7686,7 @@ function handleFsServiceSwitch(newServiceRaw) {
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = newService;
     fsCurrentServiceType = newService;
+    fsSyncServiceTabsUI();
 
     // GPU/CPU/AUX all combine together into one multi-block raw output once
     // more than one of them has real data - AUX included, so "Send it" ships
@@ -7664,11 +7695,11 @@ function handleFsServiceSwitch(newServiceRaw) {
 
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // buildFsCombinedBlock() naturally returns "" when nothing anywhere
-        // is configured, a single block when only one service has data, or
-        // multiple joined blocks otherwise - no separate blank-tab check
-        // needed.
-        rawEl.value = buildFsCombinedBlock();
+        // Live preview only ever shows the tab you're currently on - blank
+        // if this tab is blank, even if another tab still has real data
+        // stashed. The full multi-service combine happens at Save/Send time
+        // (fsFinalizeRawForAction), not here.
+        rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
     }
 }
@@ -7732,11 +7763,24 @@ function fsMcRestoreCustomLabels() {
     }
     fsMcLabelOriginals = {};
 }
-function fsMcSetActiveTab(service) {
-    const tabs = document.querySelectorAll("#fs-miner-config-tabs .fs-miner-config-tab");
-    tabs.forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.service === service);
+// Keeps both tab bars - the modal's GPU/CPU/AUX tabs and the main-page tabs
+// that replaced the old Service dropdown - showing the same active service,
+// since they both drive the same fsCurrentServiceType.
+function fsSyncServiceTabsUI() {
+    const active = getCurrentFsServiceType();
+    document.querySelectorAll("#fs-miner-config-tabs .fs-miner-config-tab").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.service === active);
     });
+    document.querySelectorAll("#fs-service-tabs .fs-service-tab").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.service === active);
+    });
+}
+// Click handler for the main-page GPU/CPU/AUX tabs (replaces the old Service
+// dropdown) - routes through the same handleFsServiceSwitch as everything
+// else so main-page and modal tab switching behave identically.
+function fsSwitchServiceTab(service) {
+    handleFsServiceSwitch(service);
+    fsSyncServiceTabsUI();
 }
 function openFsMinerConfigModal() {
     const modal = document.getElementById("fs-miner-config-modal");
@@ -7769,7 +7813,7 @@ function openFsMinerConfigModal() {
     fsMcApplyCustomLabels();
     updateFsMinerConfigTitle();
     updateFsMinerConfigCustomVisibility();
-    fsMcSetActiveTab(getCurrentFsServiceType());
+    fsSyncServiceTabsUI();
     syncFsMcPoolTokenField();
     restoreFsMcDialogSize();
     modal.classList.remove("hidden");
@@ -7810,15 +7854,16 @@ function fsMcClearCurrentTab() {
     if (serviceTypeEl) serviceTypeEl.value = service;
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // Clearing a tab always leaves it blank, so there's nothing to
-        // preview unless another service still has real content.
-        rawEl.value = buildFsCombinedBlock();
+        // Clearing a tab always leaves it blank, so the live preview goes
+        // blank too - other services' stashed data still gets included when
+        // Save/Send recombines everything.
+        rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
     }
 }
 function fsMcSwitchTab(service) {
     handleFsServiceSwitch(service);
-    fsMcSetActiveTab(getCurrentFsServiceType());
+    fsSyncServiceTabsUI();
     updateFsMinerConfigTitle();
     updateFsMinerConfigCustomVisibility();
 }
@@ -7985,10 +8030,19 @@ function populateFsFieldsFromRaw(rawText) {
             updateManagePoolsBtnLabel();
             syncFsMcPoolTokenField();
         }
-        if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
-            const rawEl = document.getElementById("fs-raw");
-            if (rawEl) {
-                rawEl.value = fsDualModeActive ? buildFsCombinedBlock() : buildFsBlock(activeValues.SERVICE_TYPE);
+        const rawEl = document.getElementById("fs-raw");
+        if (rawEl) {
+            if (isDual) {
+                // Multiple services loaded - narrow the live preview to just
+                // the active tab (this is the fix for the raw box appearing
+                // "stuck" showing whichever tab loaded first, e.g. always
+                // GPU, no matter which tab you switch to). The full loaded
+                // raw text combining all services is preserved and gets
+                // rebuilt correctly on Save/Send.
+                rawEl.value = buildFsActivePreview();
+                autoResizeFsRaw();
+            } else if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
+                rawEl.value = buildFsBlock(activeValues.SERVICE_TYPE);
                 autoResizeFsRaw();
             }
         }
@@ -8052,7 +8106,7 @@ function updateRawFromFieldChange(target) {
         return;
     }
     if (fsDualModeActive) {
-        rawEl.value = buildFsCombinedBlock();
+        rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
         return;
     }
@@ -8113,7 +8167,7 @@ function wireUpFsTemplateToken(tokenId, tokenText) {
     });
 }
 function sendItFs() {
-    const raw = document.getElementById("fs-raw").value.trim();
+    const raw = fsFinalizeRawForAction().trim();
     if (!raw) {
         alert("Flightsheet is empty");
         return;
@@ -11079,6 +11133,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeFsMinerConfigModal();
     });
     document.getElementById("btn-fs-mc-apply")?.addEventListener("click", () => {
+        // Force a full rebuild from the live form state rather than relying
+        // on incremental input-event syncing - guarantees the raw content
+        // (and therefore what "Send it" ships) actually reflects whatever
+        // was just changed in the modal, RESTART included.
+        const rawEl = document.getElementById("fs-raw");
+        if (rawEl) {
+            rawEl.value = buildFsActivePreview();
+            autoResizeFsRaw();
+        }
         closeFsMinerConfigModal();
     });
     document.getElementById("btn-fs-mc-cancel")?.addEventListener("click", () => {
@@ -11092,6 +11155,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!btn) return;
         fsMcSwitchTab(btn.dataset.service);
     });
+    document.getElementById("fs-service-tabs")?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".fs-service-tab");
+        if (!btn) return;
+        fsSwitchServiceTab(btn.dataset.service);
+    });
+    fsSyncServiceTabsUI();
     document.getElementById("btn-fs-apply-to-toggle")?.addEventListener("click", (evt) => {
         evt.stopPropagation();
         toggleFsApplyToDropdown();
