@@ -12,12 +12,17 @@ Flightsheets... Apply to
 
 # Work in progress...
 
-> redesigned install paths...
+> redesigned install paths... use binary short names etc
 ```
 sudo mkdir -p /opt/miners/custom
 sudo cp -a /opt/miners/keryx-miner /opt/miners/custom/keryx-miner
 ```
+> updated Stats:
+> 
+> Full chart order now: Hashrate, GPU Core Clock, GPU Mem Clock, GPU Power, GPU VRAM, GPU Utl, GPU Temp,
 >
+> RAM Usage, Load Average, CPU Utl, CPU Temp.
+> 
 > added centered layout by default, toggle left/center in themes
 >
 > agent safe guard: MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
