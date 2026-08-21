@@ -2785,7 +2785,7 @@ h1 {
 }
 #fs-modal .fs-fields-row .field-group.fs-wallet-field-group {
     flex: 1 3 150px;
-    max-width: 480px;
+    max-width: none;
     min-width: 90px;
 }
 #fs-modal .fs-wallet-field-group .fs-wallet-autocomplete .fs-field-input {
