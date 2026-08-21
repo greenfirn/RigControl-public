@@ -10802,7 +10802,12 @@ function buildLabelsAndSeries(entries, extractFn) {
     });
     return { labels, seriesMap };
 }
-function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName) {
+// opts (all optional): axisForName(name) -> "y" | "y1" to overlay a second
+// series (e.g. fan %) on its own right-hand axis instead of sharing the
+// left one; y1Label for that axis's title; dashForName(name) -> a
+// borderDash array, handy for visually distinguishing the overlaid series
+// (e.g. dashed lines for fan speed vs solid for temp).
+function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opts) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === "undefined") return;
     if (statsCharts[canvasId]) {
@@ -10811,16 +10816,43 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName) {
     }
     const names = Object.keys(seriesMap);
     if (names.length === 0) return;
+    const { axisForName, y1Label, dashForName } = opts || {};
     const datasets = names.map((name, i) => ({
         label: name,
         data: seriesMap[name],
         borderColor: colorForName ? colorForName(name) : STATS_CHART_COLORS[i % STATS_CHART_COLORS.length],
         backgroundColor: "transparent",
         borderWidth: 2,
+        borderDash: dashForName ? dashForName(name) : undefined,
         pointRadius: 0,
         tension: 0.15,
-        spanGaps: true
+        spanGaps: true,
+        yAxisID: axisForName ? axisForName(name) : "y"
     }));
+    const scales = {
+        x: {
+            afterBuildTicks: (axis) => {
+                if (axis.ticks.length > 2) {
+                    axis.ticks = [axis.ticks[0], axis.ticks[axis.ticks.length - 1]];
+                }
+            },
+            ticks: { maxRotation: 0, color: "#9aa4b2" },
+            grid: { color: "rgba(255,255,255,0.06)" }
+        },
+        y: {
+            title: { display: !!yLabel, text: yLabel || "", color: "#9aa4b2" },
+            ticks: { color: "#9aa4b2" },
+            grid: { color: "rgba(255,255,255,0.06)" }
+        }
+    };
+    if (axisForName && names.some((name) => axisForName(name) === "y1")) {
+        scales.y1 = {
+            position: "right",
+            title: { display: !!y1Label, text: y1Label || "", color: "#9aa4b2" },
+            ticks: { color: "#9aa4b2" },
+            grid: { drawOnChartArea: false }
+        };
+    }
     statsCharts[canvasId] = new Chart(canvas.getContext("2d"), {
         type: "line",
         data: { labels, datasets },
@@ -10829,22 +10861,7 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName) {
             maintainAspectRatio: false,
             animation: false,
             interaction: { mode: "nearest", axis: "x", intersect: false },
-            scales: {
-                x: {
-                    afterBuildTicks: (axis) => {
-                        if (axis.ticks.length > 2) {
-                            axis.ticks = [axis.ticks[0], axis.ticks[axis.ticks.length - 1]];
-                        }
-                    },
-                    ticks: { maxRotation: 0, color: "#9aa4b2" },
-                    grid: { color: "rgba(255,255,255,0.06)" }
-                },
-                y: {
-                    title: { display: !!yLabel, text: yLabel || "", color: "#9aa4b2" },
-                    ticks: { color: "#9aa4b2" },
-                    grid: { color: "rgba(255,255,255,0.06)" }
-                }
-            },
+            scales,
             plugins: {
                 legend: { display: names.length > 1, labels: { color: "#c9d1d9", boxWidth: 12 } }
             }
@@ -10888,10 +10905,22 @@ function renderStatsCharts(resp) {
     renderStatsChart("stats-chart-gpu-watts", gpuWatts.labels, gpuWatts.seriesMap, "Watts");
     const gpuTemp = buildLabelsAndSeries(entries, (d) => {
         const out = {};
-        (d.gpus || []).forEach((g) => { out[`GPU${g.index}`] = g.temp; });
+        (d.gpus || []).forEach((g) => {
+            out[`GPU${g.index} Temp`] = g.temp;
+            out[`GPU${g.index} Fan`] = g.fan_percent ?? g.fan_speed;
+        });
         return out;
     });
-    renderStatsChart("stats-chart-gpu-temp", gpuTemp.labels, gpuTemp.seriesMap, "°C");
+    const STATS_FAN_COLOR = "#f0a860";
+    renderStatsChart("stats-chart-gpu-temp", gpuTemp.labels, gpuTemp.seriesMap, "°C", (name) => {
+        if (name.endsWith(" Fan")) return STATS_FAN_COLOR;
+        const idx = parseInt(name.replace("GPU", "").replace(" Temp", ""), 10) || 0;
+        return STATS_CHART_COLORS[idx % STATS_CHART_COLORS.length];
+    }, {
+        axisForName: (name) => (name.endsWith(" Fan") ? "y1" : "y"),
+        y1Label: "Fan %",
+        dashForName: (name) => (name.endsWith(" Fan") ? [4, 3] : undefined)
+    });
     const gpuUtil = buildLabelsAndSeries(entries, (d) => {
         const out = {};
         (d.gpus || []).forEach((g) => { out[`GPU${g.index}`] = g.util; });
