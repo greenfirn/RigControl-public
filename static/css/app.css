@@ -946,6 +946,93 @@ h1 {
     min-width: 196px;
     flex: 0 0 196px;
 }
+.fs-apply-to-group {
+    position: relative;
+    flex: 0 0 auto;
+}
+.fs-apply-to-toggle {
+    display: flex;
+    align-items: center;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: var(--font-size-input);
+    cursor: pointer;
+}
+.fs-apply-to-toggle:hover {
+    background: var(--button-hover-bg);
+}
+.fs-apply-to-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 220px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--surface-modal);
+    border: 1px solid var(--button-border);
+    border-radius: 5px;
+    padding: 4px;
+    z-index: 20;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.fs-apply-to-list.hidden {
+    display: none;
+}
+.fs-apply-to-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: var(--font-size-label);
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.fs-apply-to-item:hover {
+    background: var(--button-hover-bg);
+}
+.fs-apply-to-special {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.fs-apply-to-special.fs-apply-to-active {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.fs-apply-to-special.fs-apply-to-active::before {
+    content: "\2713  ";
+}
+.fs-apply-to-sep {
+    height: 1px;
+    margin: 4px 2px;
+    background: var(--border-divider-soft, var(--border-modal));
+}
+.fs-apply-to-workers {
+    display: flex;
+    flex-direction: column;
+}
+.fs-apply-to-worker-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: var(--font-size-label);
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.fs-apply-to-worker-row:hover {
+    background: var(--button-hover-bg);
+}
 .cmd-header-close {
     flex: 0 0 auto;
     min-width: 24px;
@@ -2538,10 +2625,18 @@ h1 {
 }
 #fs-modal .fs-list-toolbar {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+#fs-modal .fs-toolbar-row {
+    display: flex;
     align-items: flex-end;
     gap: 10px;
-    flex: 0 0 auto;
     flex-wrap: wrap;
+}
+#fs-modal .fs-toolbar-row-bottom .fs-search-row {
+    width: 100%;
 }
 #fs-modal .fs-name-group {
     flex: 1 1 220px;
@@ -2565,13 +2660,15 @@ h1 {
     width: auto;
     min-width: 50px;
 }
+#fs-modal .fs-toolbar-row-top .fs-apply-to-group {
+    margin-left: auto;
+}
 #fs-modal .fs-list-toolbar .cmd-btn-row {
     display: flex;
     align-items: center;
     gap: 10px;
     flex: 0 0 auto;
     width: auto;
-    margin-left: auto;
 }
 #fs-modal .fs-search {
     flex: 0 0 auto;
@@ -2596,7 +2693,7 @@ h1 {
 }
 #fs-modal .fs-item-grid {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1.3fr;
+    grid-template-columns: 2fr 1.1fr 1fr 1fr 1.3fr;
     gap: 10px;
     align-items: center;
     flex: 1 1 auto;
@@ -2675,6 +2772,11 @@ h1 {
 #fs-modal .fs-fields-row .field-group.field-double {
     flex: 0 1 344px;
     max-width: 344px;
+    min-width: 210px;
+}
+#fs-modal .fs-fields-row .field-group.fs-wallet-field-group {
+    flex: 1 1 344px;
+    max-width: none;
     min-width: 210px;
 }
 #fs-modal .fs-fields-row label[for="fs-field-template"] {

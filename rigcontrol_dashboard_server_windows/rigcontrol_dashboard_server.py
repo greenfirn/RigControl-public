@@ -2767,6 +2767,34 @@ async def stats_control_for_rigs(payload: dict):
         mqtt_publish(topic, msg)
     log(f"[STATS_CONTROL] Sent to {len(rigs_list)} rig(s) {rigs_list}: {msg}")
     return {"status": "sent", "rigs": rigs_list, "settings": msg}
+def _group_flightsheet_items(items: list) -> list:
+    """Collapse per-key flightsheet rows (RAW_COMMAND, APPLY_TO_WORKERS, ...)
+    into one object per FlightsheetId, the shape the frontend expects."""
+    grouped = {}
+    for item in items:
+        fsid = item.get("FlightsheetId")
+        if fsid is None:
+            continue
+        entry = grouped.setdefault(fsid, {
+            "FlightsheetId": fsid,
+            "Value": "",
+            "ApplyToWorkers": [],
+            "UpdatedAt": item.get("UpdatedAt", 0),
+        })
+        key = (item.get("Key") or "").strip().upper()
+        value = item.get("Value", "")
+        if key == "RAW_COMMAND":
+            entry["Value"] = value
+        elif key == "APPLY_TO_WORKERS":
+            try:
+                parsed = json.loads(value) if value else []
+                entry["ApplyToWorkers"] = parsed if isinstance(parsed, list) else []
+            except (TypeError, ValueError):
+                entry["ApplyToWorkers"] = []
+        updated_at = item.get("UpdatedAt", 0) or 0
+        if updated_at > entry.get("UpdatedAt", 0):
+            entry["UpdatedAt"] = updated_at
+    return list(grouped.values())
 @router.get("/api/flightsheets")
 def get_flightsheets():
     if USE_AWS_DB:
@@ -2775,7 +2803,7 @@ def get_flightsheets():
             return []
         try:
             resp = flightsheets_table.scan()
-            items = resp.get("Items", [])
+            items = _group_flightsheet_items(resp.get("Items", []))
             log(f"[FS GET AWS] Returning {len(items)} flightsheet items")
             return items
         except Exception as e:
@@ -2784,7 +2812,7 @@ def get_flightsheets():
     else:
         try:
             resp = local_flightsheet_db.scan()
-            items = resp.get("Items", [])
+            items = _group_flightsheet_items(resp.get("Items", []))
             log(f"[FS GET LOCAL] Returning {len(items)} flightsheet items")
             return items
         except Exception as e:

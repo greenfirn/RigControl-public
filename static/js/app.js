@@ -4526,9 +4526,10 @@ function toggleDocker(id) {
     scheduleRender();
 }
 function stopClick(ev) { ev.stopPropagation(); }
+let cmdModalRigOverride = null;
 function openCmdModal() {
     document.getElementById("cmd-target-count").textContent =
-        selectedRigs.size;
+        (cmdModalRigOverride && cmdModalRigOverride.length) ? cmdModalRigOverride.length : selectedRigs.size;
     const input = document.getElementById("cmd-input");
     const out = document.getElementById("cmd-output");
     if (out) out.textContent = "";
@@ -4538,6 +4539,7 @@ function openCmdModal() {
 }
 function closeCmdModal() {
     document.getElementById("cmd-modal").classList.add("hidden");
+    cmdModalRigOverride = null;
 }
 function isLogsModuleVisible() {
     const modal = document.getElementById("logs-modal");
@@ -5531,7 +5533,11 @@ function handleOfflinePingIntervalChangeNotification(msg) {
     }
 }
 async function sendCommandToSelectedRigs(command) {
-    if (selectedRigs.size === 0) {
+    const targets = (cmdModalRigOverride && cmdModalRigOverride.length)
+        ? cmdModalRigOverride
+        : Array.from(selectedRigs);
+    cmdModalRigOverride = null;
+    if (targets.length === 0) {
         alert("No workers selected");
         return;
     }
@@ -5539,7 +5545,7 @@ async function sendCommandToSelectedRigs(command) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            rigs: Array.from(selectedRigs),
+            rigs: targets,
             command
         })
     });
@@ -5798,8 +5804,84 @@ function collectFlightsheetEntries() {
     }
     console.log("Saving flightsheet with command length:", cmd.length);
     return [
-        { key: "RAW_COMMAND", gpu: 0, value: cmd }
+        { key: "RAW_COMMAND", gpu: 0, value: cmd },
+        { key: "APPLY_TO_WORKERS", gpu: 0, value: JSON.stringify(Array.from(fsApplyToRigs)) }
     ];
+}
+let fsApplyToRigs = new Set();
+function isFsApplyToDropdownOpen() {
+    const list = document.getElementById("fs-apply-to-list");
+    return !!list && !list.classList.contains("hidden");
+}
+function openFsApplyToDropdown() {
+    populateFsApplyToWorkerList();
+    document.getElementById("fs-apply-to-list")?.classList.remove("hidden");
+}
+function closeFsApplyToDropdown() {
+    document.getElementById("fs-apply-to-list")?.classList.add("hidden");
+}
+function toggleFsApplyToDropdown() {
+    if (isFsApplyToDropdownOpen()) {
+        closeFsApplyToDropdown();
+    } else {
+        openFsApplyToDropdown();
+    }
+}
+function updateFsApplyToToggleLabel() {
+    const btn = document.getElementById("btn-fs-apply-to-toggle");
+    if (!btn) return;
+    if (fsApplyToRigs.size === 0) {
+        btn.textContent = "Workers";
+    } else if (fsApplyToRigs.size === 1) {
+        btn.textContent = Array.from(fsApplyToRigs)[0];
+    } else {
+        btn.textContent = `${fsApplyToRigs.size} workers`;
+    }
+}
+function updateFsApplyToWorkersOptionCheckedState() {
+    const opt = document.getElementById("fs-apply-to-workers-option");
+    if (opt) opt.classList.toggle("fs-apply-to-active", fsApplyToRigs.size === 0);
+}
+function populateFsApplyToWorkerList() {
+    const container = document.getElementById("fs-apply-to-workers");
+    if (!container) return;
+    container.innerHTML = "";
+    const rigNames = Object.keys(rigsState || {})
+        .filter(name => name !== "rigs")
+        .sort();
+    rigNames.forEach((name) => {
+        const row = document.createElement("label");
+        row.className = "fs-apply-to-worker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = fsApplyToRigs.has(name);
+        cb.addEventListener("change", () => {
+            if (cb.checked) {
+                fsApplyToRigs.add(name);
+            } else {
+                fsApplyToRigs.delete(name);
+            }
+            updateFsApplyToToggleLabel();
+            updateFsApplyToWorkersOptionCheckedState();
+        });
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(span);
+        container.appendChild(row);
+    });
+    updateFsApplyToWorkersOptionCheckedState();
+}
+function setFsApplyToRigs(names) {
+    const rigNames = new Set(Object.keys(rigsState || {}).filter(name => name !== "rigs"));
+    fsApplyToRigs = new Set((Array.isArray(names) ? names : []).filter(name => rigNames.has(name)));
+    updateFsApplyToToggleLabel();
+    if (isFsApplyToDropdownOpen()) populateFsApplyToWorkerList();
+}
+function clearFsApplyToSelection() {
+    fsApplyToRigs.clear();
+    updateFsApplyToToggleLabel();
+    populateFsApplyToWorkerList();
 }
 async function loadFlightsheets() {
     const res = await fetch(`${API}/api/flightsheets`);
@@ -5851,10 +5933,13 @@ function renderFlightsheets() {
         const coin = extractFsRawValue(raw, "ALGO");
         const pool = extractFsPoolListDisplay(raw);
         const miner = extractFsRawValue(raw, "MINER") || extractFsRawValue(raw, "CUSTOM_MINER");
+        const applyToWorkers = Array.isArray(fs.ApplyToWorkers) ? fs.ApplyToWorkers : [];
+        const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
         row.innerHTML = `
             <input type="checkbox" class="rig-select-checkbox fs-select-checkbox" title="Select flightsheet">
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(fs.FlightsheetId)}</span>
+                <span class="fs-item-col fs-item-col-applyto" title="${escapeHtml(applyToDisplay)}">${escapeHtml(applyToDisplay)}</span>
                 <span class="fs-item-col fs-item-col-miner">${escapeHtml(miner)}</span>
                 <span class="fs-item-col fs-item-col-coin">${escapeHtml(coin)}</span>
                 <span class="fs-item-col fs-item-col-pool">${escapeHtml(pool)}</span>
@@ -5888,6 +5973,7 @@ function renderFlightsheets() {
             document.getElementById("fs-name").value = fs.FlightsheetId;
             document.getElementById("fs-raw").value = fs.Value || "";
             populateFsFieldsFromRaw(fs.Value || "");
+            setFsApplyToRigs(fs.ApplyToWorkers);
             autoResizeFsRaw();
         });
         list.appendChild(row);
@@ -5928,21 +6014,27 @@ function fsListHeaderTextWidth(el, font) {
     return width;
 }
 const FS_LIST_NAME_MIN_PX = 140;
+const FS_LIST_APPLYTO_MAX_PX = 170;
 function autoSizeFsListColumns() {
     const header = document.querySelector("#fs-modal .fs-list-header .fs-item-grid");
     if (!header) return;
     const rowGrids = document.querySelectorAll("#fs-list .fs-item .fs-item-grid");
     const headerNameEl = header.children[0];
-    const headerMinerEl = header.children[1];
-    const headerAlgoEl = header.children[2];
+    const headerApplyToEl = header.children[1];
+    const headerMinerEl = header.children[2];
+    const headerAlgoEl = header.children[3];
     const headerFont = headerMinerEl ? fsListColumnFont(headerMinerEl) : null;
-    const sampleRowMinerEl = rowGrids.length > 0 ? rowGrids[0].children[1] : null;
+    const sampleRowMinerEl = rowGrids.length > 0 ? rowGrids[0].children[2] : null;
     const rowFont = sampleRowMinerEl ? fsListColumnFont(sampleRowMinerEl) : headerFont;
     let nameWidth = 0;
+    let applyToWidth = 0;
     let minerWidth = 0;
     let algoWidth = 0;
     if (headerNameEl && headerFont) {
         nameWidth = Math.max(nameWidth, fsListHeaderTextWidth(headerNameEl, headerFont));
+    }
+    if (headerApplyToEl && headerFont) {
+        applyToWidth = Math.max(applyToWidth, fsListHeaderTextWidth(headerApplyToEl, headerFont));
     }
     if (headerMinerEl && headerFont) {
         minerWidth = Math.max(minerWidth, fsListHeaderTextWidth(headerMinerEl, headerFont));
@@ -5953,14 +6045,16 @@ function autoSizeFsListColumns() {
     if (rowFont) {
         rowGrids.forEach((grid) => {
             if (grid.children[0]) nameWidth = Math.max(nameWidth, measureFsListTextWidth(grid.children[0].textContent, rowFont));
-            if (grid.children[1]) minerWidth = Math.max(minerWidth, measureFsListTextWidth(grid.children[1].textContent, rowFont));
-            if (grid.children[2]) algoWidth = Math.max(algoWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
+            if (grid.children[1]) applyToWidth = Math.max(applyToWidth, measureFsListTextWidth(grid.children[1].textContent, rowFont));
+            if (grid.children[2]) minerWidth = Math.max(minerWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
+            if (grid.children[3]) algoWidth = Math.max(algoWidth, measureFsListTextWidth(grid.children[3].textContent, rowFont));
         });
     }
     const namePx = Math.max(FS_LIST_NAME_MIN_PX, Math.ceil(nameWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
+    const applyToPx = Math.min(FS_LIST_APPLYTO_MAX_PX, Math.ceil(applyToWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
     const minerPx = Math.ceil(minerWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
     const algoPx = Math.ceil(algoWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
-    const template = `${namePx}px ${minerPx}px ${algoPx}px 1fr`;
+    const template = `${namePx}px ${applyToPx}px ${minerPx}px ${algoPx}px 1fr`;
     header.style.gridTemplateColumns = template;
     rowGrids.forEach((grid) => {
         grid.style.gridTemplateColumns = template;
@@ -7634,6 +7728,7 @@ function sendItFs() {
         return;
     }
     document.getElementById("cmd-input").value = raw;
+    cmdModalRigOverride = fsApplyToRigs.size > 0 ? Array.from(fsApplyToRigs) : null;
     if (document.getElementById("confirm-fs")?.checked) {
         openCmdModal();
     } else {
@@ -10579,10 +10674,29 @@ document.addEventListener("DOMContentLoaded", async () => {
             item.removeAttribute('aria-selected');
         });
         document.getElementById("fs-name").value = '';
+        clearFsApplyToSelection();
     });
     document.getElementById("fs-raw")?.addEventListener("input", (e) => {
         autoResizeFsRaw();
         populateFsFieldsFromRaw(e.target.value);
+    });
+    document.getElementById("btn-fs-apply-to-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleFsApplyToDropdown();
+    });
+    document.getElementById("fs-apply-to-workers-option")?.addEventListener("click", () => {
+        fsApplyToRigs.clear();
+        updateFsApplyToToggleLabel();
+        closeFsApplyToDropdown();
+    });
+    document.getElementById("fs-apply-to-clear-btn")?.addEventListener("click", () => {
+        clearFsApplyToSelection();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("fs-apply-to-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeFsApplyToDropdown();
+        }
     });
     document.getElementById("btn-send-it-fs")?.addEventListener("click", sendItFs);
     initSendConfirmCheckbox("confirm-fs", "fs");
