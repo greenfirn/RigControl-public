@@ -1634,6 +1634,12 @@ nvidia-smi
                     </div>
                     <div class="fs-toolbar-row fs-toolbar-row-bottom">
                         <div class="fs-search-row">
+                            <select id="fs-algo-filter" class="cmd-select" title="Filter the list to a single ALGO">
+                                <option value="">All algos</option>
+                            </select>
+                            <select id="fs-miner-filter" class="cmd-select" title="Filter the list to a single MINER">
+                                <option value="">All miners</option>
+                            </select>
                             <input
                                 type="text"
                                 id="fs-search"
@@ -1641,12 +1647,6 @@ nvidia-smi
                                 placeholder="Search..."
                                 autocomplete="off"
                             />
-                            <select id="fs-miner-filter" class="cmd-select" title="Filter the list to a single MINER">
-                                <option value="">All miners</option>
-                            </select>
-                            <select id="fs-algo-filter" class="cmd-select" title="Filter the list to a single ALGO">
-                                <option value="">All algos</option>
-                            </select>
                         </div>
                     </div>
                 </div>
@@ -1656,8 +1656,8 @@ nvidia-smi
                         <div class="fs-item-grid">
                             <span class="fs-item-col fs-item-col-name">Flightsheet Name</span>
                             <span class="fs-item-col fs-item-col-applyto" title="Which worker(s) this flightsheet applies to when saved">Apply To</span>
-                            <span class="fs-item-col fs-item-col-miner">Miner</span>
                             <span class="fs-item-col fs-item-col-coin">Algo</span>
+                            <span class="fs-item-col fs-item-col-miner">Miner</span>
                             <span class="fs-item-col fs-item-col-pool">Pool</span>
                         </div>
                     </div>

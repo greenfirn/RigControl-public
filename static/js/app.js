@@ -5940,8 +5940,8 @@ function renderFlightsheets() {
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(fs.FlightsheetId)}</span>
                 <span class="fs-item-col fs-item-col-applyto" title="${escapeHtml(applyToDisplay)}">${escapeHtml(applyToDisplay)}</span>
-                <span class="fs-item-col fs-item-col-miner">${escapeHtml(miner)}</span>
                 <span class="fs-item-col fs-item-col-coin">${escapeHtml(coin)}</span>
+                <span class="fs-item-col fs-item-col-miner">${escapeHtml(miner)}</span>
                 <span class="fs-item-col fs-item-col-pool">${escapeHtml(pool)}</span>
             </div>
         `;
@@ -6021,10 +6021,10 @@ function autoSizeFsListColumns() {
     const rowGrids = document.querySelectorAll("#fs-list .fs-item .fs-item-grid");
     const headerNameEl = header.children[0];
     const headerApplyToEl = header.children[1];
-    const headerMinerEl = header.children[2];
-    const headerAlgoEl = header.children[3];
+    const headerAlgoEl = header.children[2];
+    const headerMinerEl = header.children[3];
     const headerFont = headerMinerEl ? fsListColumnFont(headerMinerEl) : null;
-    const sampleRowMinerEl = rowGrids.length > 0 ? rowGrids[0].children[2] : null;
+    const sampleRowMinerEl = rowGrids.length > 0 ? rowGrids[0].children[3] : null;
     const rowFont = sampleRowMinerEl ? fsListColumnFont(sampleRowMinerEl) : headerFont;
     let nameWidth = 0;
     let applyToWidth = 0;
@@ -6036,25 +6036,25 @@ function autoSizeFsListColumns() {
     if (headerApplyToEl && headerFont) {
         applyToWidth = Math.max(applyToWidth, fsListHeaderTextWidth(headerApplyToEl, headerFont));
     }
-    if (headerMinerEl && headerFont) {
-        minerWidth = Math.max(minerWidth, fsListHeaderTextWidth(headerMinerEl, headerFont));
-    }
     if (headerAlgoEl && headerFont) {
         algoWidth = Math.max(algoWidth, fsListHeaderTextWidth(headerAlgoEl, headerFont));
+    }
+    if (headerMinerEl && headerFont) {
+        minerWidth = Math.max(minerWidth, fsListHeaderTextWidth(headerMinerEl, headerFont));
     }
     if (rowFont) {
         rowGrids.forEach((grid) => {
             if (grid.children[0]) nameWidth = Math.max(nameWidth, measureFsListTextWidth(grid.children[0].textContent, rowFont));
             if (grid.children[1]) applyToWidth = Math.max(applyToWidth, measureFsListTextWidth(grid.children[1].textContent, rowFont));
-            if (grid.children[2]) minerWidth = Math.max(minerWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
-            if (grid.children[3]) algoWidth = Math.max(algoWidth, measureFsListTextWidth(grid.children[3].textContent, rowFont));
+            if (grid.children[2]) algoWidth = Math.max(algoWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
+            if (grid.children[3]) minerWidth = Math.max(minerWidth, measureFsListTextWidth(grid.children[3].textContent, rowFont));
         });
     }
     const namePx = Math.max(FS_LIST_NAME_MIN_PX, Math.ceil(nameWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
     const applyToPx = Math.min(FS_LIST_APPLYTO_MAX_PX, Math.ceil(applyToWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
-    const minerPx = Math.ceil(minerWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
     const algoPx = Math.ceil(algoWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
-    const template = `${namePx}px ${applyToPx}px ${minerPx}px ${algoPx}px 1fr`;
+    const minerPx = Math.ceil(minerWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
+    const template = `${namePx}px ${applyToPx}px ${algoPx}px ${minerPx}px 1fr`;
     header.style.gridTemplateColumns = template;
     rowGrids.forEach((grid) => {
         grid.style.gridTemplateColumns = template;
