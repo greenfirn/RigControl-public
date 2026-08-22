@@ -705,9 +705,62 @@ h1 {
     gap: 4px;
     cursor: pointer;
 }
-.toolbar-style-lock-field input[type="checkbox"] {
+.toolbar-style-lock-field input[type="checkbox"],
+.wallpaper-fit-toggle input[type="checkbox"],
+#backups-select-all,
+#backups-restore-missing-only {
+    appearance: none;
+    -webkit-appearance: none;
     margin: 0;
+    width: 15px;
+    height: 15px;
     cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    position: relative;
+}
+.toolbar-style-lock-field input[type="checkbox"]:hover:not(:disabled),
+.wallpaper-fit-toggle input[type="checkbox"]:hover:not(:disabled),
+#backups-select-all:hover,
+#backups-restore-missing-only:hover {
+    border-color: var(--text-accent);
+}
+.toolbar-style-lock-field input[type="checkbox"]:checked,
+.wallpaper-fit-toggle input[type="checkbox"]:checked,
+#backups-select-all:checked,
+#backups-restore-missing-only:checked {
+    background: var(--text-accent);
+    border-color: var(--text-accent);
+}
+.toolbar-style-lock-field input[type="checkbox"]:checked::after,
+.wallpaper-fit-toggle input[type="checkbox"]:checked::after,
+#backups-select-all:checked::after,
+#backups-restore-missing-only:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--surface-row);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.toolbar-style-lock-field input[type="checkbox"]:indeterminate,
+#backups-select-all:indeterminate {
+    background: var(--text-accent);
+    border-color: var(--text-accent);
+}
+.toolbar-style-lock-field input[type="checkbox"]:indeterminate::after,
+#backups-select-all:indeterminate::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 7px;
+    height: 2px;
+    background: var(--surface-row);
 }
 .action-btn {
     height: var(--toolbar-btn-height, 28px);
@@ -2416,11 +2469,48 @@ h1 {
     white-space: nowrap;
 }
 .checkbox-label input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
     margin: 0;
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     cursor: pointer;
-    accent-color: var(--text-accent);
+    background: transparent;
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    position: relative;
+    flex: 0 0 auto;
+}
+.checkbox-label input[type="checkbox"]:hover:not(:disabled) {
+    border-color: var(--text-accent);
+}
+.checkbox-label input[type="checkbox"]:checked {
+    background: var(--text-accent);
+    border-color: var(--text-accent);
+}
+.checkbox-label input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--surface-row);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.checkbox-label input[type="checkbox"]:indeterminate {
+    background: var(--text-accent);
+    border-color: var(--text-accent);
+}
+.checkbox-label input[type="checkbox"]:indeterminate::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 7px;
+    height: 2px;
+    background: var(--surface-row);
 }
 .checkbox-label:has(input:disabled) {
     cursor: not-allowed;
@@ -4780,6 +4870,24 @@ h1 {
     scrollbar-width: thin;
     scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
 }
+#wdconfig-modal #wdconfig-raw::-webkit-scrollbar,
+#wdconfig-modal .wdconfig-logwatcher-script-textarea::-webkit-scrollbar {
+    width: 10px;
+}
+#wdconfig-modal #wdconfig-raw::-webkit-scrollbar-track,
+#wdconfig-modal .wdconfig-logwatcher-script-textarea::-webkit-scrollbar-track {
+    background: var(--list-scrollbar-track);
+}
+#wdconfig-modal #wdconfig-raw::-webkit-scrollbar-thumb,
+#wdconfig-modal .wdconfig-logwatcher-script-textarea::-webkit-scrollbar-thumb {
+    background: var(--list-scrollbar-thumb);
+    border-radius: 5px;
+}
+#wdconfig-modal #wdconfig-raw,
+#wdconfig-modal .wdconfig-logwatcher-script-textarea {
+    scrollbar-width: thin;
+    scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
+}
 .wdconfig-hint {
     font-size: var(--font-size-hint);
     color: var(--text-secondary);
@@ -5526,6 +5634,36 @@ h1 {
     display: flex;
     align-items: center;
     cursor: pointer;
+}
+#backups-modal .backups-item-checkbox input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    position: relative;
+}
+#backups-modal .backups-item-checkbox input[type="checkbox"]:hover {
+    border-color: var(--text-accent);
+}
+#backups-modal .backups-item-checkbox input[type="checkbox"]:checked {
+    background: var(--text-accent);
+    border-color: var(--text-accent);
+}
+#backups-modal .backups-item-checkbox input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--surface-row);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
 }
 #backups-modal .backups-actions {
     display: flex;
