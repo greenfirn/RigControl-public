@@ -211,29 +211,13 @@
                     <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
                     <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
                 </div>
-                <div class="wdconfig-logwatcher-interval-row" title="Sets the watchdog service's own loop cadence - how often it re-checks mining health and re-scans logs for new lines. Applies regardless of which tab is open.">
-                    <div class="field-group wdconfig-interval-group">
-                        <label for="wdconfig-logwatcher-interval">Log Watcher Check Interval (s)</label>
-                        <input type="number" id="wdconfig-logwatcher-interval" min="5" step="1" value="60" class="wdconfig-narrow-input" />
-                    </div>
-                </div>
                 <div class="wdconfig-main-tab-panel" data-tab-panel="mining">
                 <div class="fs-editor-panel">
                     <div class="wdconfig-settings-panel" id="wdconfig-settings-panel">
-                        <div class="wdconfig-main-enable-row">
-                            <label class="checkbox-label" title="When off, the mining health-check watchdog (hashrate/watts monitoring and its restart/notify actions) is skipped entirely on the worker. The Log Watcher below is unaffected.">
-                                <input type="checkbox" id="wdconfig-mining-enabled">
-                                <span class="checkbox-text">Enable Mining Watchdog</span>
-                            </label>
-                        </div>
                         <div class="wdconfig-upper-panel">
                         <div class="settings-section">
-                            <div class="section-header">Timing &amp; When Triggered</div>
+                            <div class="section-header">When Triggered</div>
                             <div class="wdconfig-timing-triggers-row">
-                                <div class="field-group wdconfig-interval-group">
-                                    <label for="wdconfig-check-interval">Check Interval (s)</label>
-                                    <input type="number" id="wdconfig-check-interval" min="1" step="1" value="60" class="wdconfig-narrow-input" />
-                                </div>
                                 <div class="wdconfig-actions-row">
                                     <span class="wdconfig-action-group-label">Restart:</span>
                                     <label class="checkbox-label">
@@ -308,18 +292,22 @@
                                 </tbody>
                             </table>
                         </div>
+                        <div class="settings-section">
+                            <div class="section-header">Custom Script <span class="wdconfig-section-header-hint">Runs when "Custom Script" is checked in When Triggered above, for the selected algorithm row.</span></div>
+                            <textarea
+                                id="wdconfig-custom-script"
+                                class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                                spellcheck="false"
+                                disabled
+                                placeholder="#!/bin/bash&#10;# runs on the worker when the watchdog triggers"
+                            ></textarea>
+                        </div>
                         </div>
                     </div>
                 </div>
                 </div>
                 <div class="wdconfig-main-tab-panel hidden" data-tab-panel="logs">
                     <div class="wdconfig-logwatcher-panel" id="wdconfig-logwatcher-panel">
-                        <div class="wdconfig-main-enable-row">
-                            <label class="checkbox-label" title="When off, log lines are not scanned and nothing is added to the Status Log. The Mining Watchdog above is unaffected.">
-                                <input type="checkbox" id="wdconfig-logwatcher-enabled">
-                                <span class="checkbox-text">Enable Log Watcher</span>
-                            </label>
-                        </div>
                         <div class="settings-section">
                             <div class="section-header">Watch Slots <span class="wdconfig-section-header-hint">Which miner log(s) on the worker to scan</span></div>
                             <div class="wdconfig-timing-triggers-row">
@@ -340,16 +328,18 @@
                             </div>
                         </div>
                         <div class="settings-section">
-                            <div class="section-header">Watch Terms <span class="wdconfig-section-header-hint">Case-insensitive. A match adds that log line to the Status Log at the chosen severity.</span></div>
+                            <div class="section-header">Watch Terms <span class="wdconfig-section-header-hint">Contains/Not Contains accept comma-separated lists - Contains must ALL be present, Not Contains must NONE be present. A match always adds the line to the Status Log, and can trigger the same actions as a Mining Watchdog row.</span></div>
                             <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
                                 <button class="cmd-btn" id="btn-wdconfig-logterm-add">+ Add Term</button>
                             </div>
                             <div class="wdconfig-table-wrap">
-                                <table class="wdconfig-table">
+                                <table class="wdconfig-table wdconfig-logterm-table">
                                     <thead>
                                         <tr>
-                                            <th>Term</th>
+                                            <th>Contains</th>
+                                            <th>Not Contains</th>
                                             <th>Severity</th>
+                                            <th>Actions</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -358,27 +348,53 @@
                                 </table>
                             </div>
                         </div>
+                        <div class="settings-section">
+                            <div class="section-header">Log Watcher Custom Script <span class="wdconfig-section-header-hint">Runs when any term above with its "Script" action checked matches - shared by all terms.</span></div>
+                            <textarea
+                                id="wdconfig-logwatcher-custom-script"
+                                class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                                spellcheck="false"
+                                placeholder="#!/bin/bash&#10;# runs on the worker when a log-watcher term with Script enabled matches"
+                            ></textarea>
+                        </div>
                     </div>
                 </div>
-                <div class="settings-section wdconfig-tabbed-section raw-active">
-                    <div class="wdconfig-tabs">
-                        <button type="button" class="wdconfig-tab-btn active" id="wdconfig-tab-btn-raw" data-tab="raw">Raw Content</button>
-                        <button type="button" class="wdconfig-tab-btn" id="wdconfig-tab-btn-script" data-tab="script">Custom Script</button>
-                        <span class="input-help-inline wdconfig-tab-hint">Runs only when "Custom Script" enabled</span>
+                <div class="settings-section">
+                    <div class="section-header">Raw Content <span class="wdconfig-section-header-hint">Full generated config text - edits here are parsed back into the fields above</span></div>
+                    <textarea
+                        id="wdconfig-raw"
+                        class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                        spellcheck="false"
+                    ></textarea>
+                </div>
+                <div class="wdconfig-loops-row" title="Mining Watchdog and Log Watcher run as two fully independent loops on the worker, each on its own enable state and cadence. Applies regardless of which tab is open.">
+                    <div class="wdconfig-loops-group">
+                        <label class="checkbox-label" title="When off, the mining health-check watchdog (hashrate/watts monitoring and its restart/notify actions) is skipped entirely on the worker.">
+                            <input type="checkbox" id="wdconfig-mining-enabled">
+                            <span class="checkbox-text">Enable Mining Watchdog</span>
+                        </label>
+                        <div class="field-group wdconfig-interval-group" title="How often Mining Watchdog checks (seconds)">
+                            <label for="wdconfig-mining-interval">Check Interval (s)</label>
+                            <span class="wdconfig-interval-stepper">
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-mining-interval-down" title="Decrease">▼</button>
+                                <input type="number" id="wdconfig-mining-interval" min="5" step="1" value="60" class="wdconfig-narrow-input" title="How often Mining Watchdog checks (seconds)" />
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-mining-interval-up" title="Increase">▲</button>
+                            </span>
+                        </div>
                     </div>
-                    <div class="wdconfig-tab-body" id="wdconfig-tab-body">
-                        <textarea
-                            id="wdconfig-custom-script"
-                            class="wdconfig-script-textarea wdconfig-tab-panel"
-                            spellcheck="false"
-                            disabled
-                            placeholder="#!/bin/bash&#10;# runs on the worker when the watchdog triggers"
-                        ></textarea>
-                        <textarea
-                            id="wdconfig-raw"
-                            class="fs-raw-shrunk wdconfig-tab-panel active"
-                            spellcheck="false"
-                        ></textarea>
+                    <div class="wdconfig-loops-group">
+                        <label class="checkbox-label" title="When off, log lines are not scanned and nothing is added to the Status Log.">
+                            <input type="checkbox" id="wdconfig-logwatcher-enabled">
+                            <span class="checkbox-text">Enable Log Watcher</span>
+                        </label>
+                        <div class="field-group wdconfig-interval-group" title="How often Log Watcher scans (seconds)">
+                            <label for="wdconfig-logwatcher-interval">Check Interval (s)</label>
+                            <span class="wdconfig-interval-stepper">
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-logwatcher-interval-down" title="Decrease">▼</button>
+                                <input type="number" id="wdconfig-logwatcher-interval" min="5" step="1" value="60" class="wdconfig-narrow-input" title="How often Log Watcher scans (seconds)" />
+                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-logwatcher-interval-up" title="Increase">▲</button>
+                            </span>
+                        </div>
                     </div>
                 </div>
                 <div class="wdconfig-list-toolbar">
@@ -413,6 +429,14 @@
                     </div>
                 </div>
                 <div class="fs-list-panel">
+                    <div class="fs-list-header">
+                        <div class="fs-item-grid">
+                            <span class="fs-item-col fs-item-col-name">Watchdog Profile Name</span>
+                            <span class="fs-item-col fs-item-col-slots" title="Log Watcher slot(s) watched">Slots</span>
+                            <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog enabled">Mining</span>
+                            <span class="fs-item-col fs-item-col-logs" title="Log Watcher enabled">Logs</span>
+                        </div>
+                    </div>
                     <div id="wdconfig-list" class="fs-list">
                     </div>
                 </div>

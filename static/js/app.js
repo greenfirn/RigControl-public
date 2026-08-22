@@ -843,16 +843,24 @@ let wdHashrateUnit = "MH/s";
 const WD_GLOBAL_STOP_FAILS_DEFAULT = 5;
 const WD_LOG_WATCHER_SLOT_IDS = ["cpu", "gpu", "aux"];
 const WD_LOG_WATCHER_INTERVAL_DEFAULT = 60;
+const WD_MINING_INTERVAL_DEFAULT = 60;
 const WD_LOG_WATCHER_SEVERITIES = ["good", "warn", "important", "critical"];
 const WD_LOG_WATCHER_SEVERITY_LABELS = { good: "Good", warn: "Warn", important: "Important", critical: "Critical" };
+const WD_LOG_TERM_ACTION_DEFS = [
+    ["cpu", "ACTION_RESTART_CPU", "CPU"],
+    ["gpu", "ACTION_RESTART_GPU", "GPU"],
+    ["fan", "ACTION_RESTART_FAN", "Fan"],
+    ["aux", "ACTION_RESTART_AUX", "AUX"],
+    ["email", "ACTION_EMAIL_NOTIFY", "Email"],
+    ["sms", "ACTION_SMS_NOTIFY", "SMS"],
+    ["reboot", "ACTION_REBOOT_RIG", "Reboot"],
+    ["script", "ACTION_CUSTOM_SCRIPT", "Script"],
+];
 let wdLogTermRowIdCounter = 0;
 let watchdogProfiles = [];
 let selectedWatchdogProfileId = null;
 let savedCommands = [];
 let selectedSavedCommandId = null;
-const WD_TIMING_FIELD_DEFAULTS = {
-    "wdconfig-check-interval": "60"
-};
 const WD_ACTION_CHECKBOX_DEFAULTS = {
     "wdconfig-action-restart-cpu": false,
     "wdconfig-action-restart-gpu": false,
@@ -9627,7 +9635,6 @@ function closeWdConfigModal() {
 }
 function createDefaultWdRowSettings() {
     return {
-        checkInterval: WD_TIMING_FIELD_DEFAULTS["wdconfig-check-interval"],
         actions: { ...WD_ACTION_CHECKBOX_DEFAULTS },
         customScript: "",
     };
@@ -9641,15 +9648,12 @@ function saveWdPanelStateToSelectedRow() {
         actions[id] = flag(id);
     }
     wdRowSettings.set(selectedWdRowId, {
-        checkInterval: val("wdconfig-check-interval") || WD_TIMING_FIELD_DEFAULTS["wdconfig-check-interval"],
         actions,
         customScript: val("wdconfig-custom-script"),
     });
 }
 function loadWdRowSettingsIntoPanel(rowId) {
     const settings = wdRowSettings.get(rowId) || createDefaultWdRowSettings();
-    const intervalEl = document.getElementById("wdconfig-check-interval");
-    if (intervalEl) intervalEl.value = settings.checkInterval;
     for (const [id, defaultChecked] of Object.entries(WD_ACTION_CHECKBOX_DEFAULTS)) {
         const el = document.getElementById(id);
         if (el) el.checked = settings.actions[id] ?? defaultChecked;
@@ -9735,6 +9739,13 @@ function stepWdGlobalStopFails(direction) {
     el.value = next;
     rebuildWdRawFromSettings();
 }
+function stepWdInterval(inputId, direction) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    const next = Math.max(5, (Number(el.value) || 60) + direction * 5);
+    el.value = next;
+    rebuildWdRawFromSettings();
+}
 function addWdConfigRow(row, opts) {
     const r = row || { algo: "", minHashrate: 1, minWatts: 20, maxWatts: 0, grace: 3, cooldown: 600 };
     const tbody = document.getElementById("wdconfig-rows");
@@ -9804,7 +9815,7 @@ function collectWdConfigRows() {
     return rows;
 }
 function addWdLogTermRow(row, opts) {
-    const r = row || { term: "", severity: "warn" };
+    const r = row || { contains: "", notContains: "", severity: "warn", actions: {} };
     const tbody = document.getElementById("wdconfig-logterm-rows");
     if (!tbody) return;
     const rowId = String(++wdLogTermRowIdCounter);
@@ -9814,15 +9825,26 @@ function addWdLogTermRow(row, opts) {
     const severityOptions = WD_LOG_WATCHER_SEVERITIES
         .map(sev => `<option value="${sev}"${sev === r.severity ? " selected" : ""}>${WD_LOG_WATCHER_SEVERITY_LABELS[sev]}</option>`)
         .join("");
+    const actionsHtml = WD_LOG_TERM_ACTION_DEFS
+        .map(([slug, key, label]) => `
+            <label class="checkbox-label wdconfig-logterm-action-label" title="${label}">
+                <input type="checkbox" class="wdconfig-logterm-action" data-action-key="${key}"${r.actions && r.actions[key] ? " checked" : ""}>
+                <span class="checkbox-text">${label}</span>
+            </label>`)
+        .join("");
     tr.innerHTML = `
-        <td><input type="text" class="wdconfig-input wdconfig-logterm-term" value="${escapeHtml(r.term)}" placeholder="e.g. Found a block on" autocomplete="off" /></td>
+        <td><input type="text" class="wdconfig-input wdconfig-logterm-contains" value="${escapeHtml(r.contains)}" placeholder="e.g. error, timeout" autocomplete="off" /></td>
+        <td><input type="text" class="wdconfig-input wdconfig-logterm-notcontains" value="${escapeHtml(r.notContains)}" placeholder="e.g. debug" autocomplete="off" /></td>
         <td><select class="wdconfig-severity-select" data-severity="${r.severity}">${severityOptions}</select></td>
+        <td><div class="wdconfig-logterm-actions">${actionsHtml}</div></td>
         <td><button class="wdconfig-remove-row" title="Remove term">&times;</button></td>
     `;
-    const termInput = tr.querySelector(".wdconfig-logterm-term");
-    termInput.addEventListener("input", () => {
-        if (termInput.value.includes(",")) termInput.value = termInput.value.replace(/,/g, "");
-    });
+    for (const cls of [".wdconfig-logterm-contains", ".wdconfig-logterm-notcontains"]) {
+        const input = tr.querySelector(cls);
+        input.addEventListener("input", () => {
+            if (/[;|]/.test(input.value)) input.value = input.value.replace(/[;|]/g, "");
+        });
+    }
     const severitySelect = tr.querySelector(".wdconfig-severity-select");
     severitySelect.addEventListener("change", () => {
         severitySelect.dataset.severity = severitySelect.value;
@@ -9838,10 +9860,15 @@ function addWdLogTermRow(row, opts) {
 function collectWdLogTermRows() {
     const rows = [];
     for (const tr of document.querySelectorAll("#wdconfig-logterm-rows .wdconfig-logterm-row")) {
-        const term = tr.querySelector(".wdconfig-logterm-term")?.value.trim();
-        if (!term) continue;
+        const contains = tr.querySelector(".wdconfig-logterm-contains")?.value.trim();
+        if (!contains) continue;
+        const notContains = tr.querySelector(".wdconfig-logterm-notcontains")?.value.trim() || "";
         const severity = tr.querySelector(".wdconfig-severity-select")?.value || "warn";
-        rows.push({ term, severity });
+        const actions = {};
+        tr.querySelectorAll(".wdconfig-logterm-action").forEach(cb => {
+            actions[cb.dataset.actionKey] = cb.checked;
+        });
+        rows.push({ contains, notContains, severity, actions });
     }
     return rows;
 }
@@ -9877,6 +9904,11 @@ async function loadWatchdogProfiles() {
         console.error("Error loading watchdog profiles:", e);
     }
 }
+function extractWdListRawValue(rawText, key) {
+    if (!rawText) return "";
+    const m = rawText.match(new RegExp(`^${key}\\s+"([^"]*)"\\s*$`, "m"));
+    return m ? m[1] : "";
+}
 function renderWatchdogProfiles() {
     const list = document.getElementById("wdconfig-list");
     if (!list) return;
@@ -9887,9 +9919,23 @@ function renderWatchdogProfiles() {
     for (const p of sorted) {
         const row = document.createElement("div");
         row.className = "fs-item";
-        row.textContent = p.WatchdogProfileId;
+        const raw = p.Value || "";
+        const miningOn = extractWdListRawValue(raw, "MINING_WATCHDOG_ENABLED") === "1";
+        const logsOn = extractWdListRawValue(raw, "LOG_WATCHER_ENABLED") === "1";
+        const slotsRaw = extractWdListRawValue(raw, "LOG_WATCHER_SLOTS");
+        const slotsDisplay = slotsRaw
+            ? slotsRaw.split(",").filter(Boolean).map(s => s.toUpperCase()).join(", ")
+            : "-";
+        row.innerHTML = `
+            <div class="fs-item-grid">
+                <span class="fs-item-col fs-item-col-name">${escapeHtml(p.WatchdogProfileId)}</span>
+                <span class="fs-item-col fs-item-col-slots" title="${escapeHtml(slotsDisplay)}">${escapeHtml(slotsDisplay)}</span>
+                <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog ${miningOn ? "enabled" : "disabled"}">${miningOn ? "✓" : "—"}</span>
+                <span class="fs-item-col fs-item-col-logs" title="Log Watcher ${logsOn ? "enabled" : "disabled"}">${logsOn ? "✓" : "—"}</span>
+            </div>
+        `;
         row.dataset.id = p.WatchdogProfileId;
-        row.dataset.value = p.Value || "";
+        row.dataset.value = raw;
         row.addEventListener("click", () => {
             document
                 .querySelectorAll("#wdconfig-list .fs-item.selected")
@@ -10005,8 +10051,12 @@ function clearWdConfigFields() {
     document.getElementById("wdconfig-name").value = "";
     const logTermTbody = document.getElementById("wdconfig-logterm-rows");
     if (logTermTbody) logTermTbody.innerHTML = "";
+    const logWatcherScriptEl = document.getElementById("wdconfig-logwatcher-custom-script");
+    if (logWatcherScriptEl) logWatcherScriptEl.value = "";
     const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
     if (miningEnabledEl) miningEnabledEl.checked = false;
+    const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
+    if (miningIntervalEl) miningIntervalEl.value = WD_MINING_INTERVAL_DEFAULT;
     const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
     if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
@@ -10020,10 +10070,6 @@ function clearWdConfigFields() {
     addWdConfigRow();
 }
 function resetWdSettingsToDefaults() {
-    for (const [id, val] of Object.entries(WD_TIMING_FIELD_DEFAULTS)) {
-        const el = document.getElementById(id);
-        if (el) el.value = val;
-    }
     for (const [id, checked] of Object.entries(WD_ACTION_CHECKBOX_DEFAULTS)) {
         const el = document.getElementById(id);
         if (el) el.checked = checked;
@@ -10035,6 +10081,8 @@ function resetWdSettingsToDefaults() {
     if (globalStopInput) globalStopInput.value = WD_GLOBAL_STOP_FAILS_DEFAULT;
     const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
     if (miningEnabledEl) miningEnabledEl.checked = false;
+    const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
+    if (miningIntervalEl) miningIntervalEl.value = WD_MINING_INTERVAL_DEFAULT;
     const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
     if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
@@ -10045,6 +10093,8 @@ function resetWdSettingsToDefaults() {
     }
     const logTermTbody = document.getElementById("wdconfig-logterm-rows");
     if (logTermTbody) logTermTbody.innerHTML = "";
+    const logWatcherScriptEl = document.getElementById("wdconfig-logwatcher-custom-script");
+    if (logWatcherScriptEl) logWatcherScriptEl.value = "";
 }
 function updateWdCustomScriptEnabled() {
     const cb = document.getElementById("wdconfig-action-custom-script");
@@ -10057,6 +10107,8 @@ function buildWdConfigRawFromSettings() {
     const globalStopEl = document.getElementById("wdconfig-global-stop-fails");
     const globalStopFails = globalStopEl ? Math.max(0, Number(globalStopEl.value) || 0) : WD_GLOBAL_STOP_FAILS_DEFAULT;
     const miningEnabled = document.getElementById("wdconfig-mining-enabled")?.checked ?? true;
+    const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
+    const miningInterval = miningIntervalEl ? Math.max(5, Number(miningIntervalEl.value) || 60) : 60;
     const logWatcherEnabled = document.getElementById("wdconfig-logwatcher-enabled")?.checked ?? false;
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     const logWatcherInterval = logWatcherIntervalEl ? Math.max(5, Number(logWatcherIntervalEl.value) || 60) : 60;
@@ -10064,19 +10116,31 @@ function buildWdConfigRawFromSettings() {
         .filter(slot => document.getElementById(`wdconfig-logwatcher-slot-${slot}`)?.checked)
         .join(",");
     const logWatcherTerms = collectWdLogTermRows()
-        .map(t => `${t.term}|${t.severity}`)
-        .join(",");
+        .map(t => {
+            const actionKeys = Object.entries(t.actions)
+                .filter(([, v]) => v)
+                .map(([k]) => k)
+                .join(",");
+            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}`;
+        })
+        .join(";");
     const lines = [
         "# rigcontrol-watchdog.conf - generated from the dashboard's Watchdog Config module",
         "# Each algorithm below owns its own full settings block - click its row",
         "# in the Per-Algorithm Thresholds table above to edit it.",
+        "# Mining Watchdog and Log Watcher run as two independent loops - each has its",
+        "# own check interval below and is unaffected by the other's cadence or enable state.",
         "",
         `GLOBAL_STOP_AFTER_FAILS "${globalStopFails}"`,
         `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
+        `MINING_INTERVAL_SECONDS "${miningInterval}"`,
         `LOG_WATCHER_ENABLED "${logWatcherEnabled ? "1" : "0"}"`,
         `LOG_WATCHER_INTERVAL_SECONDS "${logWatcherInterval}"`,
         `LOG_WATCHER_SLOTS "${logWatcherSlots}"`,
         `LOG_WATCHER_TERMS "${logWatcherTerms}"`,
+        "LOG_WATCHER_SCRIPT_BEGIN",
+        ...((document.getElementById("wdconfig-logwatcher-custom-script")?.value || "").split("\n")),
+        "LOG_WATCHER_SCRIPT_END",
         "",
     ];
     for (const tr of document.querySelectorAll("#wdconfig-rows .wdconfig-row")) {
@@ -10092,7 +10156,6 @@ function buildWdConfigRawFromSettings() {
         lines.push(`MAX_WATTS_TOTAL "${inputs[3].value}"`);
         lines.push(`GRACE_CHECKS "${inputs[4].value}"`);
         lines.push(`COOLDOWN_SECONDS "${inputs[5].value}"`);
-        lines.push(`CHECK_INTERVAL_SECONDS "${settings.checkInterval || "60"}"`);
         for (const [id, key] of WD_ACTION_RAW_KEYS) {
             lines.push(`${key} "${settings.actions[id] ? "1" : "0"}"`);
         }
@@ -10110,22 +10173,13 @@ function rebuildWdRawFromSettings() {
     autoResizeWdRaw();
 }
 function setWdConfigTab(tab) {
-    document.querySelectorAll("#wdconfig-modal .wdconfig-tab-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.tab === tab);
-    });
-    const scriptPanel = document.getElementById("wdconfig-custom-script");
-    const rawPanel = document.getElementById("wdconfig-raw");
-    if (scriptPanel) scriptPanel.classList.toggle("active", tab === "script");
-    if (rawPanel) rawPanel.classList.toggle("active", tab === "raw");
-    const section = document.querySelector("#wdconfig-modal .wdconfig-tabbed-section");
-    if (section) section.classList.toggle("raw-active", tab === "raw");
-    if (tab === "raw") autoResizeWdRaw();
+    // Raw Content and Custom Script are no longer tabbed together (Custom Script now
+    // lives at the bottom of the Mining tab) - kept as a no-op so existing call sites
+    // stay harmless.
 }
 function autoResizeWdRaw() {
 }
 function resetWdTabBodyHeight() {
-    const body = document.getElementById("wdconfig-tab-body");
-    if (body) body.style.minHeight = "";
 }
 function parseWdAlgoBlock(blockText) {
     const kv = {};
@@ -10145,7 +10199,6 @@ function parseWdAlgoBlock(blockText) {
         grace: Number(kv.GRACE_CHECKS) || 1,
         cooldown: Number(kv.COOLDOWN_SECONDS) || 0,
         settings: {
-            checkInterval: kv.CHECK_INTERVAL_SECONDS || WD_TIMING_FIELD_DEFAULTS["wdconfig-check-interval"],
             actions,
             customScript,
         },
@@ -10171,6 +10224,11 @@ function populateWdSettingsFromRaw(rawText) {
         const mm = rawText.match(/^MINING_WATCHDOG_ENABLED\s+"(\d)"\s*$/m);
         if (mm) miningEnabledEl.checked = mm[1] === "1";
     }
+    const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
+    if (miningIntervalEl) {
+        const mim = rawText.match(/^MINING_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
+        miningIntervalEl.value = mim ? Math.max(5, Number(mim[1]) || 60) : WD_MINING_INTERVAL_DEFAULT;
+    }
     const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
     if (logWatcherEnabledEl) {
         const lm = rawText.match(/^LOG_WATCHER_ENABLED\s+"(\d)"\s*$/m);
@@ -10191,14 +10249,29 @@ function populateWdSettingsFromRaw(rawText) {
     }
     const termsMatch = rawText.match(/^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$/m);
     if (termsMatch && termsMatch[1]) {
-        for (const entry of termsMatch[1].split(",")) {
-            const [term, severity] = entry.split("|");
-            if (!term) continue;
+        for (const entry of termsMatch[1].split(";")) {
+            if (!entry.trim()) continue;
+            const parts = entry.split("|");
+            while (parts.length < 4) parts.push("");
+            const [contains, notContains, severityRaw, actionsRaw] = parts;
+            if (!contains.trim()) continue;
+            const actionKeys = new Set(actionsRaw.split(",").map(a => a.trim()).filter(Boolean));
+            const actions = {};
+            for (const [, key] of WD_LOG_TERM_ACTION_DEFS) {
+                actions[key] = actionKeys.has(key);
+            }
             addWdLogTermRow({
-                term,
-                severity: WD_LOG_WATCHER_SEVERITIES.includes(severity) ? severity : "warn",
+                contains,
+                notContains,
+                severity: WD_LOG_WATCHER_SEVERITIES.includes(severityRaw) ? severityRaw : "warn",
+                actions,
             });
         }
+    }
+    const logWatcherScriptEl = document.getElementById("wdconfig-logwatcher-custom-script");
+    if (logWatcherScriptEl) {
+        const sm = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
+        logWatcherScriptEl.value = sm ? sm[1] : "";
     }
     const blockHeaderRe = /^\[(.+?)\]\s*$/gm;
     const blockStarts = [];
@@ -10243,7 +10316,6 @@ function populateWdSettingsFromRaw(rawText) {
     }
     const legacyScriptMatch = rawText.match(/CUSTOM_SCRIPT_BEGIN\n([\s\S]*?)\nCUSTOM_SCRIPT_END/);
     const legacyScript = legacyScriptMatch ? legacyScriptMatch[1] : "";
-    const legacyInterval = kv.CHECK_INTERVAL_SECONDS || WD_TIMING_FIELD_DEFAULTS["wdconfig-check-interval"];
     for (const line of rawText.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) continue;
@@ -10262,7 +10334,6 @@ function populateWdSettingsFromRaw(rawText) {
             skipRebuild: true,
             skipSelect: true,
             settings: {
-                checkInterval: legacyInterval,
                 actions: { ...legacyActions },
                 customScript: legacyScript,
             },
@@ -11893,14 +11964,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("wdconfig-hashrate-unit-down")?.addEventListener("click", () => stepWdHashrateUnit(-1));
     document.getElementById("wdconfig-global-stop-up")?.addEventListener("click", () => stepWdGlobalStopFails(1));
     document.getElementById("wdconfig-global-stop-down")?.addEventListener("click", () => stepWdGlobalStopFails(-1));
+    document.getElementById("wdconfig-mining-interval-up")?.addEventListener("click", () => stepWdInterval("wdconfig-mining-interval", 1));
+    document.getElementById("wdconfig-mining-interval-down")?.addEventListener("click", () => stepWdInterval("wdconfig-mining-interval", -1));
+    document.getElementById("wdconfig-logwatcher-interval-up")?.addEventListener("click", () => stepWdInterval("wdconfig-logwatcher-interval", 1));
+    document.getElementById("wdconfig-logwatcher-interval-down")?.addEventListener("click", () => stepWdInterval("wdconfig-logwatcher-interval", -1));
     document.getElementById("wdconfig-global-stop-fails")?.addEventListener("input", () => {
         const el = document.getElementById("wdconfig-global-stop-fails");
         if (el && Number(el.value) < 0) el.value = 0;
         rebuildWdRawFromSettings();
     });
+    document.getElementById("wdconfig-mining-interval")?.addEventListener("input", () => {
+        const el = document.getElementById("wdconfig-mining-interval");
+        if (el && Number(el.value) < 5) el.value = 5;
+        rebuildWdRawFromSettings();
+    });
     document.getElementById("wdconfig-logwatcher-interval")?.addEventListener("input", () => {
         const el = document.getElementById("wdconfig-logwatcher-interval");
         if (el && Number(el.value) < 5) el.value = 5;
+        rebuildWdRawFromSettings();
+    });
+    document.getElementById("wdconfig-mining-enabled")?.addEventListener("input", () => {
+        rebuildWdRawFromSettings();
+    });
+    document.getElementById("wdconfig-logwatcher-enabled")?.addEventListener("input", () => {
         rebuildWdRawFromSettings();
     });
     document.addEventListener("click", (e) => {
@@ -11939,8 +12025,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         populateWdSettingsFromRaw(e.target.value);
         autoResizeWdRaw();
     });
-    document.getElementById("wdconfig-tab-btn-script")?.addEventListener("click", () => setWdConfigTab("script"));
-    document.getElementById("wdconfig-tab-btn-raw")?.addEventListener("click", () => setWdConfigTab("raw"));
     initWdconfigMainTabs();
     document.getElementById("btn-save-wallet")?.addEventListener("click", saveWalletFromDialog);
     document.getElementById("btn-delete-wallet")?.addEventListener("click", deleteWallet);
