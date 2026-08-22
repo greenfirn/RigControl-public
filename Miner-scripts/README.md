@@ -23,6 +23,8 @@ sudo systemctl start docker_events_gpu.service
 
 ## Notes
 
+keryxd logs:
+
 Sums the "via submit block" numbers:
 ```
 grep -oP '\d+(?=\s+via\s+submit\s+blocks?)' /run/rigcontrol/aux_miner.log | awk '{s+=$1} END {print s+0}'
