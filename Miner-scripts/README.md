@@ -23,6 +23,15 @@ sudo systemctl start docker_events_gpu.service
 
 ## Notes
 
+Sums the "via submit block" numbers:
+```
+grep -oP '\d+(?=\s+via\s+submit\s+blocks?)' /run/rigcontrol/aux_miner.log | awk '{s+=$1} END {print s+0}'
+```
+all accepted blocks including relayed:
+```
+grep -oP '(?<=Accepted\s)\d+(?=\s+blocks?)' /run/rigcontrol/aux_miner.log | awk '{s+=$1} END {print s+0}'
+```
+
 best for keryx-miner with screen session and logs:
 
 - [no-docker_launcher.sh](no-docker_launcher.sh)
