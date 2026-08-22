@@ -135,22 +135,25 @@ def _read_conf_key_json(path, *keys):
     except Exception as e:
         log(f"[Config] Error reading {path}: {e}")
     return ""
-_custom_miner_slot = ""
-_custom_miner_conf_path = ""
-_resolved_name = ""
+_custom_miner_slots = {"cpu": "", "gpu": "", "aux": ""}
+_custom_miner_conf_paths = {"cpu": "", "gpu": "", "aux": ""}
 def resolve_custom_miner():
-    """Re-resolves the custom-miner slot/name/env vars. Called once at
-    startup, then re-run whenever telemetry.consume_miners_changed_flag()
-    reports the running-miner process set changed (see publish_status /
-    stats_db_periodic_loop) so a miner binary/version change picked up
-    while the agent is already running doesn't require an agent restart
-    to be detected."""
-    global _custom_miner_slot, _custom_miner_conf_path, _resolved_name
-    _custom_miner_slot = ""
-    _custom_miner_conf_path = ""
-    _resolved_name = ""
-    for _rig_conf_path in ("/etc/rigcontrol/rig-gpu.conf", "/etc/rigcontrol/rig-cpu.conf", "/etc/rigcontrol/rig-aux.conf"):
-        _slot_name = "gpu" if "rig-gpu" in _rig_conf_path else ("cpu" if "rig-cpu" in _rig_conf_path else "aux")
+    """Re-resolves the custom-miner slot/name/env vars for ALL THREE slots
+    (cpu/gpu/aux) independently - more than one slot can simultaneously run
+    a miner unrecognized by telemetry._BUILTIN_MINER_PROCESS_MAP (e.g. GPU
+    running keryx-miner while AUX runs keryxd), and each slot needs its own
+    registered custom-miner name so neither one starves the other out of
+    telemetry collection. Called once at startup, then re-run whenever
+    telemetry.consume_miners_changed_flag() reports the running-miner
+    process set changed (see publish_status / stats_db_periodic_loop) so a
+    miner binary/version change picked up while the agent is already
+    running doesn't require an agent restart to be detected."""
+    global _custom_miner_slots, _custom_miner_conf_paths
+    for _slot_name, _rig_conf_path in (
+        ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
+        ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
+        ("aux", "/etc/rigcontrol/rig-aux.conf"),
+    ):
         _override_bin = cfg.get(f"CUSTOM_MINER_BIN_{_slot_name.upper()}", "").strip()
         if _override_bin:
             _resolved_name = os.path.basename(_override_bin.rstrip("/"))
@@ -163,6 +166,9 @@ def resolve_custom_miner():
             else:
                 _resolved_name = _read_conf_key(_rig_conf_path, "CUSTOM_MINER", "MINER")
         if not _resolved_name:
+            telemetry.set_custom_miner_process_name(_slot_name, "")
+            _custom_miner_slots[_slot_name] = ""
+            _custom_miner_conf_paths[_slot_name] = ""
             continue
         _resolved_lower = _resolved_name.strip().lower()
         _already_known = (
@@ -172,30 +178,29 @@ def resolve_custom_miner():
         if _already_known:
             _source_desc = f"CUSTOM_MINER_BIN_{_slot_name.upper()} basename" if _override_bin else str(_rig_conf_path)
             log(f"[Config] {_source_desc} MINER='{_resolved_name}' already has a known collector - not treating as custom")
+            telemetry.set_custom_miner_process_name(_slot_name, "")
+            _custom_miner_slots[_slot_name] = ""
+            _custom_miner_conf_paths[_slot_name] = ""
             continue
-        telemetry.set_custom_miner_process_name(_resolved_name)
-        _custom_miner_slot = _slot_name
-        _custom_miner_conf_path = _rig_conf_path
+        telemetry.set_custom_miner_process_name(_slot_name, _resolved_name)
+        _custom_miner_slots[_slot_name] = _resolved_name
+        _custom_miner_conf_paths[_slot_name] = _rig_conf_path
         if _override_bin:
             log(f"[Config] CUSTOM_MINER_PROCESS_NAME (manual, from CUSTOM_MINER_BIN_{_slot_name.upper()} basename, conf/json skipped) = {_resolved_name}")
         else:
             log(f"[Config] CUSTOM_MINER_PROCESS_NAME (auto-detected from {_rig_conf_path}) = {_resolved_name}")
-        break
-    else:
-        telemetry.set_custom_miner_process_name("")
-    if _custom_miner_slot:
         _miner_key = telemetry._sanitize_miner_key(_resolved_name)
         for _cfg_key, _cfg_val in cfg.items():
             if _cfg_key.startswith(f"{_miner_key}_") and _cfg_val.strip():
                 os.environ[_cfg_key] = _cfg_val.strip()
                 log(f"[Config] {_cfg_key} (rigcontrol-agent.conf) = {_cfg_val.strip()}")
-        _custom_bin_override = cfg.get(f"CUSTOM_MINER_BIN_{_custom_miner_slot.upper()}", "").strip()
+        _custom_bin_override = cfg.get(f"CUSTOM_MINER_BIN_{_slot_name.upper()}", "").strip()
         if _custom_bin_override and f"{_miner_key}_BIN" not in os.environ:
             os.environ[f"{_miner_key}_BIN"] = _custom_bin_override
-            log(f"[Config] {_miner_key}_BIN (from CUSTOM_MINER_BIN_{_custom_miner_slot.upper()}) = {_custom_bin_override}")
+            log(f"[Config] {_miner_key}_BIN (from CUSTOM_MINER_BIN_{_slot_name.upper()}) = {_custom_bin_override}")
         if f"{_miner_key}_LOG_PATH" not in os.environ:
-            os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_custom_miner_slot}_miner.log"
-            log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_custom_miner_slot} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
+            os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_slot_name}_miner.log"
+            log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_slot_name} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
 resolve_custom_miner()
 # CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")

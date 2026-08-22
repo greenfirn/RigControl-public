@@ -1701,6 +1701,33 @@ DataHelper.getGpuShares = (data) => {
         if (algo.minerKey === "miner_xmrig") return;
         if (algo.minerKey === "miner_srbminer" && algo.mining_type !== "GPU") return;
         if (algo.minerKey === "miner_bzminer" && algo.mining_type !== "GPU") return;
+        // Per-slot custom-miner entries (miner_custom_log_cpu/gpu/aux) belong
+        // to their own named slot, not this GPU catch-all - only the _gpu
+        // one (or a slot-less legacy "miner_custom_log", kept for backward
+        // compatibility with older agents) counts here.
+        if (algo.minerKey.startsWith("miner_custom_log_") && algo.minerKey !== "miner_custom_log_gpu") return;
+        accepted += DataHelper.getAcceptedShares(algo) || 0;
+        rejected += DataHelper.getRejectedShares(algo) || 0;
+        invalid += DataHelper.getInvalidShares(algo) || 0;
+        stale += DataHelper.getStaleShares(algo) || 0;
+    });
+    return {
+        accepted: accepted,
+        rejected: rejected,
+        invalid: invalid,
+        stale: stale,
+        ratio: (rejected + invalid) > 0 ? ((rejected + invalid) / (accepted + rejected + invalid)).toFixed(4) : 0,
+        string: `${accepted}/${rejected}/${invalid}/${stale}`
+    };
+};
+DataHelper.getAuxShares = (data) => {
+    let accepted = 0;
+    let rejected = 0;
+    let invalid = 0;
+    let stale = 0;
+    const algorithms = DataHelper.getAllAlgorithms(data);
+    algorithms.forEach(algo => {
+        if (algo.minerKey !== "miner_custom_log_aux") return;
         accepted += DataHelper.getAcceptedShares(algo) || 0;
         rejected += DataHelper.getRejectedShares(algo) || 0;
         invalid += DataHelper.getInvalidShares(algo) || 0;
@@ -1774,6 +1801,14 @@ DataHelper.getGpuColumnContent = (data) => {
     };
 };
 DataHelper.getAuxColumnContent = (data) => {
+    const auxShares = DataHelper.getAuxShares(data);
+    if (auxShares.accepted > 0 || auxShares.rejected > 0) {
+        const sharesClass = DataHelper.getSharesClass(auxShares);
+        return {
+            html: `<span class="shares ${sharesClass}" title="AUX Shares: ${auxShares.accepted} accepted, ${auxShares.rejected} rejected">${auxShares.accepted}/${auxShares.rejected}</span>`,
+            class: sharesClass
+        };
+    }
     const auxService = DataHelper.getServiceStatus(data, "aux_service");
     const formattedService = DataHelper.getFormattedService(auxService, "aux");
     return {

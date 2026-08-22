@@ -683,18 +683,23 @@ _BUILTIN_MINER_PROCESS_MAP = {
     "peakminer":    "peakminer",
 }
 _custom_miner_lock = threading.Lock()
-_CUSTOM_MINER_PROCESS_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "").strip().lower()
-def set_custom_miner_process_name(name):
-    """Sets/replaces the currently-registered custom-miner process name.
-    Safe to call more than once, and safe to call while detect_running_miners()
-    is reading it on another thread (both take _custom_miner_lock).
+_CUSTOM_MINER_PROCESS_NAMES = {"cpu": "", "gpu": "", "aux": ""}
+def set_custom_miner_process_name(slot, name):
+    """Sets/replaces the currently-registered custom-miner process name for
+    one slot ("cpu"/"gpu"/"aux"). Safe to call more than once per slot, and
+    safe to call while detect_running_miners() is reading it on another
+    thread (both take _custom_miner_lock).
     _BUILTIN_MINER_PROCESS_MAP is a permanent registry that is never mutated
-    anywhere - this function only ever touches the single dynamic
-    _CUSTOM_MINER_PROCESS_NAME value, kept in a completely separate variable
-    so the two can never be merged/confused the way a shared dict could be."""
-    global _CUSTOM_MINER_PROCESS_NAME
+    anywhere - this function only ever touches
+    _CUSTOM_MINER_PROCESS_NAMES[slot], kept in a completely separate dict so
+    the two can never be merged/confused the way a shared dict could be.
+    Each of the three slots tracks its own custom-miner name independently
+    so more than one unrecognized miner can be collected at once (e.g. GPU
+    running keryx-miner while AUX runs keryxd) instead of the first one
+    found stealing a single shared name/slot."""
+    global _CUSTOM_MINER_PROCESS_NAMES
     with _custom_miner_lock:
-        _CUSTOM_MINER_PROCESS_NAME = (name or "").strip().lower()
+        _CUSTOM_MINER_PROCESS_NAMES[slot] = (name or "").strip().lower()
 _MINER_DOCKER_MAP = {
     "xmrig":        "xmrig",
     "lolminer":     "lolminer",
@@ -757,11 +762,12 @@ def detect_running_miners():
     found = {}
     try:
         with _custom_miner_lock:
-            custom_name = _CUSTOM_MINER_PROCESS_NAME
+            custom_names = dict(_CUSTOM_MINER_PROCESS_NAMES)
         grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
                          "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
-        if custom_name:
-            grep_pattern += "|" + re.escape(custom_name)
+        for _slot, _cname in custom_names.items():
+            if _cname:
+                grep_pattern += "|" + re.escape(_cname)
         grep_pattern += ")"
         result = subprocess.run(
             ["bash", "-c", f"ps aux | grep -E {shlex.quote(grep_pattern)} | grep -v grep"],
@@ -770,12 +776,20 @@ def detect_running_miners():
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
                 line_lower = line.lower()
-                # Custom miner is checked against its own dedicated variable,
-                # never merged into _BUILTIN_MINER_PROCESS_MAP, so a custom
-                # name can never be mistaken for (or overwrite) a real
-                # built-in collector entry.
-                if custom_name and custom_name in line_lower:
-                    found["custom_log"] = True
+                # Custom miners are checked against their own dedicated
+                # per-slot names, never merged into _BUILTIN_MINER_PROCESS_MAP,
+                # so a custom name can never be mistaken for (or overwrite) a
+                # real built-in collector entry. Each slot is matched
+                # independently so e.g. keryx-miner (gpu) and keryxd (aux)
+                # can both be detected in the same pass instead of only
+                # whichever slot happened to be checked first.
+                _matched_slot = None
+                for _slot, _cname in custom_names.items():
+                    if _cname and _cname in line_lower:
+                        _matched_slot = _slot
+                        break
+                if _matched_slot:
+                    found[f"custom_log_{_matched_slot}"] = True
                     continue
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
                     if proc_name in line_lower:
@@ -803,7 +817,14 @@ def collect_miner_stats_based_on_processes():
         "teamredminer": collect_teamredminer_stats,
         "trex":         collect_trex_stats,
         "peakminer":    collect_peakminer_stats,
-        "custom_log":   collect_named_custom_miner_stats,
+        # One entry per slot (not a single shared "custom_log") so an
+        # unrecognized miner on more than one slot at once - e.g. GPU
+        # running keryx-miner while AUX runs keryxd - gets collected
+        # independently instead of only whichever slot detect_running_miners()
+        # happened to match first.
+        "custom_log_cpu": lambda: collect_named_custom_miner_stats("cpu"),
+        "custom_log_gpu": lambda: collect_named_custom_miner_stats("gpu"),
+        "custom_log_aux": lambda: collect_named_custom_miner_stats("aux"),
     }
     stats = {}
     for miner in detect_running_miners():
@@ -1910,9 +1931,20 @@ def resolve_active_miner_api(slot):
         "method": "none",
         "reason": f"detected '{bin_name}' but no known API port for it (set {key}_API_HOST / {key}_API_PORT in rigcontrol-agent.conf)",
     }
-def collect_named_custom_miner_stats():
-    """Telemetry for the configured custom miner (CUSTOM_MINER_PROCESS_NAME); every setting is looked up fresh in rigcontrol-agent.conf on each call under a prefix derived from the miner's own name - <NAME>_BIN for the binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API, or <NAME>_LOG_PATH for log scraping (add <NAME>_LOG_STYLE=blocks for keryxd-style "Accepted N blocks" counting instead of generic hashrate scraping)."""
-    name = _CUSTOM_MINER_PROCESS_NAME
+def collect_named_custom_miner_stats(slot):
+    """Telemetry for the custom miner registered for this slot ("cpu"/"gpu"/"aux",
+    via set_custom_miner_process_name()); every setting is looked up fresh in
+    rigcontrol-agent.conf on each call under a prefix derived from the
+    miner's own name - <NAME>_BIN for the binary, <NAME>_API_HOST/<NAME>_API_PORT
+    for a keryx-style JSON stats API, or <NAME>_LOG_PATH for log scraping
+    (add <NAME>_LOG_STYLE=blocks for keryxd-style "Accepted N blocks"
+    counting instead of generic hashrate scraping). Each slot is resolved
+    independently so more than one unrecognized miner (e.g. keryx-miner on
+    gpu and keryxd on aux) can be collected at the same time."""
+    with _custom_miner_lock:
+        name = _CUSTOM_MINER_PROCESS_NAMES.get(slot, "")
+    if not name:
+        return {"status": "error", "error": f"no custom miner registered for slot '{slot}'"}
     key = _sanitize_miner_key(name)
     api_host = _read_agent_conf_val(f"{key}_API_HOST") or os.environ.get(f"{key}_API_HOST", "").strip()
     api_port = _read_agent_conf_val(f"{key}_API_PORT") or os.environ.get(f"{key}_API_PORT", "").strip()
@@ -1979,9 +2011,26 @@ def _collect_named_miner_api_stats(name, api_host, api_port):
         "total_rejected_shares": rejected_blocks,
     }
 def _collect_named_miner_block_log_stats(name, log_path):
-    """Tails a keryxd-style log for "Accepted N blocks" lines and sums the counts since the last poll, offset-tracked via _read_new_log_bytes."""
+    """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
+    counts since the last poll, offset-tracked via _read_new_log_bytes -
+    same as before, this total still feeds hashrate_hs/total_hashrate_hs.
+
+    Newer keryxd builds additionally break that count down by how each
+    block was accepted, e.g.:
+      2026-08-22 00:41:02.115-04:00 [INFO ] Accepted 4 blocks ...591275976f18aeb3d5d9c3ddce13dc85908597b578c9855caa84b21cee5ccfeb, 2 via relay and 2 via submit block
+    "via relay" blocks are just other nodes' finds propagating through -
+    they say nothing about this rig's own mining. "via submit block" is
+    this node actually submitting a block itself, the real accepted-share
+    signal - that sub-count is tracked as a second, separate running
+    total and surfaced as accepted_shares/total_accepted_shares,
+    alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
+    total-blocks-accepted metric above.
+    """
     accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
-    share_state = _log_event_state.setdefault(log_path, {"offset": 0, "accepted_shares": 0})
+    submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
+    share_state = _log_event_state.setdefault(
+        log_path, {"offset": 0, "accepted_shares": 0, "submit_block_shares": 0}
+    )
     new_text = _read_new_log_bytes(log_path, share_state)
     if new_text is None:
         return {
@@ -1991,20 +2040,26 @@ def _collect_named_miner_block_log_stats(name, log_path):
         }
     if share_state.get("reset"):
         share_state["accepted_shares"] = 0
+        share_state["submit_block_shares"] = 0
     for match in accepted_re.finditer(new_text):
         share_state["accepted_shares"] += int(match.group(1))
+    for match in submit_block_re.finditer(new_text):
+        share_state["submit_block_shares"] += int(match.group(1))
     accepted_shares = share_state["accepted_shares"]
+    submit_block_shares = share_state["submit_block_shares"]
     _named_miner_version(name, force=share_state.get("reset", False))
     return {
         "status": "ok", "miner": name,
         "miner_version": _named_miner_version_cache[name]["version"],
         "uptime_s": 0,
         "algorithms": [{
-            "algorithm":   f"{name}-node",
-            "hashrate_hs": accepted_shares,
+            "algorithm":       f"{name}-node",
+            "hashrate_hs":     accepted_shares,
+            "accepted_shares": submit_block_shares,
         }],
         "gpus": [],
-        "total_hashrate_hs": accepted_shares,
+        "total_hashrate_hs":     accepted_shares,
+        "total_accepted_shares": submit_block_shares,
     }
 _CUSTOM_HASHRATE_RE = re.compile(
     r"([\d]+(?:\.\d+)?)\s*([kKmMgGtTpP]?)h(?:ash(?:es)?)?\s*/\s*s(?!\s*/\s*[Ww])", re.IGNORECASE
