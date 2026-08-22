@@ -1,4 +1,5 @@
 :root {
+    color-scheme: dark;
     --header-bar-height: 0px;
     --action-bar-height: 0px;
     --cmd-btn-fixed-width: 80px;
@@ -5190,6 +5191,22 @@ h1 {
     border-color: var(--button-reset-bg);
     color: var(--text-danger);
 }
+.oc-remove-row {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    border: 1px solid var(--border-list-item);
+    background: var(--list-item-hover);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-btn-remove);
+    line-height: 1;
+}
+.oc-remove-row:hover {
+    background: var(--surface-remove-row-hover);
+    border-color: var(--button-reset-bg);
+    color: var(--text-danger);
+}
 .wdconfig-status {
     color: var(--text-muted);
     font-size: var(--font-size-status-bar);
@@ -5664,6 +5681,41 @@ h1 {
     border: solid var(--surface-row);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
+}
+.backups-radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+.backups-radio-label input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border-row);
+    border-radius: 50%;
+    position: relative;
+    flex: 0 0 auto;
+}
+.backups-radio-label input[type="radio"]:hover {
+    border-color: var(--text-accent);
+}
+.backups-radio-label input[type="radio"]:checked {
+    border-color: var(--text-accent);
+}
+.backups-radio-label input[type="radio"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-accent);
 }
 #backups-modal .backups-actions {
     display: flex;
