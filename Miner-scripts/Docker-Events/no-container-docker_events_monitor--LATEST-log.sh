@@ -327,7 +327,7 @@ start_miner() {
         fi
         LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
         rm -f "$LOG_FILE"
-        screen -fn -dmS "$SERVICE_TYPE" bash -c \
+        screen -fn -dmS "$SERVICE_TYPE" -L -Logfile "$LOG_FILE" bash -c \
             'echo "Miner starting at $(date)"; \
              echo "API: '"$API_HOST:$API_PORT"'"; \
              echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
@@ -339,7 +339,7 @@ start_miner() {
                      tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
                  fi; \
                done ) & \
-             '"$START_CMD"' 2>&1 | sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" | tee -a "'"$LOG_FILE"'"'
+             '"$START_CMD"''
     fi
     sleep 2
     if screen -list | grep -q "$SERVICE_TYPE"; then
