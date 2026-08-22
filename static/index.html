@@ -336,8 +336,8 @@
                                 <table class="wdconfig-table wdconfig-logterm-table">
                                     <thead>
                                         <tr>
-                                            <th>Contains</th>
-                                            <th>Not Contains</th>
+                                            <th title="Comma-separated list - line must contain ALL of these to match">Contains</th>
+                                            <th title="Comma-separated list - line must contain NONE of these to match">Not Contains</th>
                                             <th>Severity</th>
                                             <th>Actions <span class="wdconfig-section-header-hint">- restart / notify / custom script</span></th>
                                             <th></th>
@@ -424,7 +424,7 @@
                         <button class="cmd-btn send-it" id="btn-send-it-wd" title="Send this watchdog config to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
                         <button class="cmd-btn" id="btn-save-wdconfig">Save</button>
                         <button class="cmd-btn" id="btn-load-wdconfig">Load</button>
-                        <button class="cmd-btn" id="btn-delete-wdconfig">Delete</button>
+                        <button class="cmd-btn danger" id="btn-delete-wdconfig">Delete</button>
                         <button class="cmd-btn" id="btn-clear-wdconfig">Clear</button>
                     </div>
                 </div>
@@ -1361,7 +1361,7 @@ nvidia-smi
                     <button class="cmd-btn" id="btn-cmd-clear-send" title="Clear the output box, then send">Clear &amp; Send</button>
                     <button class="cmd-btn ok" id="btn-cmd-send">Send</button>
                     <button class="cmd-btn" id="btn-save-saved-cmd">Save</button>
-                    <button class="cmd-btn" id="btn-delete-saved-cmd">Delete</button>
+                    <button class="cmd-btn danger" id="btn-delete-saved-cmd">Delete</button>
                     <button class="cmd-btn" id="btn-cmd-clear">Clear All</button>
                 </div>
             </div>
@@ -1564,7 +1564,7 @@ nvidia-smi
                             </div>
                             <div class="cmd-btn-row">
                                 <button class="cmd-btn" id="btn-save-wallet">Save</button>
-                                <button class="cmd-btn" id="btn-delete-wallet">Delete</button>
+                                <button class="cmd-btn danger" id="btn-delete-wallet">Delete</button>
                                 <button class="cmd-btn" id="btn-clear-wallet">Clear</button>
                             </div>
                         </div>
@@ -1784,7 +1784,7 @@ nvidia-smi
                             </label>
                             <button class="cmd-btn send-it" id="btn-send-it-fs" title="Send this flightsheet to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
                             <button class="cmd-btn" id="btn-save-fs">Save</button>
-                            <button class="cmd-btn" id="btn-delete-fs">Delete</button>
+                            <button class="cmd-btn danger" id="btn-delete-fs">Delete</button>
                             <button class="cmd-btn" id="btn-clear-fs">Clear</button>
                         </div>
                     </div>
@@ -1899,7 +1899,7 @@ nvidia-smi
                         </label>
                         <button class="cmd-btn send-it" id="btn-send-it-oc" title="Send this overclock profile to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
                         <button class="cmd-btn" id="btn-save-oc">Save</button>
-                        <button class="cmd-btn" id="btn-delete-oc">Delete</button>
+                        <button class="cmd-btn danger" id="btn-delete-oc">Delete</button>
                         <button class="cmd-btn" id="btn-clear-oc">Clear</button>
                     </div>
                 </div>
@@ -1926,6 +1926,12 @@ nvidia-smi
                     <select id="statuslog-rig-select" class="statuslog-rig-select">
                         <option value="">All Workers</option>
                     </select>
+                    <div class="statuslog-list-header">
+                        <label class="checkbox-label statuslog-select-all-label">
+                            <input type="checkbox" id="statuslog-select-all">
+                            <span class="checkbox-text">Select All</span>
+                        </label>
+                    </div>
                     <div id="statuslog-list" class="fs-list">
                     </div>
                 </div>
@@ -1938,10 +1944,29 @@ nvidia-smi
                     ></textarea>
                 </div>
             </div>
+            <div class="statuslog-search-row">
+                <input
+                    type="text"
+                    id="statuslog-search-title"
+                    class="fs-search"
+                    placeholder="Search titles..."
+                    autocomplete="off"
+                    title="Search entries by title text (server-side)"
+                />
+                <input
+                    type="text"
+                    id="statuslog-search-content"
+                    class="fs-search"
+                    placeholder="Search contents..."
+                    autocomplete="off"
+                    title="Search entries by full details/content text (server-side)"
+                />
+            </div>
             <div class="cmd-footer">
                 <div class="cmd-btn-row">
                     <span id="statuslog-status" class="wdconfig-status"></span>
                     <button class="cmd-btn" id="btn-statuslog-refresh">Refresh</button>
+                    <button class="cmd-btn danger" id="btn-statuslog-delete-selected" title="Deletes only the checked entries in the list - asks for confirmation first">Delete</button>
                     <button class="cmd-btn" id="btn-statuslog-clear" title="Deletes every entry currently visible in the list (respects the worker filter above) - asks for confirmation first">Clear</button>
                 </div>
             </div>

@@ -1227,21 +1227,28 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] Insert error: {e}")
             return None
-    def list_events(self, rig: str = None, limit: int = 200):
+    def list_events(self, rig: str = None, limit: int = 200, title_q: str = None, content_q: str = None):
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
+            where_clauses = []
+            params = []
             if rig:
-                cursor.execute('''
-                    SELECT id, rig, algo, title, created_at FROM status_log_events
-                    WHERE rig = ?
-                    ORDER BY id DESC LIMIT ?
-                ''', (rig, limit))
-            else:
-                cursor.execute('''
-                    SELECT id, rig, algo, title, created_at FROM status_log_events
-                    ORDER BY id DESC LIMIT ?
-                ''', (limit,))
+                where_clauses.append("rig = ?")
+                params.append(rig)
+            if title_q:
+                where_clauses.append("title LIKE ?")
+                params.append(f"%{title_q}%")
+            if content_q:
+                where_clauses.append("(details LIKE ? OR reasons LIKE ?)")
+                params.append(f"%{content_q}%")
+                params.append(f"%{content_q}%")
+            where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            cursor.execute(f'''
+                SELECT id, rig, algo, title, created_at FROM status_log_events
+                {where_sql}
+                ORDER BY id DESC LIMIT ?
+            ''', (*params, limit))
             items = []
             for row in cursor.fetchall():
                 items.append({
@@ -3029,9 +3036,9 @@ def delete_watchdog_profile(profile_id: str):
         log(f"[WD DELETE LOCAL ERROR] Error: {e}")
         raise HTTPException(500, f"Failed to delete watchdog profile: {e}")
 @router.get("/api/status-log")
-def get_status_log(rig: Optional[str] = None, limit: int = 200):
+def get_status_log(rig: Optional[str] = None, limit: int = 200, title_q: Optional[str] = None, content_q: Optional[str] = None):
     try:
-        items = local_status_log_db.list_events(rig=rig or None, limit=limit)
+        items = local_status_log_db.list_events(rig=rig or None, limit=limit, title_q=title_q or None, content_q=content_q or None)
         return items
     except Exception as e:
         log(f"[STATUSLOG GET ERROR] Exception: {e}")

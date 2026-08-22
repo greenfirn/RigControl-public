@@ -5143,6 +5143,9 @@ h1 {
     background: var(--surface-modal-panel);
 }
 #statuslog-modal .fs-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
     font-size: var(--font-size-list-item);
     padding: 6px 8px;
     border-bottom: 1px solid var(--border-list-item);
@@ -5155,6 +5158,47 @@ h1 {
 #statuslog-modal .fs-item.selected {
     background: var(--list-item-selected);
     color: var(--text-accent);
+}
+#statuslog-modal .statuslog-item-checkbox {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    cursor: pointer;
+}
+#statuslog-modal .statuslog-item-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+#statuslog-modal .statuslog-list-header {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border: 1px solid var(--border-list);
+    border-bottom: none;
+    background: var(--surface-modal-panel);
+}
+#statuslog-modal .statuslog-select-all-label {
+    font-size: var(--font-size-list-item-meta);
+    color: var(--text-secondary);
+}
+#statuslog-modal .statuslog-search-row {
+    display: flex;
+    gap: 10px;
+    flex: 0 0 auto;
+    padding: 0 12px 12px;
+}
+#statuslog-modal .statuslog-search-row .fs-search {
+    flex: 1 1 50%;
+    width: auto;
+    padding: 6px 10px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    font-size: var(--font-size-input);
+    border-radius: 3px;
+    outline: none;
+}
+#statuslog-modal .statuslog-search-row .fs-search:focus {
+    border-color: var(--text-accent);
 }
 #statuslog-modal .fs-item .statuslog-item-title {
     font-size: var(--font-size-list-item);

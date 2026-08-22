@@ -117,7 +117,7 @@ const VIEW_ONLY_DISABLED_IDS = [
     "btn-wdconfig-add-row", "btn-send-it-wd",
     "btn-save-wdconfig", "btn-delete-wdconfig", "btn-clear-wdconfig",
     "btn-save-saved-cmd", "btn-delete-saved-cmd",
-    "btn-statuslog-clear",
+    "btn-statuslog-clear", "btn-statuslog-delete-selected",
     "btn-backups-backup", "btn-backups-restore", "btn-backups-delete", "btn-backups-import-keys",
     "btn-qa-apply",
     "btn-refresh-now", "btn-offline-ping-now", "btn-test-notification", "btn-refresh-save",
@@ -857,6 +857,7 @@ const WD_LOG_TERM_ACTION_DEFS = [
     ["script", "ACTION_CUSTOM_SCRIPT", "Script"],
 ];
 let wdLogTermRowIdCounter = 0;
+let selectedStatusLogIds = new Set();
 let watchdogProfiles = [];
 let selectedWatchdogProfileId = null;
 let savedCommands = [];
@@ -9833,8 +9834,8 @@ function addWdLogTermRow(row, opts) {
             </label>`)
         .join("");
     tr.innerHTML = `
-        <td><input type="text" class="wdconfig-input wdconfig-logterm-contains" value="${escapeHtml(r.contains)}" placeholder="e.g. error, timeout" autocomplete="off" /></td>
-        <td><input type="text" class="wdconfig-input wdconfig-logterm-notcontains" value="${escapeHtml(r.notContains)}" placeholder="e.g. debug" autocomplete="off" /></td>
+        <td><input type="text" class="wdconfig-input wdconfig-logterm-contains" value="${escapeHtml(r.contains)}" placeholder="e.g. error, timeout" autocomplete="off" title="Comma-separated list - line must contain ALL of these to match" /></td>
+        <td><input type="text" class="wdconfig-input wdconfig-logterm-notcontains" value="${escapeHtml(r.notContains)}" placeholder="e.g. debug" autocomplete="off" title="Comma-separated list - line must contain NONE of these to match" /></td>
         <td><select class="wdconfig-severity-select" data-severity="${r.severity}">${severityOptions}</select></td>
         <td><div class="wdconfig-logterm-actions">${actionsHtml}</div></td>
         <td><button class="wdconfig-remove-row" title="Remove term">&times;</button></td>
@@ -10843,11 +10844,16 @@ async function loadStatusLogList(autoSelectId) {
     const statusEl = document.getElementById("statuslog-status");
     const rigSel = document.getElementById("statuslog-rig-select");
     const rig = rigSel ? rigSel.value : "";
+    const titleQ = document.getElementById("statuslog-search-title")?.value.trim() || "";
+    const contentQ = document.getElementById("statuslog-search-content")?.value.trim() || "";
     if (statusEl) statusEl.textContent = "Loading...";
     try {
-        const url = rig
-            ? `${API}/api/status-log?rig=${encodeURIComponent(rig)}`
-            : `${API}/api/status-log`;
+        const params = new URLSearchParams();
+        if (rig) params.set("rig", rig);
+        if (titleQ) params.set("title_q", titleQ);
+        if (contentQ) params.set("content_q", contentQ);
+        const qs = params.toString();
+        const url = qs ? `${API}/api/status-log?${qs}` : `${API}/api/status-log`;
         const res = await fetch(url);
         if (!res.ok) {
             if (statusEl) statusEl.textContent = "Failed to load";
@@ -10868,10 +10874,22 @@ function renderStatusLogList(items) {
     const list = document.getElementById("statuslog-list");
     if (!list) return;
     list.innerHTML = "";
+    selectedStatusLogIds.clear();
     for (const item of items) {
         const row = document.createElement("div");
         row.className = "fs-item";
         row.dataset.id = item.id;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "statuslog-item-checkbox";
+        checkbox.addEventListener("click", (ev) => ev.stopPropagation());
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) selectedStatusLogIds.add(String(item.id));
+            else selectedStatusLogIds.delete(String(item.id));
+            updateStatuslogSelectAllState();
+        });
+        const textWrap = document.createElement("div");
+        textWrap.className = "statuslog-item-text";
         const titleEl = document.createElement("div");
         titleEl.className = "statuslog-item-title";
         titleEl.textContent = item.title || `${item.rig || "unknown"}: ${item.algo || ""}`;
@@ -10880,19 +10898,38 @@ function renderStatusLogList(items) {
         const timeEl = document.createElement("div");
         timeEl.className = "statuslog-item-time";
         timeEl.textContent = item.created_at ? statsTimestampToLocalLabel(item.created_at) : "";
-        row.appendChild(titleEl);
-        row.appendChild(timeEl);
+        textWrap.appendChild(titleEl);
+        textWrap.appendChild(timeEl);
+        row.appendChild(checkbox);
+        row.appendChild(textWrap);
         row.addEventListener("click", () => selectStatusLogEntry(item.id));
         list.appendChild(row);
     }
+    updateStatuslogSelectAllState();
 }
-async function clearVisibleStatusLogEntries() {
-    const statusEl = document.getElementById("statuslog-status");
-    const ids = [...document.querySelectorAll("#statuslog-list .fs-item")]
-        .map(row => row.dataset.id)
-        .filter(Boolean);
+function updateStatuslogSelectAllState() {
+    const selectAll = document.getElementById("statuslog-select-all");
+    if (!selectAll) return;
+    const rows = document.querySelectorAll("#statuslog-list .fs-item");
+    const total = rows.length;
+    const checkedCount = selectedStatusLogIds.size;
+    selectAll.checked = total > 0 && checkedCount === total;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < total;
+}
+function toggleAllStatusLogEntries(checked) {
+    const rows = document.querySelectorAll("#statuslog-list .fs-item");
+    rows.forEach(row => {
+        const id = row.dataset.id;
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = checked;
+        if (checked) selectedStatusLogIds.add(String(id));
+        else selectedStatusLogIds.delete(String(id));
+    });
+    updateStatuslogSelectAllState();
+}
+async function deleteStatusLogEntriesByIds(ids, statusEl) {
     if (ids.length === 0) {
-        if (statusEl) statusEl.textContent = "No entries to clear";
+        if (statusEl) statusEl.textContent = "No entries selected";
         return;
     }
     const confirmed = confirm(
@@ -10913,6 +10950,18 @@ async function clearVisibleStatusLogEntries() {
         console.error("Error deleting status log entries:", e);
         if (statusEl) statusEl.textContent = "Failed to delete";
     }
+}
+async function clearVisibleStatusLogEntries() {
+    const statusEl = document.getElementById("statuslog-status");
+    const ids = [...document.querySelectorAll("#statuslog-list .fs-item")]
+        .map(row => row.dataset.id)
+        .filter(Boolean);
+    await deleteStatusLogEntriesByIds(ids, statusEl);
+}
+async function deleteSelectedStatusLogEntries() {
+    const statusEl = document.getElementById("statuslog-status");
+    const ids = [...selectedStatusLogIds];
+    await deleteStatusLogEntriesByIds(ids, statusEl);
 }
 function localizeDetailsTimeLine(text) {
     if (!text) return text;
@@ -11942,6 +11991,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     initSendConfirmCheckbox("confirm-wd", "wd");
     document.getElementById("btn-statuslog-refresh")?.addEventListener("click", () => loadStatusLogList());
     document.getElementById("btn-statuslog-clear")?.addEventListener("click", clearVisibleStatusLogEntries);
+    document.getElementById("btn-statuslog-delete-selected")?.addEventListener("click", deleteSelectedStatusLogEntries);
+    document.getElementById("statuslog-select-all")?.addEventListener("change", (e) => {
+        toggleAllStatusLogEntries(e.target.checked);
+    });
+    let statuslogSearchDebounceTimer = null;
+    const debounceStatuslogSearch = () => {
+        clearTimeout(statuslogSearchDebounceTimer);
+        statuslogSearchDebounceTimer = setTimeout(() => loadStatusLogList(), 300);
+    };
+    document.getElementById("statuslog-search-title")?.addEventListener("input", debounceStatuslogSearch);
+    document.getElementById("statuslog-search-content")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("backups-select-all")?.addEventListener("change", (e) => {
         toggleAllBackupFiles(e.target.checked);
     });
