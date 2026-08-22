@@ -842,6 +842,7 @@ let _lastStatsResp = null;
 let wdHashrateUnit = "MH/s";
 const WD_GLOBAL_STOP_FAILS_DEFAULT = 5;
 const WD_LOG_WATCHER_SLOT_IDS = ["cpu", "gpu", "aux"];
+const WD_LOG_WATCHER_INTERVAL_DEFAULT = 60;
 const WD_LOG_WATCHER_SEVERITIES = ["good", "warn", "important", "critical"];
 const WD_LOG_WATCHER_SEVERITY_LABELS = { good: "Good", warn: "Warn", important: "Important", critical: "Critical" };
 let wdLogTermRowIdCounter = 0;
@@ -10008,6 +10009,8 @@ function clearWdConfigFields() {
     if (miningEnabledEl) miningEnabledEl.checked = false;
     const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
     if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
+    const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
+    if (logWatcherIntervalEl) logWatcherIntervalEl.value = WD_LOG_WATCHER_INTERVAL_DEFAULT;
     for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
         const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
         if (el) el.checked = slot === "gpu";
@@ -10034,6 +10037,8 @@ function resetWdSettingsToDefaults() {
     if (miningEnabledEl) miningEnabledEl.checked = false;
     const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
     if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
+    const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
+    if (logWatcherIntervalEl) logWatcherIntervalEl.value = WD_LOG_WATCHER_INTERVAL_DEFAULT;
     for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
         const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
         if (el) el.checked = slot === "gpu";
@@ -10053,6 +10058,8 @@ function buildWdConfigRawFromSettings() {
     const globalStopFails = globalStopEl ? Math.max(0, Number(globalStopEl.value) || 0) : WD_GLOBAL_STOP_FAILS_DEFAULT;
     const miningEnabled = document.getElementById("wdconfig-mining-enabled")?.checked ?? true;
     const logWatcherEnabled = document.getElementById("wdconfig-logwatcher-enabled")?.checked ?? false;
+    const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
+    const logWatcherInterval = logWatcherIntervalEl ? Math.max(5, Number(logWatcherIntervalEl.value) || 60) : 60;
     const logWatcherSlots = WD_LOG_WATCHER_SLOT_IDS
         .filter(slot => document.getElementById(`wdconfig-logwatcher-slot-${slot}`)?.checked)
         .join(",");
@@ -10067,6 +10074,7 @@ function buildWdConfigRawFromSettings() {
         `GLOBAL_STOP_AFTER_FAILS "${globalStopFails}"`,
         `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
         `LOG_WATCHER_ENABLED "${logWatcherEnabled ? "1" : "0"}"`,
+        `LOG_WATCHER_INTERVAL_SECONDS "${logWatcherInterval}"`,
         `LOG_WATCHER_SLOTS "${logWatcherSlots}"`,
         `LOG_WATCHER_TERMS "${logWatcherTerms}"`,
         "",
@@ -10167,6 +10175,11 @@ function populateWdSettingsFromRaw(rawText) {
     if (logWatcherEnabledEl) {
         const lm = rawText.match(/^LOG_WATCHER_ENABLED\s+"(\d)"\s*$/m);
         if (lm) logWatcherEnabledEl.checked = lm[1] === "1";
+    }
+    const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
+    if (logWatcherIntervalEl) {
+        const im = rawText.match(/^LOG_WATCHER_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
+        logWatcherIntervalEl.value = im ? Math.max(5, Number(im[1]) || 60) : WD_LOG_WATCHER_INTERVAL_DEFAULT;
     }
     const slotsMatch = rawText.match(/^LOG_WATCHER_SLOTS\s+"([^"]*)"\s*$/m);
     if (slotsMatch) {
@@ -11883,6 +11896,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("wdconfig-global-stop-fails")?.addEventListener("input", () => {
         const el = document.getElementById("wdconfig-global-stop-fails");
         if (el && Number(el.value) < 0) el.value = 0;
+        rebuildWdRawFromSettings();
+    });
+    document.getElementById("wdconfig-logwatcher-interval")?.addEventListener("input", () => {
+        const el = document.getElementById("wdconfig-logwatcher-interval");
+        if (el && Number(el.value) < 5) el.value = 5;
         rebuildWdRawFromSettings();
     });
     document.addEventListener("click", (e) => {

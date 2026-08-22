@@ -45,6 +45,7 @@ DEFAULT_GLOBAL_SETTINGS = {
     "stop_after_fails": 5,  # 0 disables this - the service never self-stops
     "mining_watchdog_enabled": True,  # False skips hashrate/watts monitoring entirely
     "log_watcher_enabled": False,
+    "log_watcher_interval_seconds": 60,  # how often the log watcher re-scans its log(s)
     "log_watcher_slots": [],  # e.g. ["cpu", "gpu", "aux"]
     "log_watcher_terms": [],  # e.g. [("Found a block on", "important"), ("error", "critical")]
 }
@@ -120,6 +121,12 @@ def load_global_watchdog_settings(path):
     m = re.search(r'^LOG_WATCHER_ENABLED\s+"(\d)"\s*$', text, re.MULTILINE)
     if m:
         settings["log_watcher_enabled"] = m.group(1) == "1"
+    m = re.search(r'^LOG_WATCHER_INTERVAL_SECONDS\s+"(\d+)"\s*$', text, re.MULTILINE)
+    if m:
+        try:
+            settings["log_watcher_interval_seconds"] = max(5, int(m.group(1)))
+        except ValueError:
+            pass
     m = re.search(r'^LOG_WATCHER_SLOTS\s+"([^"]*)"\s*$', text, re.MULTILINE)
     if m:
         settings["log_watcher_slots"] = [
@@ -426,7 +433,10 @@ def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=
     conf = load_watchdog_conf(conf_path)
     global_settings = load_global_watchdog_settings(conf_path)
     agent_service_names = load_agent_service_names()
-    sleep_seconds = min((s["check_interval_seconds"] for s in conf.values()), default=DEFAULT_ALGO_SETTINGS["check_interval_seconds"])
+    interval_candidates = [s["check_interval_seconds"] for s in conf.values()]
+    if global_settings.get("log_watcher_enabled"):
+        interval_candidates.append(global_settings.get("log_watcher_interval_seconds", 60))
+    sleep_seconds = min(interval_candidates) if interval_candidates else DEFAULT_ALGO_SETTINGS["check_interval_seconds"]
     try:
         run_log_watcher_cycle(global_settings)
     except Exception as e:

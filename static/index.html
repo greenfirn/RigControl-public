@@ -211,6 +211,12 @@
                     <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
                     <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
                 </div>
+                <div class="wdconfig-logwatcher-interval-row" title="Sets the watchdog service's own loop cadence - how often it re-checks mining health and re-scans logs for new lines. Applies regardless of which tab is open.">
+                    <div class="field-group wdconfig-interval-group">
+                        <label for="wdconfig-logwatcher-interval">Log Watcher Check Interval (s)</label>
+                        <input type="number" id="wdconfig-logwatcher-interval" min="5" step="1" value="60" class="wdconfig-narrow-input" />
+                    </div>
+                </div>
                 <div class="wdconfig-main-tab-panel" data-tab-panel="mining">
                 <div class="fs-editor-panel">
                     <div class="wdconfig-settings-panel" id="wdconfig-settings-panel">
@@ -316,19 +322,21 @@
                         </div>
                         <div class="settings-section">
                             <div class="section-header">Watch Slots <span class="wdconfig-section-header-hint">Which miner log(s) on the worker to scan</span></div>
-                            <div class="wdconfig-actions-row">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="wdconfig-logwatcher-slot-cpu">
-                                    <span class="checkbox-text">CPU</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="wdconfig-logwatcher-slot-gpu" checked>
-                                    <span class="checkbox-text">GPU</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="wdconfig-logwatcher-slot-aux">
-                                    <span class="checkbox-text">AUX</span>
-                                </label>
+                            <div class="wdconfig-timing-triggers-row">
+                                <div class="wdconfig-actions-row">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logwatcher-slot-cpu">
+                                        <span class="checkbox-text">CPU</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logwatcher-slot-gpu" checked>
+                                        <span class="checkbox-text">GPU</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logwatcher-slot-aux">
+                                        <span class="checkbox-text">AUX</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div class="settings-section">
@@ -381,7 +389,6 @@
                         placeholder="Search..."
                         autocomplete="off"
                     />
-                    <span id="wdconfig-status" class="wdconfig-status"></span>
                     <div class="field-group wdconfig-name-group">
                         <label for="wdconfig-name">Watchdog Profile Name</label>
                         <input
@@ -393,6 +400,7 @@
                         />
                     </div>
                     <div class="cmd-btn-row">
+                        <span id="wdconfig-status" class="wdconfig-status"></span>
                         <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
                             <input type="checkbox" id="confirm-wd" checked>
                             <span class="checkbox-text">Confirm</span>
