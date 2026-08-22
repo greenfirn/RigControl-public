@@ -207,8 +207,19 @@
                 </span>
             </div>
             <div class="cmd-body">
+                <div class="wdconfig-main-tabs" id="wdconfig-main-tabs">
+                    <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
+                    <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
+                </div>
+                <div class="wdconfig-main-tab-panel" data-tab-panel="mining">
                 <div class="fs-editor-panel">
                     <div class="wdconfig-settings-panel" id="wdconfig-settings-panel">
+                        <div class="wdconfig-main-enable-row">
+                            <label class="checkbox-label" title="When off, the mining health-check watchdog (hashrate/watts monitoring and its restart/notify actions) is skipped entirely on the worker. The Log Watcher below is unaffected.">
+                                <input type="checkbox" id="wdconfig-mining-enabled">
+                                <span class="checkbox-text">Enable Mining Watchdog</span>
+                            </label>
+                        </div>
                         <div class="wdconfig-upper-panel">
                         <div class="settings-section">
                             <div class="section-header">Timing &amp; When Triggered</div>
@@ -292,27 +303,74 @@
                             </table>
                         </div>
                         </div>
-                        <div class="settings-section wdconfig-tabbed-section raw-active">
-                            <div class="wdconfig-tabs">
-                                <button type="button" class="wdconfig-tab-btn active" id="wdconfig-tab-btn-raw" data-tab="raw">Raw Content</button>
-                                <button type="button" class="wdconfig-tab-btn" id="wdconfig-tab-btn-script" data-tab="script">Custom Script</button>
-                                <span class="input-help-inline wdconfig-tab-hint">Runs only when "Custom Script" enabled</span>
-                            </div>
-                            <div class="wdconfig-tab-body" id="wdconfig-tab-body">
-                                <textarea
-                                    id="wdconfig-custom-script"
-                                    class="wdconfig-script-textarea wdconfig-tab-panel"
-                                    spellcheck="false"
-                                    disabled
-                                    placeholder="#!/bin/bash&#10;# runs on the worker when the watchdog triggers"
-                                ></textarea>
-                                <textarea
-                                    id="wdconfig-raw"
-                                    class="fs-raw-shrunk wdconfig-tab-panel active"
-                                    spellcheck="false"
-                                ></textarea>
+                    </div>
+                </div>
+                </div>
+                <div class="wdconfig-main-tab-panel hidden" data-tab-panel="logs">
+                    <div class="wdconfig-logwatcher-panel" id="wdconfig-logwatcher-panel">
+                        <div class="wdconfig-main-enable-row">
+                            <label class="checkbox-label" title="When off, log lines are not scanned and nothing is added to the Status Log. The Mining Watchdog above is unaffected.">
+                                <input type="checkbox" id="wdconfig-logwatcher-enabled">
+                                <span class="checkbox-text">Enable Log Watcher</span>
+                            </label>
+                        </div>
+                        <div class="settings-section">
+                            <div class="section-header">Watch Slots <span class="wdconfig-section-header-hint">Which miner log(s) on the worker to scan</span></div>
+                            <div class="wdconfig-actions-row">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="wdconfig-logwatcher-slot-cpu">
+                                    <span class="checkbox-text">CPU</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="wdconfig-logwatcher-slot-gpu" checked>
+                                    <span class="checkbox-text">GPU</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="wdconfig-logwatcher-slot-aux">
+                                    <span class="checkbox-text">AUX</span>
+                                </label>
                             </div>
                         </div>
+                        <div class="settings-section">
+                            <div class="section-header">Watch Terms <span class="wdconfig-section-header-hint">Case-insensitive. A match adds that log line to the Status Log at the chosen severity.</span></div>
+                            <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
+                                <button class="cmd-btn" id="btn-wdconfig-logterm-add">+ Add Term</button>
+                            </div>
+                            <div class="wdconfig-table-wrap">
+                                <table class="wdconfig-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Term</th>
+                                            <th>Severity</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="wdconfig-logterm-rows">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section wdconfig-tabbed-section raw-active">
+                    <div class="wdconfig-tabs">
+                        <button type="button" class="wdconfig-tab-btn active" id="wdconfig-tab-btn-raw" data-tab="raw">Raw Content</button>
+                        <button type="button" class="wdconfig-tab-btn" id="wdconfig-tab-btn-script" data-tab="script">Custom Script</button>
+                        <span class="input-help-inline wdconfig-tab-hint">Runs only when "Custom Script" enabled</span>
+                    </div>
+                    <div class="wdconfig-tab-body" id="wdconfig-tab-body">
+                        <textarea
+                            id="wdconfig-custom-script"
+                            class="wdconfig-script-textarea wdconfig-tab-panel"
+                            spellcheck="false"
+                            disabled
+                            placeholder="#!/bin/bash&#10;# runs on the worker when the watchdog triggers"
+                        ></textarea>
+                        <textarea
+                            id="wdconfig-raw"
+                            class="fs-raw-shrunk wdconfig-tab-panel active"
+                            spellcheck="false"
+                        ></textarea>
                     </div>
                 </div>
                 <div class="wdconfig-list-toolbar">

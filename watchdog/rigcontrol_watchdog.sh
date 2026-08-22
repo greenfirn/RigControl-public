@@ -44,6 +44,16 @@ DEFAULT_ALGO_SETTINGS = {
 }
 DEFAULT_GLOBAL_SETTINGS = {
     "stop_after_fails": 5,  # 0 disables this - the service never self-stops
+    "mining_watchdog_enabled": True,  # False skips hashrate/watts monitoring entirely
+    "log_watcher_enabled": False,
+    "log_watcher_slots": [],  # e.g. ["cpu", "gpu", "aux"]
+    "log_watcher_terms": [],  # e.g. [("Found a block on", "important"), ("error", "critical")]
+}
+LOG_WATCHER_SEVERITIES = ("good", "warn", "important", "critical")
+LOG_WATCHER_SLOT_LOG_PATHS = {
+    "cpu": "/run/rigcontrol/cpu_miner.log",
+    "gpu": "/run/rigcontrol/gpu_miner.log",
+    "aux": "/run/rigcontrol/aux_miner.log",
 }
 _BLOCK_HEADER_RE = re.compile(r'^\[(.+?)\]\s*$', re.MULTILINE)
 _KV_RE = re.compile(r'^([A-Z_]+)\s+"([^"]*)"\s*$', re.MULTILINE)
@@ -105,6 +115,33 @@ def load_global_watchdog_settings(path):
             settings["stop_after_fails"] = max(0, int(m.group(1)))
         except ValueError:
             pass
+    m = re.search(r'^MINING_WATCHDOG_ENABLED\s+"(\d)"\s*$', text, re.MULTILINE)
+    if m:
+        settings["mining_watchdog_enabled"] = m.group(1) == "1"
+    m = re.search(r'^LOG_WATCHER_ENABLED\s+"(\d)"\s*$', text, re.MULTILINE)
+    if m:
+        settings["log_watcher_enabled"] = m.group(1) == "1"
+    m = re.search(r'^LOG_WATCHER_SLOTS\s+"([^"]*)"\s*$', text, re.MULTILINE)
+    if m:
+        settings["log_watcher_slots"] = [
+            s.strip() for s in m.group(1).split(",") if s.strip() in LOG_WATCHER_SLOT_LOG_PATHS
+        ]
+    m = re.search(r'^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$', text, re.MULTILINE)
+    if m:
+        terms = []
+        for entry in m.group(1).split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            term, _, severity = entry.partition("|")
+            term = term.strip()
+            severity = severity.strip().lower()
+            if not term:
+                continue
+            if severity not in LOG_WATCHER_SEVERITIES:
+                severity = "warn"
+            terms.append((term, severity))
+        settings["log_watcher_terms"] = terms
     return settings
 def stop_watchdog_service():
     try:
@@ -187,6 +224,45 @@ def publish_alert(rig, algo, reasons, actions):
         client.disconnect()
     except Exception as e:
         log(f"[mqtt] Error publishing alert: {e}")
+_log_watcher_offsets = {}
+def run_log_watcher_cycle(global_settings):
+    """Independent of the mining health-check watchdog above - tails the configured
+    slot log(s) for new lines and, on a keyword match, publishes it onto the same
+    watchdog_alert MQTT topic (via publish_alert) so it lands in the dashboard's
+    Status Log, tagged with the matched term's severity."""
+    if not global_settings.get("log_watcher_enabled"):
+        return
+    slots = global_settings.get("log_watcher_slots") or []
+    terms = global_settings.get("log_watcher_terms") or []
+    if not slots or not terms:
+        return
+    for slot in slots:
+        path = LOG_WATCHER_SLOT_LOG_PATHS.get(slot)
+        if not path or not os.path.isfile(path):
+            continue
+        if path not in _log_watcher_offsets:
+            # First time watching this log - start clean from the current end of the
+            # file rather than backfilling/alerting on whatever's already in there.
+            try:
+                start_offset = os.path.getsize(path)
+            except OSError:
+                start_offset = 0
+            _log_watcher_offsets[path] = {"offset": start_offset}
+        state = _log_watcher_offsets[path]
+        new_text = telemetry._read_new_log_bytes(path, state)
+        if not new_text:
+            continue
+        for line in new_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            line_lower = line.lower()
+            for term, severity in terms:
+                if term.lower() in line_lower:
+                    label = severity.upper()
+                    log(f"[log-watcher] {slot}: [{label}] matched \"{term}\" - {line}")
+                    publish_alert(RIG_NAME, f"[{label}] {term} ({slot})", line, [])
+                    break
 def algo_combined_hashrate(entry):
     cpu = entry.get("cpu_hashrate_hs")
     gpu = entry.get("gpu_hashrate_hs")
@@ -321,7 +397,7 @@ def trigger_actions(algo, settings, reasons, restarted_this_cycle, service_names
         restarted_this_cycle.add(FAN_SERVICE)
     if actions["ACTION_CUSTOM_SCRIPT"]:
         run_custom_script(algo, settings["custom_script"])
-    publish_alert(RIG_NAME, algo, summary, [k for k, v in actions.items() if v])
+    publish_alert(RIG_NAME, f"{algo} unhealthy", summary, [k for k, v in actions.items() if v])
     if actions["ACTION_REBOOT_RIG"]:
         reboot_rig()
 def _format_actions(actions):
@@ -352,6 +428,15 @@ def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=
     global_settings = load_global_watchdog_settings(conf_path)
     agent_service_names = load_agent_service_names()
     sleep_seconds = min((s["check_interval_seconds"] for s in conf.values()), default=DEFAULT_ALGO_SETTINGS["check_interval_seconds"])
+    try:
+        run_log_watcher_cycle(global_settings)
+    except Exception as e:
+        log(f"[log-watcher] Unexpected error: {e}")
+    if not global_settings.get("mining_watchdog_enabled", True):
+        if consecutive_fails:
+            log("[skip] Mining Watchdog is disabled (MINING_WATCHDOG_ENABLED \"0\") - resetting fail counters")
+            consecutive_fails.clear()
+        return sleep_seconds
     conf_summary = format_conf_summary(conf)
     if last_conf_state.get("summary") != conf_summary:
         log(f"[config] Currently monitored algorithm(s) from {conf_path}:\n{conf_summary}")

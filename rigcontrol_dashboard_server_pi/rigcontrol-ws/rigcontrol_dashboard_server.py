@@ -2071,7 +2071,7 @@ async def handle_mqtt_message(topic: str, payload: bytes):
             if wants_email or wants_sms:
                 enqueue_notification(
                     f"watchdog_alert:{wd_rig}",
-                    message=f"Rig '{wd_rig}' - algorithm '{wd_algo}' unhealthy: {wd_reasons}",
+                    message=f"Rig '{wd_rig}' - '{wd_algo}': {wd_reasons}",
                     subject=f"RigControl Watchdog Alert - {wd_rig}",
                     email=wants_email,
                     sms_primary=wants_sms,
@@ -2080,7 +2080,7 @@ async def handle_mqtt_message(topic: str, payload: bytes):
                     sms_secondary_number=notification_settings.get("sms_secondary_number"),
                 )
                 notification_queued = True
-            sl_title = f"{wd_rig}: {wd_algo} unhealthy"
+            sl_title = f"{wd_rig}: {wd_algo}"
             sl_details_lines = [
                 f"Rig: {wd_rig}",
                 f"Algorithm: {wd_algo}",

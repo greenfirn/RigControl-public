@@ -2117,7 +2117,7 @@ def on_message(client, userdata, msg):
             if wants_email or wants_sms:
                 enqueue_notification(
                     f"watchdog_alert:{wd_rig}",
-                    message=f"Rig '{wd_rig}' - algorithm '{wd_algo}' unhealthy: {wd_reasons}",
+                    message=f"Rig '{wd_rig}' - '{wd_algo}': {wd_reasons}",
                     subject=f"RigControl Watchdog Alert - {wd_rig}",
                     email=wants_email,
                     sms_primary=wants_sms,
@@ -2127,7 +2127,7 @@ def on_message(client, userdata, msg):
                 )
                 notification_queued = True
                 log(f"[WATCHDOG_ALERT] Notification queued for {wd_rig}")
-            sl_title = f"{wd_rig}: {wd_algo} unhealthy"
+            sl_title = f"{wd_rig}: {wd_algo}"
             sl_details_lines = [
                 f"Rig: {wd_rig}",
                 f"Algorithm: {wd_algo}",

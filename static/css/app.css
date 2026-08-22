@@ -4367,6 +4367,117 @@ h1 {
     gap: 12px;
     background: var(--surface-modal);
 }
+.wdconfig-main-tabs {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border-modal);
+    padding-bottom: 10px;
+}
+.wdconfig-main-tab-btn {
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-label);
+    background: var(--tab-bg);
+    border: 1px solid var(--tab-border);
+    color: var(--tab-text, var(--text-secondary));
+    border-radius: 4px;
+    cursor: pointer;
+}
+.wdconfig-main-tab-btn:hover {
+    background: var(--tab-hover-bg);
+    color: var(--text-white);
+}
+.wdconfig-main-tab-btn.active {
+    background: var(--tab-active-bg);
+    border-color: var(--tab-active-border);
+    color: var(--tab-active-text);
+}
+.wdconfig-main-tab-btn.active:hover {
+    background: var(--tab-active-hover-bg);
+}
+.wdconfig-main-tab-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 12px;
+}
+.wdconfig-main-tab-panel.hidden {
+    display: none;
+}
+.wdconfig-main-enable-row {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-modal);
+}
+.wdconfig-logwatcher-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.wdconfig-logwatcher-panel .settings-section {
+    flex: 0 0 auto;
+}
+#wdconfig-modal select.wdconfig-severity-select {
+    padding: 4px 6px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    font-size: var(--font-size-input);
+    border-radius: 3px;
+    outline: none;
+}
+#wdconfig-modal select.wdconfig-severity-select:focus {
+    border-color: var(--text-accent);
+}
+#wdconfig-modal select.wdconfig-severity-select[data-severity="good"] {
+    color: #66bb6a;
+}
+#wdconfig-modal select.wdconfig-severity-select[data-severity="warn"] {
+    color: #ffd54f;
+}
+#wdconfig-modal select.wdconfig-severity-select[data-severity="important"] {
+    color: #ff8a65;
+}
+#wdconfig-modal select.wdconfig-severity-select[data-severity="critical"] {
+    color: #ff5252;
+}
+#wdconfig-modal select.wdconfig-severity-select option[value="good"] {
+    color: #66bb6a;
+    background: var(--input-bg);
+}
+#wdconfig-modal select.wdconfig-severity-select option[value="warn"] {
+    color: #ffd54f;
+    background: var(--input-bg);
+}
+#wdconfig-modal select.wdconfig-severity-select option[value="important"] {
+    color: #ff8a65;
+    background: var(--input-bg);
+}
+#wdconfig-modal select.wdconfig-severity-select option[value="critical"] {
+    color: #ff5252;
+    background: var(--input-bg);
+}
+.statuslog-item-title[data-severity="good"] {
+    color: #66bb6a;
+}
+.statuslog-item-title[data-severity="warn"] {
+    color: #ffd54f;
+}
+.statuslog-item-title[data-severity="important"] {
+    color: #ff8a65;
+}
+.statuslog-item-title[data-severity="critical"] {
+    color: #ff5252;
+}
 #wdconfig-modal .fs-list-panel {
     display: flex;
     flex-direction: column;

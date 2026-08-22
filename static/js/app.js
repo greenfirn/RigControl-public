@@ -841,6 +841,10 @@ const HASHRATE_UNIT_MULTIPLIERS = {
 let _lastStatsResp = null;
 let wdHashrateUnit = "MH/s";
 const WD_GLOBAL_STOP_FAILS_DEFAULT = 5;
+const WD_LOG_WATCHER_SLOT_IDS = ["cpu", "gpu", "aux"];
+const WD_LOG_WATCHER_SEVERITIES = ["good", "warn", "important", "critical"];
+const WD_LOG_WATCHER_SEVERITY_LABELS = { good: "Good", warn: "Warn", important: "Important", critical: "Critical" };
+let wdLogTermRowIdCounter = 0;
 let watchdogProfiles = [];
 let selectedWatchdogProfileId = null;
 let savedCommands = [];
@@ -5027,6 +5031,24 @@ function switchViewTab(tabName) {
     if (tabName === "workers") {
         autoSizeRigColumns();
     }
+}
+function initWdconfigMainTabs() {
+    const tabBar = document.getElementById("wdconfig-main-tabs");
+    if (!tabBar || tabBar.dataset.wired) return;
+    tabBar.dataset.wired = "1";
+    tabBar.querySelectorAll(".wdconfig-main-tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            switchWdconfigMainTab(btn.dataset.tabPanel);
+        });
+    });
+}
+function switchWdconfigMainTab(tabName) {
+    document.querySelectorAll("#wdconfig-main-tabs .wdconfig-main-tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tabPanel === tabName);
+    });
+    document.querySelectorAll("#wdconfig-modal .wdconfig-main-tab-panel").forEach((panel) => {
+        panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
+    });
 }
 function initColorSchemeTabs() {
     const tabBar = document.getElementById("color-scheme-tabs");
@@ -9780,6 +9802,48 @@ function collectWdConfigRows() {
     }
     return rows;
 }
+function addWdLogTermRow(row, opts) {
+    const r = row || { term: "", severity: "warn" };
+    const tbody = document.getElementById("wdconfig-logterm-rows");
+    if (!tbody) return;
+    const rowId = String(++wdLogTermRowIdCounter);
+    const tr = document.createElement("tr");
+    tr.className = "wdconfig-logterm-row";
+    tr.dataset.wdLogTermRowId = rowId;
+    const severityOptions = WD_LOG_WATCHER_SEVERITIES
+        .map(sev => `<option value="${sev}"${sev === r.severity ? " selected" : ""}>${WD_LOG_WATCHER_SEVERITY_LABELS[sev]}</option>`)
+        .join("");
+    tr.innerHTML = `
+        <td><input type="text" class="wdconfig-input wdconfig-logterm-term" value="${escapeHtml(r.term)}" placeholder="e.g. Found a block on" autocomplete="off" /></td>
+        <td><select class="wdconfig-severity-select" data-severity="${r.severity}">${severityOptions}</select></td>
+        <td><button class="wdconfig-remove-row" title="Remove term">&times;</button></td>
+    `;
+    const termInput = tr.querySelector(".wdconfig-logterm-term");
+    termInput.addEventListener("input", () => {
+        if (termInput.value.includes(",")) termInput.value = termInput.value.replace(/,/g, "");
+    });
+    const severitySelect = tr.querySelector(".wdconfig-severity-select");
+    severitySelect.addEventListener("change", () => {
+        severitySelect.dataset.severity = severitySelect.value;
+    });
+    tr.querySelector(".wdconfig-remove-row").addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        tr.remove();
+        rebuildWdRawFromSettings();
+    });
+    tbody.appendChild(tr);
+    if (!opts || !opts.skipRebuild) rebuildWdRawFromSettings();
+}
+function collectWdLogTermRows() {
+    const rows = [];
+    for (const tr of document.querySelectorAll("#wdconfig-logterm-rows .wdconfig-logterm-row")) {
+        const term = tr.querySelector(".wdconfig-logterm-term")?.value.trim();
+        if (!term) continue;
+        const severity = tr.querySelector(".wdconfig-severity-select")?.value || "warn";
+        rows.push({ term, severity });
+    }
+    return rows;
+}
 function buildWdConfigFileContent(rows) {
     const header = [
         "# rigcontrol-watchdog.conf - generated from the dashboard's Watchdog Config module",
@@ -9938,6 +10002,16 @@ function clearWdConfigFields() {
     wdRowSettings.clear();
     selectedWdRowId = null;
     document.getElementById("wdconfig-name").value = "";
+    const logTermTbody = document.getElementById("wdconfig-logterm-rows");
+    if (logTermTbody) logTermTbody.innerHTML = "";
+    const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
+    if (miningEnabledEl) miningEnabledEl.checked = false;
+    const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
+    if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
+    for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
+        const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
+        if (el) el.checked = slot === "gpu";
+    }
     resetWdTabBodyHeight();
     setWdConfigTab("raw");
     addWdConfigRow();
@@ -9956,6 +10030,16 @@ function resetWdSettingsToDefaults() {
     updateWdCustomScriptEnabled();
     const globalStopInput = document.getElementById("wdconfig-global-stop-fails");
     if (globalStopInput) globalStopInput.value = WD_GLOBAL_STOP_FAILS_DEFAULT;
+    const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
+    if (miningEnabledEl) miningEnabledEl.checked = false;
+    const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
+    if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
+    for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
+        const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
+        if (el) el.checked = slot === "gpu";
+    }
+    const logTermTbody = document.getElementById("wdconfig-logterm-rows");
+    if (logTermTbody) logTermTbody.innerHTML = "";
 }
 function updateWdCustomScriptEnabled() {
     const cb = document.getElementById("wdconfig-action-custom-script");
@@ -9967,12 +10051,24 @@ function buildWdConfigRawFromSettings() {
     saveWdPanelStateToSelectedRow();
     const globalStopEl = document.getElementById("wdconfig-global-stop-fails");
     const globalStopFails = globalStopEl ? Math.max(0, Number(globalStopEl.value) || 0) : WD_GLOBAL_STOP_FAILS_DEFAULT;
+    const miningEnabled = document.getElementById("wdconfig-mining-enabled")?.checked ?? true;
+    const logWatcherEnabled = document.getElementById("wdconfig-logwatcher-enabled")?.checked ?? false;
+    const logWatcherSlots = WD_LOG_WATCHER_SLOT_IDS
+        .filter(slot => document.getElementById(`wdconfig-logwatcher-slot-${slot}`)?.checked)
+        .join(",");
+    const logWatcherTerms = collectWdLogTermRows()
+        .map(t => `${t.term}|${t.severity}`)
+        .join(",");
     const lines = [
         "# rigcontrol-watchdog.conf - generated from the dashboard's Watchdog Config module",
         "# Each algorithm below owns its own full settings block - click its row",
         "# in the Per-Algorithm Thresholds table above to edit it.",
         "",
         `GLOBAL_STOP_AFTER_FAILS "${globalStopFails}"`,
+        `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
+        `LOG_WATCHER_ENABLED "${logWatcherEnabled ? "1" : "0"}"`,
+        `LOG_WATCHER_SLOTS "${logWatcherSlots}"`,
+        `LOG_WATCHER_TERMS "${logWatcherTerms}"`,
         "",
     ];
     for (const tr of document.querySelectorAll("#wdconfig-rows .wdconfig-row")) {
@@ -10062,6 +10158,35 @@ function populateWdSettingsFromRaw(rawText) {
         const gm = rawText.match(/^GLOBAL_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$/m);
         if (gm) globalStopEl.value = Math.max(0, Number(gm[1]) || 0);
     }
+    const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
+    if (miningEnabledEl) {
+        const mm = rawText.match(/^MINING_WATCHDOG_ENABLED\s+"(\d)"\s*$/m);
+        if (mm) miningEnabledEl.checked = mm[1] === "1";
+    }
+    const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
+    if (logWatcherEnabledEl) {
+        const lm = rawText.match(/^LOG_WATCHER_ENABLED\s+"(\d)"\s*$/m);
+        if (lm) logWatcherEnabledEl.checked = lm[1] === "1";
+    }
+    const slotsMatch = rawText.match(/^LOG_WATCHER_SLOTS\s+"([^"]*)"\s*$/m);
+    if (slotsMatch) {
+        const activeSlots = slotsMatch[1].split(",").map(s => s.trim()).filter(Boolean);
+        for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
+            const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
+            if (el) el.checked = activeSlots.includes(slot);
+        }
+    }
+    const termsMatch = rawText.match(/^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$/m);
+    if (termsMatch && termsMatch[1]) {
+        for (const entry of termsMatch[1].split(",")) {
+            const [term, severity] = entry.split("|");
+            if (!term) continue;
+            addWdLogTermRow({
+                term,
+                severity: WD_LOG_WATCHER_SEVERITIES.includes(severity) ? severity : "warn",
+            });
+        }
+    }
     const blockHeaderRe = /^\[(.+?)\]\s*$/gm;
     const blockStarts = [];
     let hm;
@@ -10135,8 +10260,9 @@ function populateWdSettingsFromRaw(rawText) {
 function buildWdConfigCommand() {
     const rows = collectWdConfigRows();
     if (rows === null) return null;
-    if (rows.length === 0) {
-        alert("Add at least one algorithm row before applying.");
+    const miningEnabled = document.getElementById("wdconfig-mining-enabled")?.checked ?? true;
+    if (rows.length === 0 && miningEnabled) {
+        alert("Add at least one algorithm row before applying, or uncheck \"Enable Mining Watchdog\" on the Mining tab if you only want the Log Watcher.");
         return null;
     }
     rebuildWdRawFromSettings();
@@ -10665,6 +10791,8 @@ function renderStatusLogList(items) {
         const titleEl = document.createElement("div");
         titleEl.className = "statuslog-item-title";
         titleEl.textContent = item.title || `${item.rig || "unknown"}: ${item.algo || ""}`;
+        const sevMatch = /\[(GOOD|WARN|IMPORTANT|CRITICAL)\]/.exec(titleEl.textContent);
+        if (sevMatch) titleEl.dataset.severity = sevMatch[1].toLowerCase();
         const timeEl = document.createElement("div");
         timeEl.className = "statuslog-item-time";
         timeEl.textContent = item.created_at ? statsTimestampToLocalLabel(item.created_at) : "";
@@ -11722,6 +11850,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("stats-days-input")?.addEventListener("input", updateStatsStartDateFromDays);
     document.getElementById("btn-wdconfig-add-row")?.addEventListener("click", () => addWdConfigRow());
+    document.getElementById("btn-wdconfig-logterm-add")?.addEventListener("click", () => addWdLogTermRow());
+    document.getElementById("wdconfig-logwatcher-panel")?.addEventListener("input", () => {
+        rebuildWdRawFromSettings();
+    });
     document.getElementById("btn-send-it-wd")?.addEventListener("click", sendItWd);
     initSendConfirmCheckbox("confirm-wd", "wd");
     document.getElementById("btn-statuslog-refresh")?.addEventListener("click", () => loadStatusLogList());
@@ -11791,6 +11923,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("wdconfig-tab-btn-script")?.addEventListener("click", () => setWdConfigTab("script"));
     document.getElementById("wdconfig-tab-btn-raw")?.addEventListener("click", () => setWdConfigTab("raw"));
+    initWdconfigMainTabs();
     document.getElementById("btn-save-wallet")?.addEventListener("click", saveWalletFromDialog);
     document.getElementById("btn-delete-wallet")?.addEventListener("click", deleteWallet);
     document.getElementById("btn-clear-wallet")?.addEventListener("click", newWallet);
