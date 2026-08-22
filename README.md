@@ -22,20 +22,6 @@ sudo cp -a /opt/miners/keryx-miner /opt/miners/custom/keryx-miner
 > Full chart order now: Hashrate, GPU Core Clock, GPU Mem Clock, GPU Power, GPU VRAM, GPU Utl, GPU Temp,
 >
 > RAM Usage, Load Average, CPU Utl, CPU Temp.
-> 
-> added centered layout by default, toggle left/center in themes
->
-> agent safe guard: MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
->
-> watchdog not tested, don't really have use for it
->
-> Advanced Server Settings in dashboard
->
-> 3 services can now be controlled through dashboard CPU/GPU/AUX
->
-> stats is now sent to dashboard in chunks to avoid hitting a size limit
->
-> new coin textbox to set a coin name in json for 'to clipboard'
 >
 > windows agent notes for running services, not tested
 >
