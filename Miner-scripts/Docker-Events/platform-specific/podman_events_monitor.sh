@@ -8,7 +8,7 @@ SHUTDOWN_REQUESTED=0
 PODMAN_READY=false
 : "${IDLE_CONFIRM_LOOPS:=7}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
-: "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
+: "${LOG_CHECK_INTERVAL:=10}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
 # SIGNAL HANDLER
 handle_signal() {
@@ -372,24 +372,44 @@ start_miner() {
         else
             echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
         fi
-        LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
-        SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
-        rm -f "$LOG_FILE" "$SCRAP_LOG"
-        # Start in screen session
-        screen -dmS "$SERVICE_TYPE" -L -Logfile "$SCRAP_LOG" bash -c \
-            'echo "Miner starting at $(date)"; \
-             echo "API: '"$API_HOST:$API_PORT"'"; \
-             echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
-             trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
-             ( while true; do \
-                 sleep '"$LOG_CHECK_INTERVAL"'; \
-                 sed -u -r "s/\x1b\[[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -aE "^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
-                 sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
-                 if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
-                     tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \
-                 fi; \
-               done ) & \
-             '"$START_CMD"''
+        if [[ "${START_CMD,,}" == *keryx* ]]; then
+            LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
+            SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
+            rm -f "$LOG_FILE" "$SCRAP_LOG"
+            touch "$LOG_FILE"
+            # Start in screen session
+            screen -dmS "$SERVICE_TYPE" -L -Logfile "$SCRAP_LOG" bash -c \
+                'echo "Miner starting at $(date)"; \
+                 echo "API: '"$API_HOST:$API_PORT"'"; \
+                 echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
+                 trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
+                 ( while true; do \
+                     sed -u -r "s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}.*?(?=  |[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
+                     sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
+                     if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
+                         tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \
+                     fi; \
+                     sleep '"$LOG_CHECK_INTERVAL"'; \
+                   done ) & \
+                 '"$START_CMD"''
+        else
+            LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
+            rm -f "$LOG_FILE"
+            touch "$LOG_FILE"
+            screen -fn -dmS "$SERVICE_TYPE" -L -Logfile "$LOG_FILE" bash -c \
+                'echo "Miner starting at $(date)"; \
+                 echo "API: '"$API_HOST:$API_PORT"'"; \
+                 echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
+                 trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
+                 ( while true; do \
+                     sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
+                     if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
+                         tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
+                     fi; \
+                     sleep '"$LOG_CHECK_INTERVAL"'; \
+                   done ) & \
+                 '"$START_CMD"''
+        fi
     fi
     # Wait a moment for PID file creation
     sleep 2
