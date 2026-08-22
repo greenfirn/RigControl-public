@@ -1287,6 +1287,7 @@ nvidia-smi
                 <span class="cmd-target">
                     Logs / Config
                 </span>
+                <input type="text" id="logs-filter-input" class="logs-filter-input" placeholder="Filter" spellcheck="false" autocomplete="off">
                 <button type="button" class="cmd-header-close" id="btn-close-logs-modal" title="Close">&#10005;</button>
             </div>
             <div class="logs-toolbar">
@@ -1323,7 +1324,7 @@ nvidia-smi
                 <label class="logs-auto-refresh-toggle" title="Automatically re-fetch this log on an interval">
                     <input type="checkbox" id="logs-auto-refresh-checkbox"> Auto
                 </label>
-                <div class="logs-interval-group" title="Auto-refresh interval, in seconds">
+                <div class="logs-interval-group" id="logs-interval-group" title="Auto-refresh interval, in seconds">
                     <button type="button" class="wdconfig-unit-btn" id="btn-logs-interval-down" title="Decrease">&#9660;</button>
                     <input type="number" id="logs-interval-input" min="2" max="300" step="1" value="10">
                     <button type="button" class="wdconfig-unit-btn" id="btn-logs-interval-up" title="Increase">&#9650;</button>

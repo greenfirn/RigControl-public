@@ -872,6 +872,7 @@ let pendingWdConfigFetchRig = null;
 let pendingLogsFetchRig = null;
 let lastSyncedLogsRig = null;
 let logsAutoRefreshTimer = null;
+let logsRawText = "";
 const LOGS_TYPE_LABELS = {
     "cpu.log": "CPU log",
     "gpu.log": "GPU log",
@@ -3335,12 +3336,11 @@ function handleCommandResponse(response) {
             let text = "";
             if (r.stdout) text += stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             if (r.stderr) text += (text ? "\n" : "") + stripAnsi(r.stderr);
+            logsRawText = stripBlankLines(text) || "";
             const typeSelect = document.getElementById("logs-type-select");
             const currentType = typeSelect ? typeSelect.value : "";
             const preserveScroll = LOGS_TYPES_PRESERVE_SCROLL.has(currentType);
-            const prevScrollTop = out.scrollTop;
-            out.value = stripBlankLines(text) || "(empty)";
-            out.scrollTop = preserveScroll ? prevScrollTop : out.scrollHeight;
+            applyLogsFilter(preserveScroll);
         }
         if (statusEl) {
             statusEl.textContent = `returncode=${r.returncode} · last refreshed ${new Date().toLocaleTimeString()}`;
@@ -4588,6 +4588,7 @@ function openLogsModal() {
     }
     lastSyncedLogsRig = rig;
     document.getElementById("logs-modal")?.classList.remove("hidden");
+    requestAnimationFrame(syncLogsFilterWidth);
     fetchLogs();
     if (document.getElementById("logs-auto-refresh-checkbox")?.checked) {
         startLogsAutoRefresh();
@@ -4597,6 +4598,33 @@ function closeLogsModal() {
     document.getElementById("logs-modal")?.classList.add("hidden");
     stopLogsAutoRefresh();
     pendingLogsFetchRig = null;
+}
+function applyLogsFilter(preserveScroll) {
+    const out = document.getElementById("logs-output");
+    if (!out) return;
+    const term = document.getElementById("logs-filter-input")?.value.trim() || "";
+    let text = logsRawText;
+    if (term) {
+        const needle = term.toLowerCase();
+        text = logsRawText
+            .split("\n")
+            .filter(line => line.toLowerCase().includes(needle))
+            .join("\n");
+    }
+    const prevScrollTop = out.scrollTop;
+    out.value = text || (term ? "(no matching lines)" : "(empty)");
+    out.scrollTop = preserveScroll ? prevScrollTop : out.scrollHeight;
+}
+function syncLogsFilterWidth() {
+    const input = document.getElementById("logs-filter-input");
+    const toolbar = document.querySelector("#logs-modal .logs-toolbar");
+    const upArrow = document.getElementById("btn-logs-interval-up");
+    if (!input || !toolbar || !upArrow) return;
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const upArrowRect = upArrow.getBoundingClientRect();
+    if (!toolbarRect.width || !upArrowRect.width) return;
+    const width = Math.round(upArrowRect.right - toolbarRect.left);
+    if (width > 0) input.style.width = `${width}px`;
 }
 function fetchLogs() {
     const rig = getLogsTargetRig();
@@ -4685,6 +4713,9 @@ function restoreLogsPrefs() {
     if (localStorage.getItem("rigcontrol_logs_auto") === "1" && autoCb) {
         autoCb.checked = true;
     }
+    const filterInput = document.getElementById("logs-filter-input");
+    const savedFilter = localStorage.getItem("rigcontrol_logs_filter");
+    if (savedFilter && filterInput) filterInput.value = savedFilter;
     updateLogsLinesFieldVisibility();
 }
 function getSavedCommandName() {
@@ -11229,6 +11260,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-open-logs")?.addEventListener("click", openLogsModal);
     document.getElementById("btn-close-logs-modal")?.addEventListener("click", closeLogsModal);
     document.getElementById("btn-logs-refresh")?.addEventListener("click", fetchLogs);
+    document.getElementById("logs-filter-input")?.addEventListener("input", (e) => {
+        localStorage.setItem("rigcontrol_logs_filter", e.target.value);
+        applyLogsFilter(false);
+    });
+    window.addEventListener("resize", () => {
+        if (isLogsModuleVisible()) syncLogsFilterWidth();
+    });
     document.getElementById("logs-type-select")?.addEventListener("change", (e) => {
         localStorage.setItem("rigcontrol_logs_type", e.target.value);
         updateLogsLinesFieldVisibility();

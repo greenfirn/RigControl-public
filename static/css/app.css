@@ -933,13 +933,31 @@ h1 {
     border-bottom: 1px solid var(--border-modal);
     padding: 8px 12px;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     font-weight: 600;
     color: var(--text-white);
 }
 .cmd-target {
     font-size: var(--font-size-output-meta);
+    color: var(--text-secondary);
+}
+.logs-filter-input {
+    flex: 0 0 auto;
+    margin: 0 12px;
+    width: 260px;
+    min-width: 120px;
+    height: 26px;
+    box-sizing: border-box;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: var(--font-size-input);
+    outline: none;
+}
+.logs-filter-input::placeholder {
     color: var(--text-secondary);
 }
 .logs-rig-select {
@@ -1036,6 +1054,7 @@ h1 {
 }
 .cmd-header-close {
     flex: 0 0 auto;
+    margin-left: auto;
     min-width: 24px;
     height: 24px;
     display: inline-flex;
