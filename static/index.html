@@ -359,8 +359,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="settings-section">
-                    <div class="section-header">Raw Content <span class="wdconfig-section-header-hint">Full generated config text - edits here are parsed back into the fields above</span></div>
+                <div class="wdconfig-raw-section">
+                    <label for="wdconfig-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
                     <textarea
                         id="wdconfig-raw"
                         class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
@@ -1708,19 +1708,15 @@ nvidia-smi
                         </div>
                         <div class="fs-fields-row">
                             <div class="field-group fs-copy-json-field">
-                                <label class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
                                 <button type="button" class="fs-copy-json-btn" id="btn-fs-copy-json" title="Copies current raw content to clipboard in HiveOS compatible flightsheet JSON">&#128203; To clipboard</button>
                             </div>
                             <div class="field-group fs-coin-field" title="Coin ticker for this flightsheet, e.g. XMR - used as-is when copying to clipboard, no guessing">
-                                <label for="fs-field-coin" class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
                                 <input type="text" id="fs-field-coin" class="fs-field-input" autocomplete="off" placeholder="COIN" aria-label="COIN" />
                             </div>
                             <div class="field-group field-half fs-checkbox-push-right">
-                                <label for="fs-field-target-image" class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
                                 <input type="text" id="fs-field-target-image" class="fs-field-input" autocomplete="off" placeholder="TARGET_IMAGE" aria-label="TARGET_IMAGE" />
                             </div>
                             <div class="field-group field-half">
-                                <label for="fs-field-target-name" class="fs-copy-json-label-spacer" aria-hidden="true">&nbsp;</label>
                                 <input type="text" id="fs-field-target-name" class="fs-field-input" autocomplete="off" placeholder="TARGET_NAME" aria-label="TARGET_NAME" />
                             </div>
                             <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden" title="SSL">
@@ -1746,7 +1742,7 @@ nvidia-smi
                         </div>
                     </div>
                     <div class="fs-raw-label-row">
-                        <label for="fs-raw" class="fs-raw-label">&#x25BC; Raw Content &#x25BC;</label>
+                        <label for="fs-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
                         <span class="fs-raw-hint">Paste batch file or JSON from a flightsheet profile exported from various platforms, or just a list of pools - it will attempt to auto-convert into the fields above.</span>
                     </div>
                     <textarea
@@ -1861,7 +1857,7 @@ nvidia-smi
                         </div>
                         <div class="oc-fan-curve-note">Note: a fan curve is global, not per-algorithm - it's applied once as a single fan-curve.service for the whole rig, not re-applied each time the algo switches.</div>
                     </div>
-                    <label for="oc-raw" class="fs-raw-label">&#x25BC; Raw Content &#x25BC;</label>
+                    <label for="oc-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
                     <textarea
                         id="oc-raw"
                         class="fs-raw-shrunk"

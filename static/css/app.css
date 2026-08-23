@@ -2282,6 +2282,12 @@ h1 {
     gap: 12px;
     min-width: 0;
 }
+.wdconfig-raw-section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 0 0 auto;
+}
 .section-header {
     font-size: var(--font-size-section-header);
     font-weight: 600;
@@ -3572,7 +3578,7 @@ h1 {
 #wallet-modal .wallet-search-row #wallet-algo-filter {
     flex: 0 0 auto;
     width: auto;
-    min-width: 110px;
+    min-width: 160px;
 }
 #wallet-modal .wallet-list-toolbar .cmd-btn-row {
     display: flex;
