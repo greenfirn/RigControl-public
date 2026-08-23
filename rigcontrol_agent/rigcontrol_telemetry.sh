@@ -11,6 +11,7 @@ import re
 import shlex
 import requests
 import threading
+import shutil
 gpu_present  = False
 gpu_type     = "None"
 _gpu_detected = False
@@ -206,6 +207,52 @@ def _gpu_architecture_from_name(name):
     if "H100" in n or "H200" in n:
         return "Hopper"
     return "Unknown"
+_GPUTEMPS_BIN = None
+_GPUTEMPS_CHECKED = False
+def _find_gputemps_binary():
+    """Locates the optional 'gputemps' binary (github.com/ThomasBaruzier/gddr6-core-junction-vram-temps),
+    used as a fallback VRAM temp source since nvidia-smi's temperature.memory is unsupported on
+    virtually all GeForce cards. Cached lookup; returns None if it isn't installed - fully optional."""
+    global _GPUTEMPS_BIN, _GPUTEMPS_CHECKED
+    if _GPUTEMPS_CHECKED:
+        return _GPUTEMPS_BIN
+    _GPUTEMPS_CHECKED = True
+    _GPUTEMPS_BIN = None
+    for path in (shutil.which("gputemps"), "/usr/local/bin/gputemps", "/usr/local/sbin/gputemps"):
+        if path and os.path.isfile(path) and os.access(path, os.X_OK):
+            _GPUTEMPS_BIN = path
+            break
+    return _GPUTEMPS_BIN
+def _collect_gputemps_vram(indexes):
+    """Batch-reads VRAM temps for the given NVML device indexes via gputemps --json. Returns
+    {index: celsius} for whichever devices it could read - missing entries mean N/A (binary
+    absent, no root, or the sensor unsupported for that GPU/driver)."""
+    binpath = _find_gputemps_binary()
+    if not binpath or not indexes:
+        return {}
+    try:
+        proc = subprocess.run(
+            [binpath, "--once", "--json", "--device", ",".join(str(i) for i in indexes)],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if proc.returncode != 0:
+        return {}
+    results = {}
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        for gpu in data.get("gpus", []):
+            vram = gpu.get("vram")
+            if isinstance(vram, (int, float)):
+                results[gpu.get("index")] = vram
+    return results
 def collect_nvidia_gpu_stats():
     """Collect NVIDIA GPU stats via a single nvidia-smi call."""
     cmd = (
@@ -295,6 +342,12 @@ def collect_nvidia_gpu_stats():
             })
         except (ValueError, IndexError):
             continue
+    missing_mem_temp = [g["index"] for g in gpus if g.get("mem_temp") is None]
+    if missing_mem_temp:
+        vram_fallback = _collect_gputemps_vram(missing_mem_temp)
+        for g in gpus:
+            if g["index"] in vram_fallback:
+                g["mem_temp"] = vram_fallback[g["index"]]
     return gpus
 def collect_amd_gpu_stats():
     """Collects AMD GPU stats via a single 'rocm-smi --json' call, falling back to the text-parsing path if --json fails."""

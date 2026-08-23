@@ -48,6 +48,9 @@ import sys
 import os
 import threading
 import string
+import subprocess
+import json
+import shutil
 
 
 ## C Type mappings ##
@@ -4889,7 +4892,59 @@ def nvmlDeviceSetPowerManagementLimit_v2(device, powerScope, powerLimit, version
 # Copyright (C) 2024 Pascal Akermann
 
 
-def PrintInfo(handle):
+# Experimental VRAM temp: NVML doesn't expose this on GeForce cards, so we shell out to
+# https://github.com/ThomasBaruzier/gddr6-core-junction-vram-temps (built binary named
+# 'gputemps' on PATH or in /usr/local/bin) and fall back to None/"N/A" on any failure -
+# missing binary, no root, unsupported GPU, or the tool itself reporting null for VRAM.
+_GPUTEMPS_BIN = None
+_GPUTEMPS_CHECKED = False
+
+def _find_gputemps_binary():
+  global _GPUTEMPS_BIN, _GPUTEMPS_CHECKED
+  if _GPUTEMPS_CHECKED:
+    return _GPUTEMPS_BIN
+  _GPUTEMPS_CHECKED = True
+  _GPUTEMPS_BIN = None
+  candidates = [
+    shutil.which("gputemps"),
+    "/usr/local/bin/gputemps",
+    "/usr/local/sbin/gputemps",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "gputemps"),
+  ]
+  for path in candidates:
+    if path and os.path.isfile(path) and os.access(path, os.X_OK):
+      _GPUTEMPS_BIN = path
+      break
+  return _GPUTEMPS_BIN
+
+def get_vram_temp_gputemps(idx):
+  binpath = _find_gputemps_binary()
+  if not binpath:
+    return None
+  try:
+    proc = subprocess.run(
+      [binpath, "--once", "--json", "--device", str(idx)],
+      capture_output=True, text=True, timeout=5,
+    )
+  except (OSError, subprocess.TimeoutExpired):
+    return None
+  if proc.returncode != 0:
+    return None
+  for line in proc.stdout.splitlines():
+    line = line.strip()
+    if not line.startswith("{"):
+      continue
+    try:
+      data = json.loads(line)
+    except ValueError:
+      continue
+    for gpu in data.get("gpus", []):
+      if gpu.get("index") == idx:
+        vram = gpu.get("vram")
+        return vram if isinstance(vram, (int, float)) else None
+  return None
+
+def PrintInfo(handle, idx=None):
   try:
     print(f"  NAME: {nvmlDeviceGetName(handle)}")
     print(f"  VBIOS: {nvmlDeviceGetVbiosVersion(handle)}")
@@ -4927,6 +4982,12 @@ def PrintInfo(handle):
         print(f"  MEM TEMPERATURE: Not Supported [{NVMLError(mem_temp_fv.nvmlReturn)}]")
     except NVMLError as error:
       print(f"  MEM TEMPERATURE: Error {error}")
+    if idx is not None:
+      gputemps_vram = get_vram_temp_gputemps(idx)
+      if gputemps_vram is not None:
+        print(f"  MEM TEMPERATURE (gputemps): {gputemps_vram} C")
+      else:
+        print(f"  MEM TEMPERATURE (gputemps): N/A")
     numFans = nvmlDeviceGetNumFans(handle)
     for i in range(numFans):
       print(f"  FAN #{i} SPEED: {nvmlDeviceGetFanSpeed_v2(handle, i)} %, TARGET: {nvmlDeviceGetTargetFanSpeed(handle, i)} %")
@@ -4961,13 +5022,13 @@ def all(idx):
   if idx >= 0:
     handle = nvmlDeviceGetHandleByIndex(idx)
     print(f"DEVICE #{idx}:")
-    PrintInfo(handle)
+    PrintInfo(handle, idx)
   else:
     deviceCount = nvmlDeviceGetCount()
     for i in range(deviceCount):
       handle = nvmlDeviceGetHandleByIndex(i)
       print(f"DEVICE #{i}:")
-      PrintInfo(handle)
+      PrintInfo(handle, i)
 
 
 
