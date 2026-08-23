@@ -9852,15 +9852,12 @@ function loadWdLogTermScriptIntoPanel(rowId) {
     updateWdLogTermScriptEnabled();
 }
 function updateWdLogTermScriptEnabled() {
+    // Editable as soon as a term row is selected - it no longer requires that term's
+    // "Script" action checkbox to be checked first. Checking that box controls whether
+    // the script actually RUNS on a match; it shouldn't be a precondition for writing it.
     const el = document.getElementById("wdconfig-logwatcher-custom-script");
     if (!el) return;
-    if (!selectedWdLogTermRowId) {
-        el.disabled = true;
-        return;
-    }
-    const tr = document.querySelector(`#wdconfig-logterm-rows .wdconfig-logterm-row[data-wd-log-term-row-id="${selectedWdLogTermRowId}"]`);
-    const cb = tr?.querySelector('.wdconfig-logterm-action[data-action-key="ACTION_CUSTOM_SCRIPT"]');
-    el.disabled = !cb || !cb.checked;
+    el.disabled = !selectedWdLogTermRowId;
 }
 function updateWdEditingLogTermLabel() {
     const label = document.getElementById("wdconfig-editing-logterm-label");
@@ -10254,10 +10251,12 @@ function resetWdSettingsToDefaults() {
     updateWdLogTermScriptEnabled();
 }
 function updateWdCustomScriptEnabled() {
-    const cb = document.getElementById("wdconfig-action-custom-script");
+    // Editable as soon as an algorithm row is selected - it no longer requires that row's
+    // "Custom Script" action checkbox to be checked first. Checking that box controls
+    // whether the script actually RUNS on trigger; it shouldn't gate writing it.
     const script = document.getElementById("wdconfig-custom-script");
-    if (!cb || !script) return;
-    script.disabled = !cb.checked;
+    if (!script) return;
+    script.disabled = !selectedWdRowId;
 }
 function buildWdConfigRawFromSettings() {
     saveWdPanelStateToSelectedRow();
