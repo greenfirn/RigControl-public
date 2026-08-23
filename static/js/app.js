@@ -3703,10 +3703,11 @@ function render() {
         const gpuService = DataHelper.getServiceStatus(d, "gpu_service");
         const gpuServiceFormatted = DataHelper.getFormattedService(gpuService);
         const gpuServiceClass = gpuServiceFormatted.class;
+        const auxService = DataHelper.getServiceStatus(d, "aux_service");
         const watchdogActive = DataHelper.getServiceStatus(d, "watchdog_service").isActive;
         const dockerList = DataHelper.getDockerContainers(d);
         const watchdogStandingDown = watchdogActive &&
-            (dockerList.length > 0 || (!cpuService.isActive && !gpuService.isActive));
+            (dockerList.length > 0 || (!cpuService.isActive && !gpuService.isActive && !auxService.isActive));
         let dockerLeft = `<div class="docker-header">Docker Containers (${dockerList.length})</div>`;
         if (dockerList.length === 0) {
             dockerLeft += "<div style='padding: 10px; color: var(--text-muted); font-style: italic;'>No containers</div>";
