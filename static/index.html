@@ -1855,9 +1855,11 @@ nvidia-smi
                                 </tbody>
                             </table>
                         </div>
-                        <div class="oc-fan-curve-note">Note: a fan curve is global, not per-algorithm - it's applied once as a single fan-curve.service for the whole rig, not re-applied each time the algo switches.</div>
                     </div>
-                    <label for="oc-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
+                    <div class="fs-raw-label-row">
+                        <label for="oc-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
+                        <span class="fs-raw-hint">Note: a fan curve is global, not per-algorithm - apply once to make a change, single fan-curve.service for the whole rig.</span>
+                    </div>
                     <textarea
                         id="oc-raw"
                         class="fs-raw-shrunk"
