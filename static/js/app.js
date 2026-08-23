@@ -10043,10 +10043,10 @@ function renderWatchdogProfiles() {
         row.innerHTML = `
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(p.WatchdogProfileId)}</span>
-                <span class="fs-item-col fs-item-col-algo" title="${escapeHtml(algoDisplay)}">${escapeHtml(algoDisplay)}</span>
                 <span class="fs-item-col fs-item-col-slots" title="${escapeHtml(slotsDisplay)}">${escapeHtml(slotsDisplay)}</span>
                 <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog ${miningOn ? "enabled" : "disabled"}">${miningOn ? "✓" : "—"}</span>
                 <span class="fs-item-col fs-item-col-logs" title="Log Watcher ${logsOn ? "enabled" : "disabled"}">${logsOn ? "✓" : "—"}</span>
+                <span class="fs-item-col fs-item-col-algo" title="${escapeHtml(algoDisplay)}">${escapeHtml(algoDisplay)}</span>
             </div>
         `;
         row.dataset.id = p.WatchdogProfileId;
