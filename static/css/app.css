@@ -5931,10 +5931,7 @@ body.layout-left .rig-header {
     border-bottom-color: var(--text-accent);
     font-weight: 600;
 }
-/* Main-page GPU/CPU/AUX tabs (replaces the old Service dropdown) - sits as
-   its own full-width row at the top of the flightsheet editor, above the
-   fields and the raw content box, styled to match the Miner Config modal's
-   own tabs for consistency. */
+/* Main-page GPU/CPU/AUX tabs (replaces the old Service dropdown) */
 .fs-service-tabs {
     flex: 0 0 auto;
     display: flex;
@@ -5958,9 +5955,7 @@ body.layout-left .rig-header {
     border-bottom-color: var(--text-accent);
     font-weight: 600;
 }
-/* Tabs (both the main-page bar and the modal's own) turn green when that
-   service's RESTART checkbox is checked, so it's obvious at a glance which
-   of GPU/CPU/AUX will restart docker_events after apply. */
+/* Tabs turn green when that service's RESTART checkbox is checked */
 .fs-service-tab.restart-on,
 .fs-miner-config-tab.restart-on {
     color: var(--text-success);
@@ -6013,9 +6008,7 @@ body.layout-left .rig-header {
     justify-content: flex-end;
     align-items: center;
 }
-/* Miner version pin - sits on the opposite end of the footer from the
-   action buttons via margin-right: auto, so it doesn't disturb the
-   right-aligned RESTART/Clear/Cancel/Apply group. */
+/* Miner version pin - margin-right: auto separates it from the right-aligned buttons */
 .fs-mc-version-field {
     flex: 0 0 auto;
     margin-right: auto;
@@ -6038,11 +6031,8 @@ body.layout-left .rig-header {
     align-items: center;
     gap: 10px;
 }
-/* These field-rows normally live in #fs-fields-panel but are moved into the
-   Miner Config modal (see fsMcMoveIntoSlot in app.js) whenever it's opened.
-   Scoping display:none to only while still a child of #fs-fields-panel means
-   they simply reappear, fully visible, once the JS relocates them into the
-   modal - no extra show/hide bookkeeping needed. */
+/* Hidden only while still inside #fs-fields-panel - reappears once fsMcMoveIntoSlot()
+   relocates the row into the Miner Config modal, no extra show/hide bookkeeping needed. */
 #fs-fields-panel .fs-mc-portal-hidden {
     display: none;
 }
