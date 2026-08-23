@@ -5,6 +5,7 @@ Reads /etc/rigcontrol/rigcontrol-watchdog.conf (per-algo thresholds/actions) and
 /etc/rigcontrol/rigcontrol-agent.conf (MQTT login, CPU_SERVICE_NAME/GPU_SERVICE_NAME/AUX_SERVICE_NAME).
 """
 import argparse
+import base64
 import json
 import os
 import re
@@ -50,6 +51,8 @@ DEFAULT_GLOBAL_SETTINGS = {
     "log_watcher_interval_seconds": 60,  # how often the log watcher re-scans its log(s)
     "log_watcher_slots": [],  # e.g. ["cpu", "gpu", "aux"]
     "log_watcher_terms": [],  # e.g. [("Found a block on", "important"), ("error", "critical")]
+    "log_watcher_custom_script": "",  # legacy shared script - only used as a fallback default
+                                       # for terms saved before the per-term script editor existed
 }
 LOG_WATCHER_SEVERITIES = ("good", "warn", "important", "critical")
 LOG_WATCHER_SLOT_LOG_PATHS = {
@@ -57,27 +60,39 @@ LOG_WATCHER_SLOT_LOG_PATHS = {
     "gpu": "/run/rigcontrol/gpu_miner.log",
     "aux": "/run/rigcontrol/aux_miner.log",
 }
-# Same action keys/semantics as the mining watchdog's DEFAULT_ACTIONS (minus custom-script,
-# which has no reasonable per-term UI) - a log-watcher term row can trigger the same
-# restart/notify/reboot actions as a mining watchdog algorithm row.
+# Same action keys/semantics as the mining watchdog's DEFAULT_ACTIONS - a log-watcher term
+# row can trigger the same restart/notify/reboot/script actions as a mining watchdog
+# algorithm row. ACTION_CUSTOM_SCRIPT runs that term's own custom_script (each term owns
+# an independent script, edited via its own row in the dashboard).
 LOG_WATCHER_TERM_ACTION_KEYS = (
     "ACTION_RESTART_CPU", "ACTION_RESTART_GPU", "ACTION_RESTART_FAN", "ACTION_RESTART_AUX",
-    "ACTION_EMAIL_NOTIFY", "ACTION_SMS_NOTIFY", "ACTION_REBOOT_RIG",
+    "ACTION_EMAIL_NOTIFY", "ACTION_SMS_NOTIFY", "ACTION_REBOOT_RIG", "ACTION_CUSTOM_SCRIPT",
 )
-def _parse_log_watcher_terms(raw_value):
+def _b64_decode_utf8(b64_text):
+    try:
+        return base64.b64decode(b64_text).decode("utf-8")
+    except Exception:
+        return ""
+def _parse_log_watcher_terms(raw_value, legacy_script=""):
     """Parses LOG_WATCHER_TERMS - rows separated by ';', each row is
-    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>'. contains/not-contains
-    are themselves comma-separated lists of substrings (contains = ALL must be present,
-    not-contains = NONE may be present)."""
+    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<script-base64>|<slot>'.
+    contains/not-contains are themselves comma-separated lists of substrings (contains =
+    ALL must be present, not-contains = NONE may be present). slot is one of the
+    LOG_WATCHER_SLOT_LOG_PATHS keys (cpu/gpu/aux) or "all" to match every enabled slot.
+    script-base64, if present, is this term's own custom script (UTF-8, base64-encoded);
+    if absent (older saved profiles), legacy_script is used as the fallback so existing
+    scripts aren't silently lost when loading a profile saved before per-term scripts."""
     terms = []
     for row in raw_value.split(";"):
         row = row.strip()
         if not row:
             continue
         parts = row.split("|")
-        while len(parts) < 4:
+        while len(parts) < 6:
             parts.append("")
-        contains_raw, not_contains_raw, severity, actions_raw = parts[0], parts[1], parts[2], parts[3]
+        contains_raw, not_contains_raw, severity, actions_raw, script_b64, slot_raw = (
+            parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
+        )
         contains = [c.strip() for c in contains_raw.split(",") if c.strip()]
         not_contains = [c.strip() for c in not_contains_raw.split(",") if c.strip()]
         if not contains:
@@ -87,11 +102,17 @@ def _parse_log_watcher_terms(raw_value):
             severity = "warn"
         action_keys = {a.strip().upper() for a in actions_raw.split(",") if a.strip()}
         actions = {key: (key in action_keys) for key in LOG_WATCHER_TERM_ACTION_KEYS}
+        custom_script = _b64_decode_utf8(script_b64) if script_b64.strip() else legacy_script
+        slot = slot_raw.strip().lower()
+        if slot not in LOG_WATCHER_SLOT_LOG_PATHS:
+            slot = "all"
         terms.append({
             "contains": contains,
             "not_contains": not_contains,
             "severity": severity,
             "actions": actions,
+            "custom_script": custom_script,
+            "slot": slot,
         })
     return terms
 def _log_watcher_term_matches(line_lower, term):
@@ -185,9 +206,13 @@ def load_global_watchdog_settings(path):
         settings["log_watcher_slots"] = [
             s.strip() for s in m.group(1).split(",") if s.strip() in LOG_WATCHER_SLOT_LOG_PATHS
         ]
+    m = re.search(r'LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END', text)
+    legacy_script = m.group(1) if m else ""
+    if m:
+        settings["log_watcher_custom_script"] = legacy_script
     m = re.search(r'^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$', text, re.MULTILINE)
     if m:
-        settings["log_watcher_terms"] = _parse_log_watcher_terms(m.group(1))
+        settings["log_watcher_terms"] = _parse_log_watcher_terms(m.group(1), legacy_script=legacy_script)
     return settings
 def stop_watchdog_service():
     try:
@@ -271,10 +296,11 @@ def publish_alert(rig, algo, reasons, actions):
     except Exception as e:
         log(f"[mqtt] Error publishing alert: {e}")
 _log_watcher_offsets = {}
-def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle, agent_service_names):
-    """Fires the same restart/notify/reboot actions a mining watchdog algorithm row can -
-    always publishes to the Status Log (via publish_alert) regardless of which actions,
-    if any, are enabled on this term."""
+def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle, agent_service_names,
+                                      custom_script_text=""):
+    """Fires the same restart/notify/reboot/script actions a mining watchdog algorithm row
+    can - always publishes to the Status Log (via publish_alert) regardless of which
+    actions, if any, are enabled on this term."""
     cpu_service = agent_service_names.get("cpu_service", CPU_SERVICE_DEFAULT)
     gpu_service = agent_service_names.get("gpu_service", GPU_SERVICE_DEFAULT)
     aux_service = agent_service_names.get("aux_service", AUX_SERVICE_DEFAULT)
@@ -290,16 +316,21 @@ def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle,
     if actions.get("ACTION_RESTART_FAN") and FAN_SERVICE not in restarted_this_cycle:
         restart_service(FAN_SERVICE)
         restarted_this_cycle.add(FAN_SERVICE)
+    if actions.get("ACTION_CUSTOM_SCRIPT"):
+        run_custom_script(label, custom_script_text)
     publish_alert(RIG_NAME, label, line, [k for k, v in actions.items() if v])
     if actions.get("ACTION_REBOOT_RIG"):
         reboot_rig()
 def run_log_watcher_cycle(global_settings):
     """Independent of the mining health-check watchdog above - tails the configured
     slot log(s) for new lines. Each term is a contains-list (ALL must be present) plus
-    an optional not-contains-list (NONE may be present); on a match it fires that term's
-    own actions (same restart/notify/reboot set as a mining watchdog row) and always
-    publishes the matched line onto the watchdog_alert MQTT topic (via publish_alert) so
-    it lands in the dashboard's Status Log, tagged with the term's severity."""
+    an optional not-contains-list (NONE may be present) and owns its own slot filter
+    (cpu/gpu/aux, or "all" to scan every enabled Watch Slot) and its own custom script;
+    on a match it fires that term's own actions (same restart/notify/reboot set as a
+    mining watchdog row, plus that term's individual script if ACTION_CUSTOM_SCRIPT is
+    set) and always publishes the matched line onto the watchdog_alert MQTT topic (via
+    publish_alert) so it lands in the dashboard's Status Log, tagged with the term's
+    severity."""
     if not global_settings.get("log_watcher_enabled"):
         return
     slots = global_settings.get("log_watcher_slots") or []
@@ -330,13 +361,16 @@ def run_log_watcher_cycle(global_settings):
                 continue
             line_lower = line.lower()
             for term in terms:
+                term_slot = term.get("slot", "all")
+                if term_slot != "all" and term_slot != slot:
+                    continue
                 if _log_watcher_term_matches(line_lower, term):
                     label_text = ", ".join(term["contains"])
                     severity_label = term["severity"].upper()
                     log(f"[log-watcher] {slot}: [{severity_label}] matched \"{label_text}\" - {line}")
                     trigger_log_watcher_term_actions(
                         f"[{severity_label}] {label_text} ({slot})", term["actions"], line,
-                        restarted_this_cycle, agent_service_names,
+                        restarted_this_cycle, agent_service_names, term.get("custom_script", ""),
                     )
                     break
 def algo_combined_hashrate(entry):

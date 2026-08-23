@@ -857,6 +857,8 @@ const WD_LOG_TERM_ACTION_DEFS = [
     ["script", "ACTION_CUSTOM_SCRIPT", "Script"],
 ];
 let wdLogTermRowIdCounter = 0;
+let selectedWdLogTermRowId = null;
+let wdLogTermScripts = new Map();
 let selectedStatusLogIds = new Set();
 let watchdogProfiles = [];
 let selectedWatchdogProfileId = null;
@@ -9665,14 +9667,19 @@ function loadWdRowSettingsIntoPanel(rowId) {
 }
 function updateWdEditingAlgoLabel() {
     const label = document.getElementById("wdconfig-editing-algo-label");
-    if (!label) return;
+    const scriptLabel = document.getElementById("wdconfig-custom-script-selected-label");
+    const triggerLabel = document.getElementById("wdconfig-when-triggered-selected-label");
     if (!selectedWdRowId) {
-        label.textContent = "— select an algorithm row below to edit its settings";
+        if (label) label.textContent = "— select an algorithm row below to edit its settings";
+        if (scriptLabel) scriptLabel.textContent = "";
+        if (triggerLabel) triggerLabel.textContent = "";
         return;
     }
     const tr = document.querySelector(`#wdconfig-rows .wdconfig-row[data-wd-row-id="${selectedWdRowId}"]`);
     const algoName = tr?.querySelector(".wdconfig-algo")?.value.trim();
-    label.textContent = `— editing "${algoName || "(unnamed algorithm)"}"`;
+    if (label) label.textContent = `— editing "${algoName || "(unnamed algorithm)"}"`;
+    if (scriptLabel) scriptLabel.textContent = `(${algoName || "unnamed algorithm"})`;
+    if (triggerLabel) triggerLabel.textContent = `(${algoName || "unnamed algorithm"})`;
 }
 function selectWdRow(rowId) {
     if (rowId === selectedWdRowId) return;
@@ -9692,6 +9699,11 @@ function selectFirstWdRow() {
     } else {
         selectedWdRowId = null;
         updateWdEditingAlgoLabel();
+        // No algorithm rows (a Log-Watcher-only profile) - selectWdRow() above is the only
+        // path that normally rebuilds the raw preview, so without it LOG_WATCHER_SLOTS
+        // (derived from each term's Slot dropdown) never gets regenerated after loading a
+        // profile like this. Rebuild explicitly here so it's always current.
+        rebuildWdRawFromSettings();
     }
 }
 function getWdHashrateMultiplier() {
@@ -9815,14 +9827,89 @@ function collectWdConfigRows() {
     }
     return rows;
 }
+function b64EncodeUtf8(str) {
+    try {
+        return btoa(unescape(encodeURIComponent(str || "")));
+    } catch (e) {
+        return "";
+    }
+}
+function b64DecodeUtf8(b64) {
+    try {
+        return decodeURIComponent(escape(atob(b64 || "")));
+    } catch (e) {
+        return "";
+    }
+}
+function saveWdLogTermScriptFromPanel() {
+    if (!selectedWdLogTermRowId) return;
+    const el = document.getElementById("wdconfig-logwatcher-custom-script");
+    wdLogTermScripts.set(selectedWdLogTermRowId, el ? el.value : "");
+}
+function loadWdLogTermScriptIntoPanel(rowId) {
+    const el = document.getElementById("wdconfig-logwatcher-custom-script");
+    if (el) el.value = wdLogTermScripts.get(rowId) || "";
+    updateWdLogTermScriptEnabled();
+}
+function updateWdLogTermScriptEnabled() {
+    const el = document.getElementById("wdconfig-logwatcher-custom-script");
+    if (!el) return;
+    if (!selectedWdLogTermRowId) {
+        el.disabled = true;
+        return;
+    }
+    const tr = document.querySelector(`#wdconfig-logterm-rows .wdconfig-logterm-row[data-wd-log-term-row-id="${selectedWdLogTermRowId}"]`);
+    const cb = tr?.querySelector('.wdconfig-logterm-action[data-action-key="ACTION_CUSTOM_SCRIPT"]');
+    el.disabled = !cb || !cb.checked;
+}
+function updateWdEditingLogTermLabel() {
+    const label = document.getElementById("wdconfig-editing-logterm-label");
+    const scriptLabel = document.getElementById("wdconfig-logterm-script-selected-label");
+    if (!selectedWdLogTermRowId) {
+        if (label) label.textContent = "— select a term row above to edit its script";
+        if (scriptLabel) scriptLabel.textContent = "";
+        return;
+    }
+    const tr = document.querySelector(`#wdconfig-logterm-rows .wdconfig-logterm-row[data-wd-log-term-row-id="${selectedWdLogTermRowId}"]`);
+    const contains = tr?.querySelector(".wdconfig-logterm-contains")?.value.trim();
+    const notContains = tr?.querySelector(".wdconfig-logterm-notcontains")?.value.trim();
+    const display = notContains ? `${contains || "unnamed term"} | ${notContains}` : (contains || "unnamed term");
+    if (label) label.textContent = `— editing "${contains || "(unnamed term)"}"`;
+    if (scriptLabel) scriptLabel.textContent = `(${display})`;
+}
+function selectWdLogTermRow(rowId) {
+    if (rowId === selectedWdLogTermRowId) return;
+    saveWdLogTermScriptFromPanel();
+    selectedWdLogTermRowId = rowId;
+    document.querySelectorAll("#wdconfig-logterm-rows .wdconfig-logterm-row").forEach(tr => {
+        tr.classList.toggle("wdconfig-row-selected", tr.dataset.wdLogTermRowId === rowId);
+    });
+    loadWdLogTermScriptIntoPanel(rowId);
+    updateWdEditingLogTermLabel();
+}
+function selectFirstWdLogTermRow() {
+    const firstTr = document.querySelector("#wdconfig-logterm-rows .wdconfig-logterm-row");
+    if (firstTr) {
+        selectWdLogTermRow(firstTr.dataset.wdLogTermRowId);
+    } else {
+        selectedWdLogTermRowId = null;
+        updateWdEditingLogTermLabel();
+        updateWdLogTermScriptEnabled();
+    }
+}
 function addWdLogTermRow(row, opts) {
-    const r = row || { contains: "", notContains: "", severity: "warn", actions: {} };
+    const r = row || { contains: "", notContains: "", severity: "warn", actions: {}, customScript: "", slot: "all" };
     const tbody = document.getElementById("wdconfig-logterm-rows");
     if (!tbody) return;
     const rowId = String(++wdLogTermRowIdCounter);
+    wdLogTermScripts.set(rowId, r.customScript || "");
     const tr = document.createElement("tr");
     tr.className = "wdconfig-logterm-row";
     tr.dataset.wdLogTermRowId = rowId;
+    const slotValue = WD_LOG_WATCHER_SLOT_IDS.includes(r.slot) ? r.slot : "all";
+    const slotOptions = [["all", "All"], ...WD_LOG_WATCHER_SLOT_IDS.map(s => [s, s.toUpperCase()])]
+        .map(([val, label]) => `<option value="${val}"${val === slotValue ? " selected" : ""}>${label}</option>`)
+        .join("");
     const severityOptions = WD_LOG_WATCHER_SEVERITIES
         .map(sev => `<option value="${sev}"${sev === r.severity ? " selected" : ""}>${WD_LOG_WATCHER_SEVERITY_LABELS[sev]}</option>`)
         .join("");
@@ -9834,28 +9921,47 @@ function addWdLogTermRow(row, opts) {
             </label>`)
         .join("");
     tr.innerHTML = `
+        <td><select class="wdconfig-logterm-slot" title="Which worker log this term scans - All checks every enabled Watch Slot above">${slotOptions}</select></td>
         <td><input type="text" class="wdconfig-input wdconfig-logterm-contains" value="${escapeHtml(r.contains)}" placeholder="e.g. error, timeout" autocomplete="off" title="Comma-separated list - line must contain ALL of these to match" /></td>
         <td><input type="text" class="wdconfig-input wdconfig-logterm-notcontains" value="${escapeHtml(r.notContains)}" placeholder="e.g. debug" autocomplete="off" title="Comma-separated list - line must contain NONE of these to match" /></td>
         <td><select class="wdconfig-severity-select" data-severity="${r.severity}">${severityOptions}</select></td>
         <td><div class="wdconfig-logterm-actions">${actionsHtml}</div></td>
         <td><button class="wdconfig-remove-row" title="Remove term">&times;</button></td>
     `;
+    const slotSelect = tr.querySelector(".wdconfig-logterm-slot");
+    slotSelect.addEventListener("change", () => {
+        if (rowId === selectedWdLogTermRowId) updateWdEditingLogTermLabel();
+    });
     for (const cls of [".wdconfig-logterm-contains", ".wdconfig-logterm-notcontains"]) {
         const input = tr.querySelector(cls);
         input.addEventListener("input", () => {
             if (/[;|]/.test(input.value)) input.value = input.value.replace(/[;|]/g, "");
+            if (rowId === selectedWdLogTermRowId) updateWdEditingLogTermLabel();
         });
     }
     const severitySelect = tr.querySelector(".wdconfig-severity-select");
     severitySelect.addEventListener("change", () => {
         severitySelect.dataset.severity = severitySelect.value;
     });
+    tr.querySelectorAll(".wdconfig-logterm-action").forEach(cb => {
+        cb.addEventListener("change", () => {
+            if (rowId === selectedWdLogTermRowId) updateWdLogTermScriptEnabled();
+        });
+    });
     tr.querySelector(".wdconfig-remove-row").addEventListener("click", (ev) => {
         ev.stopPropagation();
+        const wasSelected = rowId === selectedWdLogTermRowId;
+        wdLogTermScripts.delete(rowId);
         tr.remove();
+        if (wasSelected) {
+            selectedWdLogTermRowId = null;
+            selectFirstWdLogTermRow();
+        }
         rebuildWdRawFromSettings();
     });
+    tr.addEventListener("click", () => selectWdLogTermRow(rowId));
     tbody.appendChild(tr);
+    if (!opts || !opts.skipSelect) selectWdLogTermRow(rowId);
     if (!opts || !opts.skipRebuild) rebuildWdRawFromSettings();
 }
 function collectWdLogTermRows() {
@@ -9865,11 +9971,16 @@ function collectWdLogTermRows() {
         if (!contains) continue;
         const notContains = tr.querySelector(".wdconfig-logterm-notcontains")?.value.trim() || "";
         const severity = tr.querySelector(".wdconfig-severity-select")?.value || "warn";
+        const slot = tr.querySelector(".wdconfig-logterm-slot")?.value || "all";
         const actions = {};
         tr.querySelectorAll(".wdconfig-logterm-action").forEach(cb => {
             actions[cb.dataset.actionKey] = cb.checked;
         });
-        rows.push({ contains, notContains, severity, actions });
+        const rowId = tr.dataset.wdLogTermRowId;
+        const customScript = rowId === selectedWdLogTermRowId
+            ? (document.getElementById("wdconfig-logwatcher-custom-script")?.value || "")
+            : (wdLogTermScripts.get(rowId) || "");
+        rows.push({ contains, notContains, severity, actions, customScript, slot });
     }
     return rows;
 }
@@ -9927,9 +10038,12 @@ function renderWatchdogProfiles() {
         const slotsDisplay = slotsRaw
             ? slotsRaw.split(",").filter(Boolean).map(s => s.toUpperCase()).join(", ")
             : "-";
+        const algoNames = [...raw.matchAll(/^\[(.+?)\]\s*$/gm)].map(m => m[1].trim()).filter(Boolean);
+        const algoDisplay = algoNames.length ? algoNames.join(", ") : "-";
         row.innerHTML = `
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(p.WatchdogProfileId)}</span>
+                <span class="fs-item-col fs-item-col-algo" title="${escapeHtml(algoDisplay)}">${escapeHtml(algoDisplay)}</span>
                 <span class="fs-item-col fs-item-col-slots" title="${escapeHtml(slotsDisplay)}">${escapeHtml(slotsDisplay)}</span>
                 <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog ${miningOn ? "enabled" : "disabled"}">${miningOn ? "✓" : "—"}</span>
                 <span class="fs-item-col fs-item-col-logs" title="Log Watcher ${logsOn ? "enabled" : "disabled"}">${logsOn ? "✓" : "—"}</span>
@@ -10052,8 +10166,10 @@ function clearWdConfigFields() {
     document.getElementById("wdconfig-name").value = "";
     const logTermTbody = document.getElementById("wdconfig-logterm-rows");
     if (logTermTbody) logTermTbody.innerHTML = "";
-    const logWatcherScriptEl = document.getElementById("wdconfig-logwatcher-custom-script");
-    if (logWatcherScriptEl) logWatcherScriptEl.value = "";
+    wdLogTermScripts.clear();
+    selectedWdLogTermRowId = null;
+    updateWdEditingLogTermLabel();
+    updateWdLogTermScriptEnabled();
     const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
     if (miningEnabledEl) miningEnabledEl.checked = false;
     const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
@@ -10062,10 +10178,6 @@ function clearWdConfigFields() {
     if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     if (logWatcherIntervalEl) logWatcherIntervalEl.value = WD_LOG_WATCHER_INTERVAL_DEFAULT;
-    for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
-        const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
-        if (el) el.checked = slot === "gpu";
-    }
     resetWdTabBodyHeight();
     setWdConfigTab("raw");
     addWdConfigRow();
@@ -10088,14 +10200,12 @@ function resetWdSettingsToDefaults() {
     if (logWatcherEnabledEl) logWatcherEnabledEl.checked = false;
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     if (logWatcherIntervalEl) logWatcherIntervalEl.value = WD_LOG_WATCHER_INTERVAL_DEFAULT;
-    for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
-        const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
-        if (el) el.checked = slot === "gpu";
-    }
     const logTermTbody = document.getElementById("wdconfig-logterm-rows");
     if (logTermTbody) logTermTbody.innerHTML = "";
-    const logWatcherScriptEl = document.getElementById("wdconfig-logwatcher-custom-script");
-    if (logWatcherScriptEl) logWatcherScriptEl.value = "";
+    wdLogTermScripts.clear();
+    selectedWdLogTermRowId = null;
+    updateWdEditingLogTermLabel();
+    updateWdLogTermScriptEnabled();
 }
 function updateWdCustomScriptEnabled() {
     const cb = document.getElementById("wdconfig-action-custom-script");
@@ -10113,16 +10223,21 @@ function buildWdConfigRawFromSettings() {
     const logWatcherEnabled = document.getElementById("wdconfig-logwatcher-enabled")?.checked ?? false;
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     const logWatcherInterval = logWatcherIntervalEl ? Math.max(5, Number(logWatcherIntervalEl.value) || 60) : 60;
-    const logWatcherSlots = WD_LOG_WATCHER_SLOT_IDS
-        .filter(slot => document.getElementById(`wdconfig-logwatcher-slot-${slot}`)?.checked)
+    const logTermRows = collectWdLogTermRows();
+    // Which logs actually need to be tailed - derived from the terms' own Slot dropdowns
+    // rather than a separate global control. Any term set to "All" means every slot must
+    // be watched; otherwise only the specific slots referenced by at least one term.
+    const usedSlots = new Set(logTermRows.map(t => t.slot || "all"));
+    const logWatcherSlots = (usedSlots.has("all") ? WD_LOG_WATCHER_SLOT_IDS : WD_LOG_WATCHER_SLOT_IDS.filter(s => usedSlots.has(s)))
         .join(",");
-    const logWatcherTerms = collectWdLogTermRows()
+    const logWatcherTerms = logTermRows
         .map(t => {
             const actionKeys = Object.entries(t.actions)
                 .filter(([, v]) => v)
                 .map(([k]) => k)
                 .join(",");
-            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}`;
+            const scriptB64 = b64EncodeUtf8(t.customScript || "");
+            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}|${scriptB64}|${t.slot || "all"}`;
         })
         .join(";");
     const lines = [
@@ -10131,6 +10246,7 @@ function buildWdConfigRawFromSettings() {
         "# in the Per-Algorithm Thresholds table above to edit it.",
         "# Mining Watchdog and Log Watcher run as two independent loops - each has its",
         "# own check interval below and is unaffected by the other's cadence or enable state.",
+        "# Each log-watcher term owns its own custom script - click its row above to edit it.",
         "",
         `GLOBAL_STOP_AFTER_FAILS "${globalStopFails}"`,
         `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
@@ -10139,9 +10255,6 @@ function buildWdConfigRawFromSettings() {
         `LOG_WATCHER_INTERVAL_SECONDS "${logWatcherInterval}"`,
         `LOG_WATCHER_SLOTS "${logWatcherSlots}"`,
         `LOG_WATCHER_TERMS "${logWatcherTerms}"`,
-        "LOG_WATCHER_SCRIPT_BEGIN",
-        ...((document.getElementById("wdconfig-logwatcher-custom-script")?.value || "").split("\n")),
-        "LOG_WATCHER_SCRIPT_END",
         "",
     ];
     for (const tr of document.querySelectorAll("#wdconfig-rows .wdconfig-row")) {
@@ -10240,40 +10353,38 @@ function populateWdSettingsFromRaw(rawText) {
         const im = rawText.match(/^LOG_WATCHER_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
         logWatcherIntervalEl.value = im ? Math.max(5, Number(im[1]) || 60) : WD_LOG_WATCHER_INTERVAL_DEFAULT;
     }
-    const slotsMatch = rawText.match(/^LOG_WATCHER_SLOTS\s+"([^"]*)"\s*$/m);
-    if (slotsMatch) {
-        const activeSlots = slotsMatch[1].split(",").map(s => s.trim()).filter(Boolean);
-        for (const slot of WD_LOG_WATCHER_SLOT_IDS) {
-            const el = document.getElementById(`wdconfig-logwatcher-slot-${slot}`);
-            if (el) el.checked = activeSlots.includes(slot);
-        }
-    }
+    // LOG_WATCHER_SLOTS is derived output only (see buildWdConfigRawFromSettings) - which
+    // logs actually get tailed now comes from each term's own Slot dropdown, parsed below.
+    const legacySharedScriptMatch = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
+    const legacySharedScript = legacySharedScriptMatch ? legacySharedScriptMatch[1] : "";
+    wdLogTermScripts.clear();
+    selectedWdLogTermRowId = null;
     const termsMatch = rawText.match(/^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$/m);
     if (termsMatch && termsMatch[1]) {
         for (const entry of termsMatch[1].split(";")) {
             if (!entry.trim()) continue;
             const parts = entry.split("|");
-            while (parts.length < 4) parts.push("");
-            const [contains, notContains, severityRaw, actionsRaw] = parts;
+            while (parts.length < 6) parts.push("");
+            const [contains, notContains, severityRaw, actionsRaw, scriptB64, slotRaw] = parts;
             if (!contains.trim()) continue;
             const actionKeys = new Set(actionsRaw.split(",").map(a => a.trim()).filter(Boolean));
             const actions = {};
             for (const [, key] of WD_LOG_TERM_ACTION_DEFS) {
                 actions[key] = actionKeys.has(key);
             }
+            const customScript = scriptB64 ? b64DecodeUtf8(scriptB64) : legacySharedScript;
+            const slot = WD_LOG_WATCHER_SLOT_IDS.includes(slotRaw.trim()) ? slotRaw.trim() : "all";
             addWdLogTermRow({
                 contains,
                 notContains,
                 severity: WD_LOG_WATCHER_SEVERITIES.includes(severityRaw) ? severityRaw : "warn",
                 actions,
-            });
+                customScript,
+                slot,
+            }, { skipSelect: true, skipRebuild: true });
         }
     }
-    const logWatcherScriptEl = document.getElementById("wdconfig-logwatcher-custom-script");
-    if (logWatcherScriptEl) {
-        const sm = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
-        logWatcherScriptEl.value = sm ? sm[1] : "";
-    }
+    selectFirstWdLogTermRow();
     const blockHeaderRe = /^\[(.+?)\]\s*$/gm;
     const blockStarts = [];
     let hm;
@@ -11984,7 +12095,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("stats-days-input")?.addEventListener("input", updateStatsStartDateFromDays);
     document.getElementById("btn-wdconfig-add-row")?.addEventListener("click", () => addWdConfigRow());
     document.getElementById("btn-wdconfig-logterm-add")?.addEventListener("click", () => addWdLogTermRow());
-    document.getElementById("wdconfig-logwatcher-panel")?.addEventListener("input", () => {
+    document.getElementById("wdconfig-logwatcher-panel")?.addEventListener("input", (e) => {
+        if (e.target && e.target.id === "wdconfig-logwatcher-custom-script") {
+            rebuildWdRawFromSettings();
+            return;
+        }
+        updateWdLogTermScriptEnabled();
         rebuildWdRawFromSettings();
     });
     document.getElementById("btn-send-it-wd")?.addEventListener("click", sendItWd);

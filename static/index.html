@@ -216,7 +216,7 @@
                     <div class="wdconfig-settings-panel" id="wdconfig-settings-panel">
                         <div class="wdconfig-upper-panel">
                         <div class="settings-section">
-                            <div class="section-header">When Triggered</div>
+                            <div class="section-header">When Triggered <span class="wdconfig-editing-algo-label" id="wdconfig-when-triggered-selected-label"></span></div>
                             <div class="wdconfig-timing-triggers-row">
                                 <div class="wdconfig-actions-row">
                                     <span class="wdconfig-action-group-label">Restart:</span>
@@ -293,7 +293,7 @@
                             </table>
                         </div>
                         <div class="settings-section">
-                            <div class="section-header">Custom Script <span class="wdconfig-section-header-hint">Runs when "Custom Script" is checked in When Triggered above, for the selected algorithm row.</span></div>
+                            <div class="section-header">Custom Script <span class="wdconfig-editing-algo-label" id="wdconfig-custom-script-selected-label"></span> <span class="wdconfig-section-header-hint">Runs for whichever row is selected above, when "Custom Script" is checked in When Triggered.</span></div>
                             <textarea
                                 id="wdconfig-custom-script"
                                 class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
@@ -309,33 +309,16 @@
                 <div class="wdconfig-main-tab-panel hidden" data-tab-panel="logs">
                     <div class="wdconfig-logwatcher-panel" id="wdconfig-logwatcher-panel">
                         <div class="settings-section">
-                            <div class="section-header">Watch Slots <span class="wdconfig-section-header-hint">Which miner log(s) on the worker to scan</span></div>
-                            <div class="wdconfig-timing-triggers-row">
-                                <div class="wdconfig-actions-row">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="wdconfig-logwatcher-slot-cpu">
-                                        <span class="checkbox-text">CPU</span>
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="wdconfig-logwatcher-slot-gpu" checked>
-                                        <span class="checkbox-text">GPU</span>
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="wdconfig-logwatcher-slot-aux">
-                                        <span class="checkbox-text">AUX</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="settings-section">
-                            <div class="section-header">Watch Terms <span class="wdconfig-section-header-hint">Contains/Not Contains accept comma-separated lists - Contains must ALL be present, Not Contains must NONE be present. A match always adds the line to the Status Log, and can trigger the same actions as a Mining Watchdog row.</span></div>
+                            <div class="section-header">Watch Terms</div>
                             <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
                                 <button class="cmd-btn" id="btn-wdconfig-logterm-add">+ Add Term</button>
+                                <span class="wdconfig-editing-algo-label" id="wdconfig-editing-logterm-label"></span>
                             </div>
                             <div class="wdconfig-table-wrap">
                                 <table class="wdconfig-table wdconfig-logterm-table">
                                     <thead>
                                         <tr>
+                                            <th title="Which worker log this term scans - All checks every enabled Watch Slot above">Slot</th>
                                             <th title="Comma-separated list - line must contain ALL of these to match">Contains</th>
                                             <th title="Comma-separated list - line must contain NONE of these to match">Not Contains</th>
                                             <th>Severity</th>
@@ -349,12 +332,13 @@
                             </div>
                         </div>
                         <div class="settings-section">
-                            <div class="section-header">Log Watcher Custom Script <span class="wdconfig-section-header-hint">Runs when any term above with its "Script" action checked matches - shared by all terms.</span></div>
+                            <div class="section-header">Custom Script <span class="wdconfig-editing-algo-label" id="wdconfig-logterm-script-selected-label"></span> <span class="wdconfig-section-header-hint">Runs for whichever term is selected above, when its "Script" action is checked.</span></div>
                             <textarea
                                 id="wdconfig-logwatcher-custom-script"
                                 class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
                                 spellcheck="false"
-                                placeholder="#!/bin/bash&#10;# runs on the worker when a log-watcher term with Script enabled matches"
+                                disabled
+                                placeholder="#!/bin/bash&#10;# select a term above, then write the script that runs when it matches with Script enabled"
                             ></textarea>
                         </div>
                     </div>
@@ -432,6 +416,7 @@
                     <div class="fs-list-header">
                         <div class="fs-item-grid">
                             <span class="fs-item-col fs-item-col-name">Watchdog Profile Name</span>
+                            <span class="fs-item-col fs-item-col-algo" title="Mining Watchdog algorithm(s) configured">Algo</span>
                             <span class="fs-item-col fs-item-col-slots" title="Log Watcher slot(s) watched">Slots</span>
                             <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog enabled">Mining</span>
                             <span class="fs-item-col fs-item-col-logs" title="Log Watcher enabled">Logs</span>

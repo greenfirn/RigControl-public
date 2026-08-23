@@ -4552,6 +4552,20 @@ h1 {
 .wdconfig-logwatcher-panel .settings-section {
     flex: 0 0 auto;
 }
+#wdconfig-modal select.wdconfig-logterm-slot {
+    padding: 4px 6px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    font-size: var(--font-size-input);
+    border-radius: 3px;
+    outline: none;
+    width: 64px;
+}
+#wdconfig-modal select.wdconfig-logterm-slot:focus {
+    border-color: var(--text-accent);
+}
 #wdconfig-modal select.wdconfig-severity-select {
     padding: 4px 6px;
     border: 1px solid var(--input-border);
@@ -4677,7 +4691,7 @@ h1 {
 }
 #wdconfig-modal .fs-item-grid {
     display: grid;
-    grid-template-columns: 1fr 100px 60px 60px;
+    grid-template-columns: 1fr 110px 100px 60px 60px;
     gap: 10px;
     align-items: center;
     flex: 1 1 auto;
