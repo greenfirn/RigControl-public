@@ -2117,6 +2117,8 @@ def on_message(client, userdata, msg):
             wd_algo = data.get("algo", "unknown")
             wd_reasons = data.get("reasons", "")
             wd_actions = data.get("actions") or []
+            wd_source = data.get("source", "mining_watchdog")
+            wd_algo_label = "Term" if wd_source == "log_watcher" else "Algorithm"
             log(f"[WATCHDOG_ALERT] {wd_rig} '{wd_algo}': {wd_reasons} (actions={wd_actions})")
             wants_email = "ACTION_EMAIL_NOTIFY" in wd_actions
             wants_sms = "ACTION_SMS_NOTIFY" in wd_actions
@@ -2137,7 +2139,7 @@ def on_message(client, userdata, msg):
             sl_title = f"{wd_rig}: {wd_algo}"
             sl_details_lines = [
                 f"Rig: {wd_rig}",
-                f"Algorithm: {wd_algo}",
+                f"{wd_algo_label}: {wd_algo}",
                 f"Reasons: {wd_reasons or '(none given)'}",
                 f"Actions requested: {', '.join(wd_actions) if wd_actions else '(none)'}",
                 f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(now))} UTC",

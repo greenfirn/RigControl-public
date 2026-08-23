@@ -283,12 +283,13 @@ def load_agent_service_names():
         "gpu_service": cfg.get("GPU_SERVICE_NAME", "").strip() or GPU_SERVICE_DEFAULT,
         "aux_service": cfg.get("AUX_SERVICE_NAME", "").strip() or AUX_SERVICE_DEFAULT,
     }
-def publish_alert(rig, algo, reasons, actions):
+def publish_alert(rig, algo, reasons, actions, source="mining_watchdog"):
     payload_text = json.dumps({
         "rig": rig,
         "algo": algo,
         "reasons": reasons,
         "actions": actions,
+        "source": source,
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     })
     login = load_mqtt_login()
@@ -336,7 +337,7 @@ def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle,
         restarted_this_cycle.add(FAN_SERVICE)
     if actions.get("ACTION_CUSTOM_SCRIPT"):
         run_custom_script(label, custom_script_text)
-    publish_alert(RIG_NAME, label, line, [k for k, v in actions.items() if v])
+    publish_alert(RIG_NAME, label, line, [k for k, v in actions.items() if v], source="log_watcher")
     if actions.get("ACTION_REBOOT_RIG"):
         reboot_rig()
 def run_log_watcher_cycle(global_settings):
@@ -517,7 +518,7 @@ def trigger_actions(algo, settings, reasons, restarted_this_cycle, service_names
         restarted_this_cycle.add(FAN_SERVICE)
     if actions["ACTION_CUSTOM_SCRIPT"]:
         run_custom_script(algo, settings["custom_script"])
-    publish_alert(RIG_NAME, f"{algo} unhealthy", summary, [k for k, v in actions.items() if v])
+    publish_alert(RIG_NAME, f"{algo} unhealthy", summary, [k for k, v in actions.items() if v], source="mining_watchdog")
     if actions["ACTION_REBOOT_RIG"]:
         reboot_rig()
 def _format_actions(actions):
