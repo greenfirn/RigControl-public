@@ -19,6 +19,11 @@ import rigcontrol_telemetry as telemetry
 RIG_NAME = socket.gethostname()
 TOPIC_PREFIX = "rigcontrol"
 WATCHDOG_ALERT_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/watchdog_alert"
+_ANSI_ESCAPE_RE = re.compile(r'\x1B(?:\[[0-9;]*[a-zA-Z]|\][^\x07]*\x07|[@-Z\\-_])')
+def _normalize_ws(text):
+    return re.sub(r'\s+', " ", (text or "")).strip()
+def strip_ansi(text):
+    return _normalize_ws(_ANSI_ESCAPE_RE.sub("", text or ""))
 def log(msg):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[Watchdog] {ts} UTC {msg}", flush=True)
@@ -99,8 +104,8 @@ def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
             while len(parts) < 5:
                 parts.append("")
             contains_raw, not_contains_raw, severity, actions_raw, slot_raw = parts[:5]
-        contains = [c.strip() for c in contains_raw.split(",") if c.strip()]
-        not_contains = [c.strip() for c in not_contains_raw.split(",") if c.strip()]
+        contains = [_normalize_ws(c) for c in contains_raw.split(",") if c.strip()]
+        not_contains = [_normalize_ws(c) for c in not_contains_raw.split(",") if c.strip()]
         if not contains:
             continue
         severity = severity.strip().lower()
@@ -360,7 +365,7 @@ def run_log_watcher_cycle(global_settings):
         if not new_text:
             continue
         for line in new_text.splitlines():
-            line = line.strip()
+            line = strip_ansi(line).strip()
             if not line:
                 continue
             line_lower = line.lower()
