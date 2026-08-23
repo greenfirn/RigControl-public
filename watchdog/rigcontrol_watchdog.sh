@@ -73,26 +73,50 @@ def _b64_decode_utf8(b64_text):
         return base64.b64decode(b64_text).decode("utf-8")
     except Exception:
         return ""
-def _parse_log_watcher_terms(raw_value, legacy_script=""):
-    """Parses LOG_WATCHER_TERMS - rows separated by ';', each row is
-    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<script-base64>|<slot>'.
-    contains/not-contains are themselves comma-separated lists of substrings (contains =
-    ALL must be present, not-contains = NONE may be present). slot is one of the
-    LOG_WATCHER_SLOT_LOG_PATHS keys (cpu/gpu/aux) or "all" to match every enabled slot.
-    script-base64, if present, is this term's own custom script (UTF-8, base64-encoded);
-    if absent (older saved profiles), legacy_script is used as the fallback so existing
-    scripts aren't silently lost when loading a profile saved before per-term scripts."""
+_TERM_SCRIPT_RE = re.compile(r'LOG_WATCHER_TERM_SCRIPT_BEGIN (\d+)\n([\s\S]*?)\nLOG_WATCHER_TERM_SCRIPT_END')
+def _parse_log_watcher_term_scripts(text):
+    """Each log-watcher term's script is stored as its own readable
+    LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block (index = the term's position among the
+    ';'-separated LOG_WATCHER_TERMS entries) so it's plainly visible/editable in the raw
+    conf text instead of being buried as a base64 blob inline. Returns {index: script_text}."""
+    scripts = {}
+    for m in _TERM_SCRIPT_RE.finditer(text):
+        try:
+            scripts[int(m.group(1))] = m.group(2)
+        except ValueError:
+            continue
+    return scripts
+def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
+    """Parses LOG_WATCHER_TERMS - rows separated by ';'. Current format per row is
+    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<slot>', with each term's
+    own script supplied separately via term_scripts (see _parse_log_watcher_term_scripts),
+    keyed by the row's position in this list. contains/not-contains are themselves
+    comma-separated lists of substrings (contains = ALL must be present, not-contains =
+    NONE may be present). slot is one of the LOG_WATCHER_SLOT_LOG_PATHS keys (cpu/gpu/aux)
+    or "all" to match every enabled slot.
+
+    For backward compatibility with profiles saved by the briefly-shipped previous format
+    (6 fields, with the script inline as field 5, base64-encoded), a row is also accepted
+    as '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<script-base64>|<slot>' -
+    detected by the row having 6+ raw fields instead of the current 5. If neither a
+    term_scripts entry nor an inline script is present, legacy_script (the old single
+    profile-wide shared script, from before per-term scripts existed at all) is used as
+    the final fallback so older saved scripts are never silently lost."""
+    term_scripts = term_scripts or {}
     terms = []
-    for row in raw_value.split(";"):
+    for idx, row in enumerate(raw_value.split(";")):
         row = row.strip()
         if not row:
             continue
-        parts = row.split("|")
-        while len(parts) < 6:
-            parts.append("")
-        contains_raw, not_contains_raw, severity, actions_raw, script_b64, slot_raw = (
-            parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
-        )
+        raw_parts = row.split("|")
+        legacy_script_b64 = ""
+        if len(raw_parts) >= 6:
+            contains_raw, not_contains_raw, severity, actions_raw, legacy_script_b64, slot_raw = raw_parts[:6]
+        else:
+            parts = list(raw_parts)
+            while len(parts) < 5:
+                parts.append("")
+            contains_raw, not_contains_raw, severity, actions_raw, slot_raw = parts[:5]
         contains = [c.strip() for c in contains_raw.split(",") if c.strip()]
         not_contains = [c.strip() for c in not_contains_raw.split(",") if c.strip()]
         if not contains:
@@ -102,7 +126,12 @@ def _parse_log_watcher_terms(raw_value, legacy_script=""):
             severity = "warn"
         action_keys = {a.strip().upper() for a in actions_raw.split(",") if a.strip()}
         actions = {key: (key in action_keys) for key in LOG_WATCHER_TERM_ACTION_KEYS}
-        custom_script = _b64_decode_utf8(script_b64) if script_b64.strip() else legacy_script
+        if idx in term_scripts:
+            custom_script = term_scripts[idx]
+        elif legacy_script_b64.strip():
+            custom_script = _b64_decode_utf8(legacy_script_b64)
+        else:
+            custom_script = legacy_script
         slot = slot_raw.strip().lower()
         if slot not in LOG_WATCHER_SLOT_LOG_PATHS:
             slot = "all"
@@ -210,9 +239,12 @@ def load_global_watchdog_settings(path):
     legacy_script = m.group(1) if m else ""
     if m:
         settings["log_watcher_custom_script"] = legacy_script
+    term_scripts = _parse_log_watcher_term_scripts(text)
     m = re.search(r'^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$', text, re.MULTILINE)
     if m:
-        settings["log_watcher_terms"] = _parse_log_watcher_terms(m.group(1), legacy_script=legacy_script)
+        settings["log_watcher_terms"] = _parse_log_watcher_terms(
+            m.group(1), legacy_script=legacy_script, term_scripts=term_scripts
+        )
     return settings
 def stop_watchdog_service():
     try:

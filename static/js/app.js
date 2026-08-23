@@ -10281,8 +10281,7 @@ function buildWdConfigRawFromSettings() {
                 .filter(([, v]) => v)
                 .map(([k]) => k)
                 .join(",");
-            const scriptB64 = b64EncodeUtf8(t.customScript || "");
-            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}|${scriptB64}|${t.slot || "all"}`;
+            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}|${t.slot || "all"}`;
         })
         .join(";");
     const lines = [
@@ -10291,7 +10290,9 @@ function buildWdConfigRawFromSettings() {
         "# in the Per-Algorithm Thresholds table above to edit it.",
         "# Mining Watchdog and Log Watcher run as two independent loops - each has its",
         "# own check interval below and is unaffected by the other's cadence or enable state.",
-        "# Each log-watcher term owns its own custom script - click its row above to edit it.",
+        "# Each log-watcher term owns its own custom script, shown below as a readable",
+        "# LOG_WATCHER_TERM_SCRIPT_BEGIN/END block per term (in the same order as the",
+        "# terms listed in LOG_WATCHER_TERMS above) - click its row above to edit it.",
         "",
         `GLOBAL_STOP_AFTER_FAILS "${globalStopFails}"`,
         `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
@@ -10302,6 +10303,12 @@ function buildWdConfigRawFromSettings() {
         `LOG_WATCHER_TERMS "${logWatcherTerms}"`,
         "",
     ];
+    logTermRows.forEach((t, idx) => {
+        lines.push(`LOG_WATCHER_TERM_SCRIPT_BEGIN ${idx}`);
+        lines.push(...(t.customScript || "").split("\n"));
+        lines.push("LOG_WATCHER_TERM_SCRIPT_END");
+        lines.push("");
+    });
     for (const tr of document.querySelectorAll("#wdconfig-rows .wdconfig-row")) {
         const inputs = tr.querySelectorAll(".wdconfig-input");
         const algo = inputs[0].value.trim();
@@ -10404,21 +10411,37 @@ function populateWdSettingsFromRaw(rawText) {
     const legacySharedScript = legacySharedScriptMatch ? legacySharedScriptMatch[1] : "";
     wdLogTermScripts.clear();
     selectedWdLogTermRowId = null;
+    // Each term's script is now a readable LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block
+    // (index = the term's position among the ";"-separated LOG_WATCHER_TERMS entries), so
+    // it's visible/editable directly in Raw Content instead of a base64 blob buried inline.
+    const termScriptBlocks = new Map();
+    for (const m of rawText.matchAll(/LOG_WATCHER_TERM_SCRIPT_BEGIN (\d+)\n([\s\S]*?)\nLOG_WATCHER_TERM_SCRIPT_END/g)) {
+        termScriptBlocks.set(Number(m[1]), m[2]);
+    }
     const termsMatch = rawText.match(/^LOG_WATCHER_TERMS\s+"([^"]*)"\s*$/m);
     if (termsMatch && termsMatch[1]) {
-        for (const entry of termsMatch[1].split(";")) {
-            if (!entry.trim()) continue;
-            const parts = entry.split("|");
-            while (parts.length < 6) parts.push("");
-            const [contains, notContains, severityRaw, actionsRaw, scriptB64, slotRaw] = parts;
-            if (!contains.trim()) continue;
+        termsMatch[1].split(";").forEach((entry, entryIdx) => {
+            if (!entry.trim()) return;
+            const rawParts = entry.split("|");
+            let contains, notContains, severityRaw, actionsRaw, slotRaw, legacyScriptB64 = "";
+            if (rawParts.length >= 6) {
+                // Older format (briefly shipped): contains|notContains|severity|actions|scriptB64|slot
+                [contains, notContains, severityRaw, actionsRaw, legacyScriptB64, slotRaw] = rawParts;
+            } else {
+                const parts = rawParts.slice();
+                while (parts.length < 5) parts.push("");
+                [contains, notContains, severityRaw, actionsRaw, slotRaw] = parts;
+            }
+            if (!contains.trim()) return;
             const actionKeys = new Set(actionsRaw.split(",").map(a => a.trim()).filter(Boolean));
             const actions = {};
             for (const [, key] of WD_LOG_TERM_ACTION_DEFS) {
                 actions[key] = actionKeys.has(key);
             }
-            const customScript = scriptB64 ? b64DecodeUtf8(scriptB64) : legacySharedScript;
-            const slot = WD_LOG_WATCHER_SLOT_IDS.includes(slotRaw.trim()) ? slotRaw.trim() : "all";
+            const customScript = termScriptBlocks.has(entryIdx)
+                ? termScriptBlocks.get(entryIdx)
+                : (legacyScriptB64 ? b64DecodeUtf8(legacyScriptB64) : legacySharedScript);
+            const slot = WD_LOG_WATCHER_SLOT_IDS.includes((slotRaw || "").trim()) ? slotRaw.trim() : "all";
             addWdLogTermRow({
                 contains,
                 notContains,
@@ -10427,7 +10450,7 @@ function populateWdSettingsFromRaw(rawText) {
                 customScript,
                 slot,
             }, { skipSelect: true, skipRebuild: true });
-        }
+        });
     }
     selectFirstWdLogTermRow();
     const blockHeaderRe = /^\[(.+?)\]\s*$/gm;
