@@ -10077,18 +10077,29 @@ function syncWdListColumnWidths() {
     const canvas = syncWdListColumnWidths._canvas || (syncWdListColumnWidths._canvas = document.createElement("canvas"));
     const ctx = canvas.getContext && canvas.getContext("2d");
     if (!ctx) return; // no 2D canvas support - fall back to the CSS defaults
-    ctx.font = getComputedStyle(headerCols[0]).font;
+    // measureText() ignores CSS text-transform/letter-spacing, but the header is
+    // uppercased with letter-spacing via CSS - without compensating, the measured width
+    // undershoots the actual rendered header text and its title gets clipped.
+    function measuredWidth(el) {
+        const cs = getComputedStyle(el);
+        ctx.font = cs.font;
+        let text = el.textContent;
+        if (cs.textTransform === "uppercase") text = text.toUpperCase();
+        else if (cs.textTransform === "lowercase") text = text.toLowerCase();
+        const letterSpacing = parseFloat(cs.letterSpacing) || 0;
+        return ctx.measureText(text).width + Math.max(0, text.length - 1) * letterSpacing;
+    }
     const cols = ["name", "slots", "mining", "logs"];
     const widths = {};
     for (const col of cols) {
         const headerEl = document.querySelector(`#wdconfig-modal .fs-list-header .fs-item-col-${col}`);
-        widths[col] = headerEl ? ctx.measureText(headerEl.textContent).width : 0;
+        widths[col] = headerEl ? measuredWidth(headerEl) : 0;
     }
     document.querySelectorAll("#wdconfig-list .fs-item").forEach(item => {
         for (const col of cols) {
             const el = item.querySelector(`.fs-item-col-${col}`);
             if (!el) continue;
-            const w = ctx.measureText(el.textContent).width;
+            const w = measuredWidth(el);
             if (w > widths[col]) widths[col] = w;
         }
     });
