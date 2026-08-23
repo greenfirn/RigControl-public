@@ -10061,6 +10061,41 @@ function renderWatchdogProfiles() {
         });
         list.appendChild(row);
     }
+    syncWdListColumnWidths();
+}
+// The header and each list item are separate grid containers, so "auto" column tracks
+// size independently per row and don't line up (e.g. a short profile name lets Slots/
+// Mining/Logs drift left on that row only). Measure the widest content per fixed column
+// - starting from the header title as a floor - and publish it as a CSS var both the
+// header grid and every item grid reference, so all rows size identically and stay
+// aligned no matter how long any one row's content is.
+function syncWdListColumnWidths() {
+    const panel = document.querySelector("#wdconfig-modal .fs-list-panel");
+    if (!panel) return;
+    const headerCols = document.querySelectorAll("#wdconfig-modal .fs-list-header .fs-item-col");
+    if (!headerCols.length) return;
+    const canvas = syncWdListColumnWidths._canvas || (syncWdListColumnWidths._canvas = document.createElement("canvas"));
+    const ctx = canvas.getContext && canvas.getContext("2d");
+    if (!ctx) return; // no 2D canvas support - fall back to the CSS defaults
+    ctx.font = getComputedStyle(headerCols[0]).font;
+    const cols = ["name", "slots", "mining", "logs"];
+    const widths = {};
+    for (const col of cols) {
+        const headerEl = document.querySelector(`#wdconfig-modal .fs-list-header .fs-item-col-${col}`);
+        widths[col] = headerEl ? ctx.measureText(headerEl.textContent).width : 0;
+    }
+    document.querySelectorAll("#wdconfig-list .fs-item").forEach(item => {
+        for (const col of cols) {
+            const el = item.querySelector(`.fs-item-col-${col}`);
+            if (!el) continue;
+            const w = ctx.measureText(el.textContent).width;
+            if (w > widths[col]) widths[col] = w;
+        }
+    });
+    const PADDING = 16;
+    for (const col of cols) {
+        panel.style.setProperty(`--wd-col-${col}`, `${Math.ceil(widths[col] + PADDING)}px`);
+    }
     filterWatchdogProfileList();
 }
 function loadSelectedWatchdogProfile() {
