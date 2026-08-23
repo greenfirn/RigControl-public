@@ -11316,6 +11316,18 @@ function renderStatsCharts(resp) {
         return out;
     });
     renderStatsChart("stats-chart-gpu-util", gpuUtil.labels, gpuUtil.seriesMap, "%");
+    const gpuMemTemp = buildLabelsAndSeries(entries, (d) => {
+        const out = {};
+        (d.gpus || []).forEach((g) => {
+            const memTemp = DataHelper.getGpuMemTemp(g);
+            if (memTemp !== null && memTemp !== undefined) out[`GPU${g.index}`] = memTemp;
+        });
+        return out;
+    });
+    renderStatsChart("stats-chart-gpu-mem-temp", gpuMemTemp.labels, gpuMemTemp.seriesMap, "°C", (name) => {
+        const idx = parseInt(name.replace("GPU", ""), 10) || 0;
+        return STATS_CHART_COLORS[idx % STATS_CHART_COLORS.length];
+    });
     const gpuVram = buildLabelsAndSeries(entries, (d) => {
         const out = {};
         (d.gpus || []).forEach((g) => {
