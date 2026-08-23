@@ -12,19 +12,15 @@ handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
     SHUTDOWN_REQUESTED=1
-    # Ensure miner is stopped
     echo "$(date): Stopping miner if running..."
     stop_miner || true
     exit 0
 }
-# Setup signal handlers
 trap 'handle_signal TERM' TERM
 trap 'handle_signal INT' INT
 trap 'handle_signal HUP' HUP
-# Where miners are installed
 BASE_DIR="/opt/miners"
 readonly BASE_DIR
-# Where THIS script and lib/ live
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
@@ -165,22 +161,18 @@ add_api_flags() {
     esac
 }
 # FINAL PLACEHOLDER SUBSTITUTION
-# CPU threads
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
     ARGS="${ARGS//%CPU_THREADS%/$CPU_THREADS}"
 fi
-# Warthog target
 if [[ -n "$WARTHOG_TARGET" ]]; then
     ARGS="${ARGS//%WARTHOG_TARGET%/$WARTHOG_TARGET}"
 fi
-# Replace %WORKER_NAME% placeholder in ARGS, WALLET, PASS, POOL
 ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# Add miner-specific API flags
 if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
@@ -194,9 +186,8 @@ esac
 # API HEALTH CHECK FUNCTION
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
-        return 0  # API not enabled, consider healthy
+        return 0
     fi
-    # just return healthy...
     return 0
 }
 # PID-BASED ALIVE CHECK / KILL - no screen session in this variant
@@ -232,16 +223,13 @@ kill_by_pid() {
                 echo "$(date): Miner process group $miner_pid terminated (forcefully)"
             fi
         fi
-        # Clean up PID file
         rm -f "$pid_file"
     fi
 }
 # MINER CONTROL FUNCTIONS
-# Function to start miner
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
-    # Check if miner is already running
     if is_miner_alive; then
         echo "$(date): Miner already running for $SERVICE_TYPE (PID: $(cat "$pid_file"))"
         echo "$(date): Miner output goes to this service's journal (journalctl -f)"
@@ -251,7 +239,6 @@ start_miner() {
         stop_miner || true
         echo "$(date): Starting fresh miner after cleanup..."
     fi
-    # Apply GPU OC's if configured
     if [[ "${APPLY_OC,,}" == "true" ]]; then
         OC_TARGET="${ALGO:-}"
         if [[ -z "$OC_TARGET" || "$OC_TARGET" == "0" ]]; then
@@ -300,11 +287,9 @@ start_miner() {
         echo $! > "$pid_file"
     fi
     sleep 2
-    # Verify startup
     if is_miner_alive; then
         local miner_pid=$(cat "$pid_file")
         echo "$(date): Miner started (PID: $miner_pid)"
-        # Wait for API to come up if enabled
         if [[ "$API_PORT" -gt 0 ]]; then
             echo "$(date): Waiting for API to start (max 30 seconds)..."
             local max_wait=30
@@ -329,7 +314,6 @@ start_miner() {
         return 1
     fi
 }
-# Function to stop miner (clean closure first)
 stop_miner() {
     echo "$(date): Stopping $SERVICE_TYPE miner..."
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
@@ -340,12 +324,10 @@ stop_miner() {
     fi
     local miner_pid=$(cat "$pid_file")
     kill_by_pid
-    # Reset GPU if configured
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "$(date): Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
-    # Final verification
     echo "$(date): Verifying cleanup..."
     if ps -p "$miner_pid" > /dev/null 2>&1; then
         echo "$(date): WARNING: Miner process still exists! Waiting 5s before retrying kill_by_pid..."
@@ -370,12 +352,10 @@ start_miner
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     sleep 60
 done
-# Final cleanup before exit
 echo "$(date): Performing final cleanup..."
 stop_miner
 echo "$(date): Miner launcher stopped gracefully"
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
 # -- write GPU service --
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'

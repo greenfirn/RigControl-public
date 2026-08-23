@@ -314,14 +314,12 @@ get_start_cmd() {
             cmd="$MINER_BIN $srb_tls_flag $srb_algo_flag $ALGO$(build_pool_cmd_args srbminer) --password $PASS $ARGS"
             ;;
         rigel)
-            # Accepts stratum+ssl:// directly in the pool address.
             cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args rigel) -p $PASS $ARGS"
             ;;
         lolminer)
             cmd="$MINER_BIN --algo $ALGO$(build_pool_cmd_args lolminer) $ARGS"
             ;;
         onezerominer)
-            # Accepts stratum+ssl://ssl:// directly in the pool address.
             cmd="$MINER_BIN --algo $ALGO$(build_pool_cmd_args onezerominer) --pass $PASS $ARGS"
             ;;
         gminer)
@@ -334,11 +332,9 @@ get_start_cmd() {
             cmd="$MINER_BIN $gm_ssl_flag --algo $ALGO$(build_pool_cmd_args gminer) --pass $PASS $ARGS"
             ;;
         teamredminer)
-            # Accepts stratum+ssl:// directly in the pool address.
             cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args teamredminer) $ARGS"
             ;;
         trex)
-            # Accepts stratum+ssl:// directly in the pool address.
             cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args trex) $ARGS"
             ;;
         *)

@@ -1114,7 +1114,6 @@ _notification_queue: "queue.Queue" = queue.Queue()
 _notification_worker_threads: List[threading.Thread] = []
 _notification_workers_stop = threading.Event()
 def enqueue_notification(context_label: str, **kwargs):
-    """Queues a notification job for the background worker pool instead of sending it inline."""
     _notification_queue.put((context_label, kwargs))
 def _notification_worker_loop(worker_id: int):
     log(f"[Notifications] Worker {worker_id} started")

@@ -1717,10 +1717,7 @@ DataHelper.getGpuShares = (data) => {
         if (algo.minerKey === "miner_xmrig") return;
         if (algo.minerKey === "miner_srbminer" && algo.mining_type !== "GPU") return;
         if (algo.minerKey === "miner_bzminer" && algo.mining_type !== "GPU") return;
-        // Per-slot custom-miner entries (miner_custom_log_cpu/gpu/aux) belong
-        // to their own named slot, not this GPU catch-all - only the _gpu
-        // one (or a slot-less legacy "miner_custom_log", kept for backward
-        // compatibility with older agents) counts here.
+        // Only the GPU slot (or legacy slot-less key) counts here.
         if (algo.minerKey.startsWith("miner_custom_log_") && algo.minerKey !== "miner_custom_log_gpu") return;
         accepted += DataHelper.getAcceptedShares(algo) || 0;
         rejected += DataHelper.getRejectedShares(algo) || 0;
@@ -6357,12 +6354,7 @@ let fsRigGpuItemOriginal = null;
 let fsMinerRawOriginal = "";
 let fsDualModeActive = false;
 let fsDualModeSlots = { gpu: null, cpu: null, aux: null };
-// Tracks which service (gpu/cpu/aux) is "current" independently of the
-// service-type <select>'s live DOM value - browsers update a <select>'s
-// .value synchronously before the input/change event fires, so reading the
-// DOM inside the event handler would already see the *new* selection and
-// make it indistinguishable from the old one. This is set explicitly at
-// every point that changes which service is active.
+// Tracks which service (gpu/cpu/aux) is "current" independently of the <select>'s live DOM value.
 let fsCurrentServiceType = "gpu";
 function bareFsPoolUrl(url) {
     return (url || "").trim()
@@ -6757,9 +6749,7 @@ function buildRigGpuItemObject(values, stash) {
     if (isCustom) {
         resolvedMinerUrl = poolUrl;
     } else if (hasLiteralPoolOverride) {
-        // An explicit literal pool typed into the Miner Config modal overrides
-        // the pool entirely - no backup/failover pools are sent, matching the
-        // "ignores pool list" behavior requested for a hand-set pool address.
+        // A literal pool override skips the backup/failover pool list entirely.
         let overrideUrl = poolUrlOverrideRaw;
         if (overrideUrl.startsWith("stratum+ssl://")) {
             poolSsl = true;
@@ -6771,8 +6761,7 @@ function buildRigGpuItemObject(values, stash) {
         poolUrls = [overrideUrl];
         resolvedMinerUrl = overrideUrl;
     } else {
-        // Default "%URL%" token: resolved at deploy time from the full
-        // pool_urls list below, backups included.
+        // Default token, resolved at deploy time from the full pool_urls list.
         resolvedMinerUrl = "%URL%";
     }
     const minerConfig = {
@@ -7436,13 +7425,7 @@ function fsFieldsFromRigGpuJsonItem(item) {
         CUSTOM_MINER_URL: isCustom ? (mc.install_url || "") : "",
     };
 }
-// The RESTART checkbox controls whether each service's block actually
-// restarts docker_events_<svc> after writing the config - default unchecked
-// means "write only" (config gets saved to disk, but nothing is restarted
-// until the rig picks it up on its own or is restarted separately). This
-// strips/re-adds the restart line regardless of what the template itself
-// contains, so it works the same whether or not a deployment's
-// templates.json still bakes the restart command into the template.
+// RESTART controls whether the block restarts docker_events_<svc> after writing the config; default unchecked is write-only.
 function fsApplyRestartLine(blockText, svc, restartOn) {
     const stripped = blockText.replace(new RegExp(`\\n?sudo systemctl restart docker_events_${svc}\\s*$`), "");
     return restartOn ? `${stripped}\nsudo systemctl restart docker_events_${svc}` : stripped;
@@ -7451,11 +7434,7 @@ function fsTemplateForService(svc) {
     const fsCfg = TEMPLATES_CONFIG.flightsheet;
     return svc === "cpu" ? fsCfg.cpu_template : svc === "aux" ? fsCfg.aux_template : fsCfg.gpu_template;
 }
-// Maps the app's internal miner name to the key used in
-// /etc/rigcontrol/miner.conf (e.g. "lolminer" -> "LOLMINER_VERSION"). Not a
-// simple uppercase transform for every entry (SRBMiner's CPU build uses
-// "SRBMINER-CPU", trex/t-rex uses "TREXMINER"), so known miners are looked
-// up explicitly; anything else falls back to an uppercased, alnum-only guess.
+// Maps the app's internal miner name to its key in /etc/rigcontrol/miner.conf; unlisted miners fall back to an uppercased, alnum-only guess.
 const FS_MINER_VERSION_KEY_MAP = {
     "xmrig": "XMRIG",
     "wildrig-multi": "WILDRIG",
@@ -7481,19 +7460,13 @@ function fsMinerVersionKey(minerName) {
     const fallback = lower.replace(/[^a-z0-9]+/g, "").toUpperCase();
     return fallback || "MINER";
 }
-// Pins a miner's version by writing it to /etc/rigcontrol/miner.conf,
-// prepended before the rest of the block (the JSON tee command) - matches
-// how the rig-side agent expects MINERNAME_VERSION "x.y.z" entries. No-op
-// (returns blockText unchanged) when the version field is left blank.
+// Pins a miner's version by writing MINERNAME_VERSION "x.y.z" to /etc/rigcontrol/miner.conf; no-op when version is blank.
 function fsApplyVersionBlock(blockText, version, minerName) {
     const v = (version || "").trim().replace(/'/g, "");
     if (!v) return blockText;
     const key = `${fsMinerVersionKey(minerName)}_VERSION`;
     const line = `${key} "${v}"`;
-    // Updates just this miner's line in /etc/rigcontrol/miner.conf in place
-    // (via sed) if it's already there, or appends it if not - other
-    // miners' version lines in the file are left untouched, unlike a
-    // `tee`-based full-file overwrite.
+    // Updates the line in place via sed if present, appends otherwise; other miners' lines are untouched.
     const sedReplacement = line.replace(/[\\/&]/g, "\\$&");
     const confBlock =
         "sudo mkdir -p /etc/rigcontrol\n" +
@@ -7513,12 +7486,7 @@ function buildFsBlock(mode) {
     const withRestart = fsApplyRestartLine(block, mode, values.RESTART === "true");
     return fsApplyVersionBlock(withRestart, values.VERSION, values.MINER);
 }
-// Builds the raw content sent on "Send it": one tee/systemctl block per
-// service (gpu/cpu/aux) that actually has a miner configured - the currently
-// active tab's live field values, plus whatever's stashed for any other
-// service visited this session. Services with nothing configured contribute
-// nothing, so this naturally collapses to "" (all blank), a single block
-// (only one populated), or up to three blocks joined together.
+// Builds the raw content sent on "Send it": one tee/systemctl block per configured service (gpu/cpu/aux).
 function buildFsCombinedBlock() {
     const activeService = getCurrentFsServiceType();
     const blocks = [];
@@ -7546,31 +7514,18 @@ function buildFsCombinedBlock() {
     }
     return blocks.join("\n");
 }
-// Whether any service OTHER than the given one currently has real stashed
-// content - used to decide whether raw edits need a full multi-block
-// rebuild (buildFsCombinedBlock) instead of the cheaper single-item
-// regex-replace path.
+// Whether a service OTHER than the given one has real stashed content; decides if a full rebuild is needed.
 function fsHasOtherRealSlot(activeService) {
     return ["gpu", "cpu", "aux"].some((svc) => svc !== activeService && !!fsDualModeSlots[svc]);
 }
-// Live-editing preview: shows ONLY the currently active tab's block ("" if
-// that tab is blank), regardless of what's stashed in other tabs. This is
-// deliberately narrower than buildFsCombinedBlock() so switching to a blank
-// tab visibly clears the raw box instead of continuing to show whichever
-// other tab still has data - the full multi-service combine only happens
-// right before Save/Send, via fsFinalizeRawForAction().
+// Live-editing preview: shows only the currently active tab's block. Full multi-service combine happens at Save/Send.
 function buildFsActivePreview() {
     const activeService = getCurrentFsServiceType();
     const values = collectFsFieldValues();
     if (!fsSlotHasRealContent(values)) return "";
     return buildFsBlock(activeService);
 }
-// Called right before the raw content is actually used for something
-// (Save flightsheet, Send it) - recombines every service that has real data
-// (active tab's live values plus any stashed GPU/CPU/AUX slots) into the raw
-// box so what gets saved/sent always reflects all populated tabs, not just
-// whichever one is currently being edited. If nothing is field-driven (e.g.
-// the box holds a hand-typed/pasted custom command), leaves it untouched.
+// Called right before Save/Send to recombine every populated service into the raw box.
 function fsFinalizeRawForAction() {
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl) return "";
@@ -7779,10 +7734,7 @@ function setFsCurrentServiceType(v) {
     fsSyncServiceTabsUI();
 }
 function resetFsFieldInputsForNewSlot() {
-    // Same field/checkbox reset as clearFsFields(), but deliberately leaves
-    // fsDualModeSlots and fsApplyToRigs untouched - used when switching to a
-    // GPU/CPU/AUX tab that has no stashed data yet, so we don't wipe out
-    // whatever's stashed in the *other* tabs.
+    // Same reset as clearFsFields(), but leaves fsDualModeSlots/fsApplyToRigs untouched so other tabs' stash survives.
     fsExtraPoolUrls = [];
     fsPrimaryPoolUrl = "";
     fsPoolUrlsExplicitlySet = false;
@@ -7818,10 +7770,7 @@ function syncFsMcPoolTokenField() {
 function fsSlotHasRealContent(values) {
     return !!((values.MINER && values.MINER.trim()) || (values.CUSTOM_MINER && values.CUSTOM_MINER.trim()));
 }
-// RESTART only means something if this tab actually has a miner configured
-// (i.e. there's real raw content to apply/restart for) - disable and clear
-// it whenever the active tab is blank, and re-enable it once there's
-// something to restart.
+// RESTART is disabled/cleared whenever the active tab has no miner configured.
 function fsUpdateRestartCheckboxDisabled() {
     const el = document.getElementById("fs-field-restart");
     if (!el) return;
@@ -7829,9 +7778,7 @@ function fsUpdateRestartCheckboxDisabled() {
     el.disabled = !hasContent;
     if (!hasContent) el.checked = false;
     fsSyncServiceTabsUI();
-    // VERSION shares the same "is there actually a miner configured" gate,
-    // plus its own custom-miner check - keep it in sync at every point
-    // RESTART's enabled state gets re-evaluated.
+    // VERSION shares the same gate, plus its own custom-miner check.
     updateFsMinerConfigCustomVisibility();
 }
 function handleFsServiceSwitch(newServiceRaw) {
@@ -7840,13 +7787,7 @@ function handleFsServiceSwitch(newServiceRaw) {
     const oldService = getCurrentFsServiceType();
     if (newService === oldService) return;
 
-    // Stash whatever's currently live into its own slot, regardless of which
-    // service we're coming from - this is what makes GPU/CPU/AUX symmetric
-    // instead of only GPU<->CPU being remembered. But only if there's an
-    // actual miner configured - just visiting a tab without entering
-    // anything shouldn't leave behind a phantom slot that later gets treated
-    // as a real config (e.g. triggering dual-mode and writing an empty
-    // block into the raw output).
+    // Stash whatever's live into its own slot, but only if a miner is actually configured.
     const oldValues = collectFsFieldValuesWithExtras();
     oldValues.SERVICE_TYPE = oldService;
     fsDualModeSlots[oldService] = fsSlotHasRealContent(oldValues)
@@ -7869,17 +7810,12 @@ function handleFsServiceSwitch(newServiceRaw) {
     fsCurrentServiceType = newService;
     fsSyncServiceTabsUI();
 
-    // GPU/CPU/AUX all combine together into one multi-block raw output once
-    // more than one of them has real data - AUX included, so "Send it" ships
-    // whichever of the three are actually configured, not just GPU+CPU.
+    // GPU/CPU/AUX combine into one multi-block raw output once more than one has real data.
     fsDualModeActive = fsHasOtherRealSlot(newService);
 
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // Live preview only ever shows the tab you're currently on - blank
-        // if this tab is blank, even if another tab still has real data
-        // stashed. The full multi-service combine happens at Save/Send time
-        // (fsFinalizeRawForAction), not here.
+        // Live preview only shows the active tab; full combine happens at Save/Send.
         rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
     }
@@ -7921,9 +7857,7 @@ function updateFsMinerConfigCustomVisibility() {
     const isCustom = (document.getElementById("fs-field-miner")?.value || "").trim().toLowerCase() === "custom";
     const slot = document.getElementById("fs-mc-slot-custom");
     if (slot) slot.classList.toggle("hidden", !isCustom);
-    // VERSION doesn't mean anything for custom miners (no entry in
-    // /etc/rigcontrol/miner.conf) or when this tab has no miner defined at
-    // all yet - same "real content" gate RESTART uses.
+    // VERSION doesn't apply to custom miners or when this tab has no miner defined yet.
     const versionEl = document.getElementById("fs-field-miner-version");
     if (versionEl) {
         const hasNoMiner = !fsSlotHasRealContent(collectFsFieldValues());
@@ -7953,12 +7887,7 @@ function fsMcRestoreCustomLabels() {
     }
     fsMcLabelOriginals = {};
 }
-// Keeps both tab bars - the modal's GPU/CPU/AUX tabs and the main-page tabs
-// that replaced the old Service dropdown - showing the same active service,
-// since they both drive the same fsCurrentServiceType.
-// Whether a given service's RESTART checkbox is checked - the active
-// service's live checkbox for itself, or whatever was stashed for any other
-// service that's been visited/configured this session.
+// Whether a given service's RESTART checkbox is checked - the active tab's live checkbox, or its stashed value.
 function fsTabHasRestart(svc) {
     if (svc === getCurrentFsServiceType()) {
         return !!document.getElementById("fs-field-restart")?.checked;
@@ -7977,9 +7906,7 @@ function fsSyncServiceTabsUI() {
         btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });
 }
-// Click handler for the main-page GPU/CPU/AUX tabs (replaces the old Service
-// dropdown) - routes through the same handleFsServiceSwitch as everything
-// else so main-page and modal tab switching behave identically.
+// Click handler for the main-page GPU/CPU/AUX tabs.
 function fsSwitchServiceTab(service) {
     handleFsServiceSwitch(service);
     fsSyncServiceTabsUI();
@@ -7999,8 +7926,7 @@ function openFsMinerConfigModal() {
         fsMcMoveIntoSlot(label, "fs-mc-slot-checks");
     }
     {
-        // RESTART lives in the footer, on the far left, rather than with the
-        // other checkboxes in the body.
+        // RESTART lives in the footer, not with the other checkboxes in the body.
         const restartEl = document.getElementById("fs-field-restart");
         const restartLabel = restartEl ? restartEl.closest("label.checkbox-label") : null;
         fsMcMoveIntoSlot(restartLabel, "fs-mc-slot-restart");
@@ -8057,9 +7983,7 @@ function fsMcClearCurrentTab() {
     fsSyncServiceTabsUI();
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // Clearing a tab always leaves it blank, so the live preview goes
-        // blank too - other services' stashed data still gets included when
-        // Save/Send recombines everything.
+        // Clearing a tab leaves the live preview blank; other services' stashed data is unaffected.
         rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
     }
@@ -8237,12 +8161,7 @@ function populateFsFieldsFromRaw(rawText) {
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             if (isDual) {
-                // Multiple services loaded - narrow the live preview to just
-                // the active tab (this is the fix for the raw box appearing
-                // "stuck" showing whichever tab loaded first, e.g. always
-                // GPU, no matter which tab you switch to). The full loaded
-                // raw text combining all services is preserved and gets
-                // rebuilt correctly on Save/Send.
+                // Multiple services loaded - narrow the live preview to just the active tab.
                 rawEl.value = buildFsActivePreview();
                 autoResizeFsRaw();
             } else if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
@@ -8294,30 +8213,19 @@ function updateRawFromFieldChange(target) {
     const mapping = FS_FIELD_ID_TO_KEY[target.id];
     if (!mapping) return;
     if (target.id === "fs-field-service-type") {
-        // Always route service switches through handleFsServiceSwitch, dual
-        // mode or not, so GPU/CPU/AUX behave as three independent configs
-        // (matching the Miner Config modal's own tabs) - without this, a
-        // single (non-dual) flightsheet's custom miner fields, ARGS, etc.
-        // would just carry over unchanged into the "new" service instead of
-        // stashing/resetting per service.
+        // Always route through handleFsServiceSwitch so GPU/CPU/AUX behave as independent configs.
         handleFsServiceSwitch(target.value);
         return;
     }
     if (target.id === "fs-field-restart") {
-        // Keep the tabs' green "will restart" indicator live as the
-        // checkbox is toggled, not just on tab switches.
+        // Keep the tabs' green "will restart" indicator live as the checkbox is toggled.
         fsSyncServiceTabsUI();
     }
     if (target.id === "fs-field-miner" || target.id === "fs-field-custom-miner") {
-        // MINER/CUSTOM_MINER are what determine whether this tab has "real"
-        // content - keep RESTART's enabled state live as they're typed into.
         fsUpdateRestartCheckboxDisabled();
     }
     if (target.id === "fs-field-miner-version") {
-        // The miner.conf tee block sits BEFORE the JSON heredoc, outside
-        // what the regex-replace path below can reach - always do a full
-        // rebuild so it appears/updates/disappears correctly as this is
-        // typed into.
+        // The miner.conf tee block sits before the JSON heredoc, outside the regex-replace path, so always do a full rebuild.
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             rawEl.value = buildFsActivePreview();
@@ -9699,10 +9607,7 @@ function selectFirstWdRow() {
     } else {
         selectedWdRowId = null;
         updateWdEditingAlgoLabel();
-        // No algorithm rows (a Log-Watcher-only profile) - selectWdRow() above is the only
-        // path that normally rebuilds the raw preview, so without it LOG_WATCHER_SLOTS
-        // (derived from each term's Slot dropdown) never gets regenerated after loading a
-        // profile like this. Rebuild explicitly here so it's always current.
+        // No algorithm rows - rebuild explicitly since selectWdRow() won't run to do it.
         rebuildWdRawFromSettings();
     }
 }
@@ -9852,9 +9757,7 @@ function loadWdLogTermScriptIntoPanel(rowId) {
     updateWdLogTermScriptEnabled();
 }
 function updateWdLogTermScriptEnabled() {
-    // Editable as soon as a term row is selected - it no longer requires that term's
-    // "Script" action checkbox to be checked first. Checking that box controls whether
-    // the script actually RUNS on a match; it shouldn't be a precondition for writing it.
+    // Editable as soon as a term row is selected, independent of the "Script" action checkbox.
     const el = document.getElementById("wdconfig-logwatcher-custom-script");
     if (!el) return;
     el.disabled = !selectedWdLogTermRowId;
@@ -10060,12 +9963,7 @@ function renderWatchdogProfiles() {
     }
     syncWdListColumnWidths();
 }
-// The header and each list item are separate grid containers, so "auto" column tracks
-// size independently per row and don't line up (e.g. a short profile name lets Slots/
-// Mining/Logs drift left on that row only). Measure the widest content per fixed column
-// - starting from the header title as a floor - and publish it as a CSS var both the
-// header grid and every item grid reference, so all rows size identically and stay
-// aligned no matter how long any one row's content is.
+// Header and list items are separate grid containers, so measure the widest content per column and publish it as a shared CSS var to keep rows aligned.
 function syncWdListColumnWidths() {
     const panel = document.querySelector("#wdconfig-modal .fs-list-panel");
     if (!panel) return;
@@ -10074,9 +9972,7 @@ function syncWdListColumnWidths() {
     const canvas = syncWdListColumnWidths._canvas || (syncWdListColumnWidths._canvas = document.createElement("canvas"));
     const ctx = canvas.getContext && canvas.getContext("2d");
     if (!ctx) return; // no 2D canvas support - fall back to the CSS defaults
-    // measureText() ignores CSS text-transform/letter-spacing, but the header is
-    // uppercased with letter-spacing via CSS - without compensating, the measured width
-    // undershoots the actual rendered header text and its title gets clipped.
+    // measureText() ignores CSS text-transform/letter-spacing, so compensate manually for the uppercased header.
     function measuredWidth(el) {
         const cs = getComputedStyle(el);
         ctx.font = cs.font;
@@ -10251,9 +10147,7 @@ function resetWdSettingsToDefaults() {
     updateWdLogTermScriptEnabled();
 }
 function updateWdCustomScriptEnabled() {
-    // Editable as soon as an algorithm row is selected - it no longer requires that row's
-    // "Custom Script" action checkbox to be checked first. Checking that box controls
-    // whether the script actually RUNS on trigger; it shouldn't gate writing it.
+    // Editable as soon as an algorithm row is selected, independent of the "Custom Script" action checkbox.
     const script = document.getElementById("wdconfig-custom-script");
     if (!script) return;
     script.disabled = !selectedWdRowId;
@@ -10269,9 +10163,7 @@ function buildWdConfigRawFromSettings() {
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     const logWatcherInterval = logWatcherIntervalEl ? Math.max(5, Number(logWatcherIntervalEl.value) || 60) : 60;
     const logTermRows = collectWdLogTermRows();
-    // Which logs actually need to be tailed - derived from the terms' own Slot dropdowns
-    // rather than a separate global control. Any term set to "All" means every slot must
-    // be watched; otherwise only the specific slots referenced by at least one term.
+    // Which logs need to be tailed, derived from the terms' own Slot dropdowns.
     const usedSlots = new Set(logTermRows.map(t => t.slot || "all"));
     const logWatcherSlots = (usedSlots.has("all") ? WD_LOG_WATCHER_SLOT_IDS : WD_LOG_WATCHER_SLOT_IDS.filter(s => usedSlots.has(s)))
         .join(",");
@@ -10339,9 +10231,7 @@ function rebuildWdRawFromSettings() {
     autoResizeWdRaw();
 }
 function setWdConfigTab(tab) {
-    // Raw Content and Custom Script are no longer tabbed together (Custom Script now
-    // lives at the bottom of the Mining tab) - kept as a no-op so existing call sites
-    // stay harmless.
+    // No-op: kept so existing call sites stay harmless.
 }
 function autoResizeWdRaw() {
 }
@@ -10405,15 +10295,12 @@ function populateWdSettingsFromRaw(rawText) {
         const im = rawText.match(/^LOG_WATCHER_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
         logWatcherIntervalEl.value = im ? Math.max(5, Number(im[1]) || 60) : WD_LOG_WATCHER_INTERVAL_DEFAULT;
     }
-    // LOG_WATCHER_SLOTS is derived output only (see buildWdConfigRawFromSettings) - which
-    // logs actually get tailed now comes from each term's own Slot dropdown, parsed below.
+    // LOG_WATCHER_SLOTS is derived output only; which logs get tailed comes from each term's Slot dropdown, parsed below.
     const legacySharedScriptMatch = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
     const legacySharedScript = legacySharedScriptMatch ? legacySharedScriptMatch[1] : "";
     wdLogTermScripts.clear();
     selectedWdLogTermRowId = null;
-    // Each term's script is now a readable LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block
-    // (index = the term's position among the ";"-separated LOG_WATCHER_TERMS entries), so
-    // it's visible/editable directly in Raw Content instead of a base64 blob buried inline.
+    // Each term's script is a LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block, index = its position in LOG_WATCHER_TERMS.
     const termScriptBlocks = new Map();
     for (const m of rawText.matchAll(/LOG_WATCHER_TERM_SCRIPT_BEGIN (\d+)\n([\s\S]*?)\nLOG_WATCHER_TERM_SCRIPT_END/g)) {
         termScriptBlocks.set(Number(m[1]), m[2]);
@@ -11308,11 +11195,7 @@ function buildLabelsAndSeries(entries, extractFn) {
     });
     return { labels, seriesMap };
 }
-// opts (all optional): axisForName(name) -> "y" | "y1" to overlay a second
-// series (e.g. fan %) on its own right-hand axis instead of sharing the
-// left one; y1Label for that axis's title; dashForName(name) -> a
-// borderDash array, handy for visually distinguishing the overlaid series
-// (e.g. dashed lines for fan speed vs solid for temp).
+// opts (all optional): axisForName(name) -> "y"|"y1" to overlay a series on a second axis; y1Label for its title; dashForName(name) -> borderDash array.
 function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opts) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === "undefined") return;
@@ -11826,10 +11709,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeFsMinerConfigModal();
     });
     document.getElementById("btn-fs-mc-apply")?.addEventListener("click", () => {
-        // Force a full rebuild from the live form state rather than relying
-        // on incremental input-event syncing - guarantees the raw content
-        // (and therefore what "Send it" ships) actually reflects whatever
-        // was just changed in the modal, RESTART included.
+        // Force a full rebuild from the live form state so the raw content reflects the modal's changes.
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             rawEl.value = buildFsActivePreview();
@@ -11884,18 +11764,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("fs-fields-panel")?.addEventListener("input", (e) => {
         updateRawFromFieldChange(e.target);
     });
-    // Fields get physically relocated into the miner-config modal while it's
-    // open (see openFsMinerConfigModal), which takes them out from under
-    // #fs-fields-panel's delegated listener above - mirror it here so live
-    // raw-JSON sync keeps working for whichever fields are currently inside
-    // the modal.
+    // Fields are relocated into the miner-config modal while open (see openFsMinerConfigModal), out from
+    // under #fs-fields-panel's delegated listener above - mirror it here so live sync keeps working.
     document.getElementById("fs-miner-config-modal")?.addEventListener("input", (e) => {
         updateRawFromFieldChange(e.target);
     });
-    // fs-mc-pool-token isn't a live-bound flightsheet field (it mirrors
-    // miner_config.url, not pool_urls), so it needs its own listener: update
-    // the stash var directly, then piggyback on the real POOL field's id to
-    // trigger the shared JSON-rebuild path in updateRawFromFieldChange.
+    // fs-mc-pool-token mirrors miner_config.url, not pool_urls, so it needs its own listener.
     document.getElementById("fs-mc-pool-token")?.addEventListener("input", (e) => {
         fsPoolUrlToken = e.target.value;
         const poolEl = document.getElementById("fs-field-pool");
@@ -12014,12 +11888,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                         .replace(/\s+/g, " ")
                         .trim();
                 }
-                // The stashed original srbminer user_config (used to preserve
-                // exotic raw formatting on passthrough) would otherwise win over
-                // this edit when the JSON body is rebuilt, since a plain .value
-                // assignment doesn't fire the "input" listener that normally
-                // clears it. Clear it here so the live, TLS-corrected ARGS text
-                // above is what actually gets written out.
+                // Clear the stashed original user_config so it doesn't win over this TLS-corrected ARGS edit on rebuild.
                 fsSrbminerOriginalUserConfig = "";
             } else {
                 const hasTls = /(^|\s)--tls(\s|$)/.test(argsEl.value);

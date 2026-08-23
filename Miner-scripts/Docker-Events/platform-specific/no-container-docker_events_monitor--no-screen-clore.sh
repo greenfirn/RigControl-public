@@ -179,7 +179,6 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
-# SERVICE_TYPE: one of "cpu" / "gpu" / "aux" - fixed by which service instance this is, not user-configurable
 case "$OC_FILE" in
     *rig-gpu*) SERVICE_TYPE="gpu" ;;
     *rig-cpu*) SERVICE_TYPE="cpu" ;;
@@ -235,10 +234,10 @@ should_ignore_image() {
     local image="$1"
     for ignored_prefix in "${IGNORED_IMAGES[@]}"; do
         if [[ "$image" == "$ignored_prefix"* ]]; then
-            return 0  # Image should be ignored (true)
+            return 0
         fi
     done
-    return 1  # Image should NOT be ignored (false)
+    return 1
 }
 any_container_running() {
     local containers=$(docker ps --format "{{.Names}}:{{.Image}}" 2>/dev/null)

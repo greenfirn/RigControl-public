@@ -3,31 +3,7 @@
 sudo tee /usr/local/bin/fan_curve.py > /dev/null << 'EOF'
 #!/usr/bin/env python3
 """
-fan_curve.py — NVML-based fan curve daemon.
-
-Replaces the old nvidia-settings / Xorg / Coolbits / passthrough-detection
-stack with direct NVML calls (via nvtool.py). No X server, no Coolbits,
-no clock-bounce fallback needed — manual fan control works the same
-whether the GPU is idle or fully loaded with compute.
-
-Usage:
-    sudo python3 fan_curve.py                      # all GPUs, default curve
-    sudo python3 fan_curve.py --index 0             # GPU 0 only
-    sudo python3 fan_curve.py --interval 2 --hysteresis 3
-    sudo python3 fan_curve.py --curve "30:30,50:40,65:55,75:75,83:100"
-
-On exit (Ctrl+C or SIGTERM/systemd stop), all controlled fans are reset
-to automatic (driver/firmware) control before the process exits.
-
-Watchdog:
-    If run under systemd with Type=notify and WatchdogSec= set, this
-    script pings systemd once per successful tick (i.e. once every full
-    pass over all controlled GPUs). If an NVML call hangs (rather than
-    raising an error — the known failure mode with GSP firmware issues
-    like Xid 109/119/154) the ping stops, systemd's watchdog fires, and
-    the unit is killed + restarted by Restart=always. Without a running
-    NOTIFY_SOCKET (e.g. run by hand from a shell) this is a harmless
-    no-op.
+fan_curve.py — NVML-based fan curve daemon. Resets fans to automatic control on exit.
 """
 
 import argparse
@@ -59,8 +35,7 @@ def _handle_signal(signum, frame):
 
 
 def sd_notify(message):
-    """Send a message to systemd via NOTIFY_SOCKET. No-op if not under systemd
-    (or if NOTIFY_SOCKET isn't set), so this is always safe to call."""
+    """Send a message to systemd via NOTIFY_SOCKET; no-op if not running under systemd."""
     addr = os.environ.get("NOTIFY_SOCKET")
     if not addr:
         return
@@ -174,7 +149,6 @@ def main():
         print(f"[FAN] Curve: {curve}")
         print(f"[FAN] Interval={args.interval}s Hysteresis={args.hysteresis}%")
 
-        # Tell systemd we're up. No-op if not running under systemd.
         sd_notify("READY=1\nSTATUS=Controlling {} GPU(s)".format(len(handles)))
 
         while not _shutdown_requested:
@@ -191,7 +165,6 @@ def main():
                 # --- cooldown hold: debounce downward moves against temp spikes ---
                 peak = peak_temp.get(idx, temp)
                 if temp >= peak:
-                    # Temp at/above recent peak: update peak, cancel any hold.
                     peak_temp[idx] = temp
                     hold_since[idx] = None
                 elif args.cooldown_delta > 0:
@@ -204,15 +177,11 @@ def main():
                                   f"{args.cooldown_seconds:.0f}s before lowering")
                         held_for = time.monotonic() - hold_since[idx]
                         if held_for < args.cooldown_seconds:
-                            # Still holding: keep the fan where it is, don't
-                            # apply a lower target_pct yet, this tick.
                             target_pct = prev_pct if prev_pct is not None else target_pct
                         else:
-                            # Held long enough: commit the drop, new baseline.
                             peak_temp[idx] = temp
                             hold_since[idx] = None
                     else:
-                        # Drop isn't big enough to trigger a hold.
                         hold_since[idx] = None
                 # --- end cooldown hold ---
 
@@ -227,10 +196,6 @@ def main():
                     except nv.NVMLError as error:
                         print(f"[FAN] GPU {idx}: WARN fan-set failed ({error})")
 
-            # Reached the end of a full pass over every GPU without hanging.
-            # If an NVML call above blocks forever instead of raising, this
-            # line is never reached, the watchdog ping stops, and systemd
-            # kills + restarts the unit after WatchdogSec.
             sd_notify("WATCHDOG=1")
 
             # Sleep in small chunks so SIGTERM/SIGINT is handled promptly

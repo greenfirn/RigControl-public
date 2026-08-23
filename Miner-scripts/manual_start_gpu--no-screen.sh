@@ -44,16 +44,12 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-# Get OC settings from rig.conf
 APPLY_OC=$(get_rig_conf "APPLY_OC" "0")
 RESET_OC=$(get_rig_conf "RESET_OC" "0")
-# Remove quotes if present
 APPLY_OC="${APPLY_OC//\"/}"
 RESET_OC="${RESET_OC//\"/}"
-# Convert to lowercase for comparison
 APPLY_OC="${APPLY_OC,,}"
 RESET_OC="${RESET_OC,,}"
-# Default to false if empty
 : "${APPLY_OC:=false}"
 : "${RESET_OC:=false}"
 echo "[oc] APPLY_OC: $APPLY_OC"
@@ -161,27 +157,21 @@ add_api_flags() {
     esac
 }
 # FINAL PLACEHOLDER SUBSTITUTION
-# CPU threads
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
     ARGS="${ARGS//%CPU_THREADS%/$CPU_THREADS}"
 fi
-# Warthog target
 if [[ -n "$WARTHOG_TARGET" ]]; then
     ARGS="${ARGS//%WARTHOG_TARGET%/$WARTHOG_TARGET}"
 fi
-# Replace %WORKER_NAME% placeholder in ARGS, WALLET, PASS, POOL
 ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# Add miner-specific API flags
 if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
-# Slot is fixed by which service instance this is - not user-configurable
-# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
 SERVICE_TYPE="gpu"
 echo "========================================"
 echo "STARTUP CONFIGURATION SUMMARY"
@@ -195,7 +185,6 @@ echo "Pool:            $POOL"
 echo "Apply GPU OC:    $APPLY_OC"
 echo "Reset GPU on Stop: $RESET_OC"
 echo "========================================"
-# Get START_CMD from library function
 START_CMD=$(get_start_cmd "$MINER_NAME")
 echo "[debug] START_CMD: $START_CMD"
 # API HEALTH CHECK FUNCTION
@@ -203,7 +192,6 @@ check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
         return 0
     fi
-    # Check if API port is listening
     if timeout 2 bash -c "echo > /dev/tcp/$API_HOST/$API_PORT" 2>/dev/null; then
         return 0
     else
@@ -222,7 +210,6 @@ is_miner_alive() {
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
-    # Check if miner is already running
     if is_miner_alive; then
         echo "[$(date)] Miner already running for $SERVICE_TYPE (PID: $(cat "$pid_file"))"
         echo "[$(date)] To view output: tail -f $LOG_FILE"
@@ -232,7 +219,6 @@ start_miner() {
         rm -f "$pid_file"
         echo "[$(date)] Starting fresh miner after cleanup..."
     fi
-    # Apply GPU OC's if configured
     if [[ "${APPLY_OC,,}" == "true" ]]; then
         OC_TARGET="${ALGO:-}"
         if [[ -z "$OC_TARGET" || "$OC_TARGET" == "0" ]]; then
@@ -253,7 +239,6 @@ start_miner() {
     else
         echo "[$(date)] Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
     fi
-    # Create PID file directory
     mkdir -p /run/rigcontrol
     rm -f "$LOG_FILE"
     setsid bash -c \
@@ -270,13 +255,10 @@ start_miner() {
          '"$START_CMD"' 2>&1 | tee -a "'"$LOG_FILE"'"' \
         < /dev/null &
     echo $! > "$pid_file"
-    # Wait for PID file / process to come up
     sleep 3
-    # Verify startup
     if is_miner_alive; then
         local miner_pid=$(cat "$pid_file")
         echo "[$(date)] Miner started (PID: $miner_pid)"
-        # Wait for API to come up if enabled
         if [[ "$API_PORT" -gt 0 ]]; then
             echo "[$(date)] Waiting for API to start (max 30 seconds)..."
             local max_wait=30
@@ -317,5 +299,4 @@ start_miner() {
 echo "Starting miner..."
 start_miner
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/manual_start_gpu.sh

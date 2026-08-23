@@ -50,8 +50,7 @@ DEFAULT_GLOBAL_SETTINGS = {
     "log_watcher_interval_seconds": 60,  # how often the log watcher re-scans its log(s)
     "log_watcher_slots": [],  # e.g. ["cpu", "gpu", "aux"]
     "log_watcher_terms": [],  # e.g. [("Found a block on", "important"), ("error", "critical")]
-    "log_watcher_custom_script": "",  # legacy shared script - only used as a fallback default
-                                       # for terms saved before the per-term script editor existed
+    "log_watcher_custom_script": "",  # legacy shared-script fallback (pre-per-term profiles)
 }
 LOG_WATCHER_SEVERITIES = ("good", "warn", "important", "critical")
 LOG_WATCHER_SLOT_LOG_PATHS = {
@@ -59,10 +58,8 @@ LOG_WATCHER_SLOT_LOG_PATHS = {
     "gpu": "/run/rigcontrol/gpu_miner.log",
     "aux": "/run/rigcontrol/aux_miner.log",
 }
-# Same action keys/semantics as the mining watchdog's DEFAULT_ACTIONS - a log-watcher term
-# row can trigger the same restart/notify/reboot/script actions as a mining watchdog
-# algorithm row. ACTION_CUSTOM_SCRIPT runs that term's own custom_script (each term owns
-# an independent script, edited via its own row in the dashboard).
+# Same action keys as the mining watchdog's DEFAULT_ACTIONS - ACTION_CUSTOM_SCRIPT runs
+# the term's own custom_script.
 LOG_WATCHER_TERM_ACTION_KEYS = (
     "ACTION_RESTART_CPU", "ACTION_RESTART_GPU", "ACTION_RESTART_FAN", "ACTION_RESTART_AUX",
     "ACTION_EMAIL_NOTIFY", "ACTION_SMS_NOTIFY", "ACTION_REBOOT_RIG", "ACTION_CUSTOM_SCRIPT",
@@ -74,10 +71,7 @@ def _b64_decode_utf8(b64_text):
         return ""
 _TERM_SCRIPT_RE = re.compile(r'LOG_WATCHER_TERM_SCRIPT_BEGIN (\d+)\n([\s\S]*?)\nLOG_WATCHER_TERM_SCRIPT_END')
 def _parse_log_watcher_term_scripts(text):
-    """Each log-watcher term's script is stored as its own readable
-    LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block (index = the term's position among the
-    ';'-separated LOG_WATCHER_TERMS entries) so it's plainly visible/editable in the raw
-    conf text instead of being buried as a base64 blob inline. Returns {index: script_text}."""
+    """Parses LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END blocks. Returns {index: script_text}."""
     scripts = {}
     for m in _TERM_SCRIPT_RE.finditer(text):
         try:
@@ -86,21 +80,10 @@ def _parse_log_watcher_term_scripts(text):
             continue
     return scripts
 def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
-    """Parses LOG_WATCHER_TERMS - rows separated by ';'. Current format per row is
-    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<slot>', with each term's
-    own script supplied separately via term_scripts (see _parse_log_watcher_term_scripts),
-    keyed by the row's position in this list. contains/not-contains are themselves
-    comma-separated lists of substrings (contains = ALL must be present, not-contains =
-    NONE may be present). slot is one of the LOG_WATCHER_SLOT_LOG_PATHS keys (cpu/gpu/aux)
-    or "all" to match every enabled slot.
-
-    For backward compatibility with profiles saved by the briefly-shipped previous format
-    (6 fields, with the script inline as field 5, base64-encoded), a row is also accepted
-    as '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<script-base64>|<slot>' -
-    detected by the row having 6+ raw fields instead of the current 5. If neither a
-    term_scripts entry nor an inline script is present, legacy_script (the old single
-    profile-wide shared script, from before per-term scripts existed at all) is used as
-    the final fallback so older saved scripts are never silently lost."""
+    """Parses LOG_WATCHER_TERMS - ';'-separated rows of
+    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<slot>'. Each term's script
+    comes from term_scripts (keyed by row position), falling back to an inline base64 field
+    (old 6-field format) then legacy_script (oldest shared-script format)."""
     term_scripts = term_scripts or {}
     terms = []
     for idx, row in enumerate(raw_value.split(";")):
@@ -329,9 +312,7 @@ def publish_alert(rig, algo, reasons, actions):
 _log_watcher_offsets = {}
 def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle, agent_service_names,
                                       custom_script_text=""):
-    """Fires the same restart/notify/reboot/script actions a mining watchdog algorithm row
-    can - always publishes to the Status Log (via publish_alert) regardless of which
-    actions, if any, are enabled on this term."""
+    """Fires a term's restart/notify/reboot/script actions; always publishes to the Status Log."""
     cpu_service = agent_service_names.get("cpu_service", CPU_SERVICE_DEFAULT)
     gpu_service = agent_service_names.get("gpu_service", GPU_SERVICE_DEFAULT)
     aux_service = agent_service_names.get("aux_service", AUX_SERVICE_DEFAULT)
@@ -353,15 +334,8 @@ def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle,
     if actions.get("ACTION_REBOOT_RIG"):
         reboot_rig()
 def run_log_watcher_cycle(global_settings):
-    """Independent of the mining health-check watchdog above - tails the configured
-    slot log(s) for new lines. Each term is a contains-list (ALL must be present) plus
-    an optional not-contains-list (NONE may be present) and owns its own slot filter
-    (cpu/gpu/aux, or "all" to scan every enabled Watch Slot) and its own custom script;
-    on a match it fires that term's own actions (same restart/notify/reboot set as a
-    mining watchdog row, plus that term's individual script if ACTION_CUSTOM_SCRIPT is
-    set) and always publishes the matched line onto the watchdog_alert MQTT topic (via
-    publish_alert) so it lands in the dashboard's Status Log, tagged with the term's
-    severity."""
+    """Tails each configured slot log; each term (its own contains/not-contains, slot
+    filter, and script) fires its own actions on a match and publishes to the Status Log."""
     if not global_settings.get("log_watcher_enabled"):
         return
     slots = global_settings.get("log_watcher_slots") or []
@@ -375,8 +349,7 @@ def run_log_watcher_cycle(global_settings):
         if not path or not os.path.isfile(path):
             continue
         if path not in _log_watcher_offsets:
-            # First time watching this log - start clean from the current end of the
-            # file rather than backfilling/alerting on whatever's already in there.
+            # First time watching this log - start from current end, skip backfill.
             try:
                 start_offset = os.path.getsize(path)
             except OSError:
@@ -561,8 +534,7 @@ def format_conf_summary(conf):
     return "\n".join(lines)
 def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=None,
                    global_alert_state=None, global_settings=None):
-    """Runs one mining health-check cycle only - independent of the Log Watcher, which
-    has its own cadence driven separately by run_log_watcher_cycle() (see main())."""
+    """Runs one mining health-check cycle - independent cadence from run_log_watcher_cycle()."""
     if last_conf_state is None:
         last_conf_state = {}
     if global_alert_state is None:

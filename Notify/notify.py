@@ -63,7 +63,6 @@ import time
 import sys
 import argparse
 
-# notifications - environment variables from .env file
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -71,7 +70,6 @@ from typing import Dict, List, Optional
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 
-# Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -99,7 +97,6 @@ class NotificationService:
         self.smtp_password = os.getenv("GMAIL_PASSWORD")
         self.email_recipients = os.getenv("EMAIL_RECIPIENTS", "").split(",")
         
-        # Initialize Twilio client if credentials are available
         self.twilio_client = None
         if self.twilio_account_sid and self.twilio_auth_token:
             self.twilio_client = Client(self.twilio_account_sid, self.twilio_auth_token)
@@ -111,22 +108,18 @@ class NotificationService:
                 log("Email configuration incomplete")
                 return False
             
-            # Create message
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
             msg['From'] = self.smtp_username
             msg['To'] = ", ".join(self.email_recipients)
-            
-            # Attach plain text version
+
             text_part = MIMEText(body, 'plain')
             msg.attach(text_part)
-            
-            # Attach HTML version if provided
+
             if html_body:
                 html_part = MIMEText(html_body, 'html')
                 msg.attach(html_part)
-            
-            # Connect to SMTP server and send
+
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                 server.starttls()
                 server.login(self.smtp_username, self.smtp_password)
@@ -155,14 +148,12 @@ class NotificationService:
                 log(f"Twilio client not initialized for {notification_type} SMS")
                 return False
             
-            # Use provided from_number or default from configuration
             from_num = from_number or self.twilio_phone_number
-            
+
             if not from_num or not to_number:
                 log(f"Missing phone numbers for {notification_type} SMS")
                 return False
-            
-            # Send SMS
+
             sms = self.twilio_client.messages.create(
                 body=message,
                 from_=from_num,
@@ -198,22 +189,18 @@ class NotificationService:
             "sms_secondary_sent": False
         }
         
-        # Send email if requested
         if email:
             email_subject = subject or "Notification"
             results["email_sent"] = self.send_email(email_subject, message)
-        
-        # Send primary SMS if requested
+
         if sms_primary and sms_primary_number:
             results["sms_primary_sent"] = self.send_sms(message, sms_primary_number)
-        
-        # Send secondary SMS if requested
+
         if sms_secondary and sms_secondary_number:
             results["sms_secondary_sent"] = self.send_sms_secondary(message, sms_secondary_number)
         
         return results
 
-# Initialize the notification service
 notification_service = NotificationService()
 
 #=================================================================
@@ -226,7 +213,6 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    # Message content (either as argument or from file)
     content_group = parser.add_mutually_exclusive_group(required=True)
     content_group.add_argument(
         'message',
@@ -243,7 +229,6 @@ def parse_arguments():
         help='Send a test notification'
     )
     
-    # Notification options
     parser.add_argument(
         '-s', '--subject',
         default='Notification',
@@ -262,7 +247,6 @@ def parse_arguments():
         help='Send SMS to secondary number (overrides env var SECONDARY_SMS_NUMBER)'
     )
     
-    # Channel selection
     channel_group = parser.add_argument_group('Channel selection')
     channel_group.add_argument(
         '--email-only',
@@ -275,7 +259,6 @@ def parse_arguments():
         help='Send SMS only (no email)'
     )
     
-    # Additional options
     parser.add_argument(
         '--quiet',
         action='store_true',
@@ -310,8 +293,7 @@ This is a test notification to verify that your notification system is working c
 def send_notification_from_cli():
     """Main function to handle CLI notification sending"""
     args = parse_arguments()
-    
-    # Determine message content
+
     if args.test:
         message = create_test_message()
         subject = "✅ Notification Service Test"
@@ -322,39 +304,30 @@ def send_notification_from_cli():
         message = args.message
         subject = args.subject
     
-    # Only log if not quiet mode
     if not args.quiet:
         log(f"Sending notification: {subject}")
         if len(message) > 100:
             log(f"Message preview: {message[:100]}...")
         else:
             log(f"Message: {message}")
-    
-    # Get phone numbers (use provided or from env)
+
     sms_primary_number = args.sms_primary or os.getenv("PRIMARY_SMS_NUMBER")
     sms_secondary_number = args.sms_secondary or os.getenv("SECONDARY_SMS_NUMBER")
-    
-    # FIXED: Determine which channels to use
-    # If --email-only is specified, only send email
+
     if args.email_only:
         send_email = True
         send_sms_primary = False
         send_sms_secondary = False
-    
-    # If --sms-only is specified, only send SMS (if numbers available)
     elif args.sms_only:
         send_email = False
         send_sms_primary = bool(sms_primary_number)
         send_sms_secondary = bool(sms_secondary_number)
-    
-    # DEFAULT: Send email by default, SMS only if explicitly requested
     else:
+        # default: email always sent, SMS only if explicitly flagged
         send_email = True
-        # Only send SMS if explicitly requested via command line
-        send_sms_primary = bool(args.sms_primary)  # Only if --sms-primary flag used
-        send_sms_secondary = bool(args.sms_secondary)  # Only if --sms-secondary flag used
-    
-    # Validate: If SMS is requested but no number is available
+        send_sms_primary = bool(args.sms_primary)
+        send_sms_secondary = bool(args.sms_secondary)
+
     if send_sms_primary and not sms_primary_number:
         if not args.quiet:
             log("⚠️ Warning: Primary SMS requested but no phone number available")
@@ -365,7 +338,6 @@ def send_notification_from_cli():
             log("⚠️ Warning: Secondary SMS requested but no phone number available")
         send_sms_secondary = False
     
-    # Send the notification
     results = notification_service.send_notification(
         message=message,
         subject=subject,
@@ -376,7 +348,6 @@ def send_notification_from_cli():
         sms_secondary_number=sms_secondary_number
     )
     
-    # Only display results if not quiet mode
     if not args.quiet:
         log("="*50)
         log("NOTIFICATION RESULTS")
@@ -415,15 +386,14 @@ def send_notification_from_cli():
         
         log("="*50)
     
-    # Return appropriate exit code (ALWAYS do this, even in quiet mode)
     if any(results.values()):
         if not args.quiet:
             log("✅ Notification(s) sent successfully")
-        sys.exit(0)  # Success if at least one notification was sent
+        sys.exit(0)
     else:
         if not args.quiet:
             log("❌ No notifications were sent")
-        sys.exit(1)  # Failure if no notifications were sent
+        sys.exit(1)
 
 #=================================================================
 # Main entry point

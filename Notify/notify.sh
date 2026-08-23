@@ -4,24 +4,20 @@ tee notify.sh > /dev/null <<'EOF'
 # Notify.sh - Ubuntu/Linux version
 # Usage: ./notify.sh [arguments]
 
-set -e  # Exit on error
+set -e
 
 echo "Checking and setting up environment..."
 
-# Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Check for virtual environment
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
     python3 -m venv .venv
-    
-    # Activate virtual environment
+
     source .venv/bin/activate
-    
-    # Only install requirements when creating fresh virtual environment
-    # Check for requirements file in script directory first, then /usr/local/bin
+
+    # requirements file: prefer local dir, fall back to /usr/local/bin
     REQUIREMENTS_FILE="requirements-notify.txt"
     if [ -f "$REQUIREMENTS_FILE" ]; then
         echo "Found local requirements file..."
@@ -35,7 +31,6 @@ if [ ! -d ".venv" ]; then
         echo "  - /usr/local/bin/requirements-notify.txt"
     fi
     
-    # Install requirements if file exists
     if [ -f "$REQUIREMENTS_FILE" ]; then
         echo "Installing dependencies from $REQUIREMENTS_FILE..."
         python -m pip install --upgrade pip
@@ -44,7 +39,6 @@ if [ ! -d ".venv" ]; then
     fi
 else
     echo "Virtual environment already exists - skipping requirements check/install."
-    # Just activate existing environment
     source .venv/bin/activate
 fi
 
@@ -56,7 +50,6 @@ else
     exit 1
 fi
 
-# Run the notification script
 echo "Starting Notify..."
 echo "Command: python $NOTIFY_SCRIPT $@"
 python "$NOTIFY_SCRIPT" "$@"
@@ -67,8 +60,6 @@ echo "Notify complete."
 exit 0
 EOF
 
-# Make executable
 chmod +x notify.sh
 
-# Test message
 ./notify.sh "Email only message"

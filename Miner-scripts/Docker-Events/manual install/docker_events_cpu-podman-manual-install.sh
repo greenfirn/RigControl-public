@@ -57,10 +57,8 @@ POOL="pool.supportxmr.com:9000"
 CPU_ARGS="-a rx/0 -k -t $AUTOFILL_CPU --randomx-1gb-pages --huge-pages"
 API_ARGS="--http-host=127.0.0.1 --http-port=18080"
 MINER_ARGS="$CPU_ARGS -p $WORKER_NAME -u $WALLET_ADDRESS --tls -o $POOL $API_ARGS"
-# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to cpu
 MINER_SERVICE_TYPE="cpu"
 MINER_PID_FILE="/run/rigcontrol/cpu_miner.pid"
-# Bridge to the variable names the rest of this script uses
 SERVICE_TYPE="$MINER_SERVICE_TYPE"
 START_CMD="$MINER_START_CMD"
 ARGS="$MINER_ARGS"
@@ -144,7 +142,7 @@ get_podman_child_containers() {
 }
 confirm_podman_idle() {
     local loops=${1:-$IDLE_CONFIRM_LOOPS}
-    local check_interval=5  # seconds
+    local check_interval=5
     echo "$(date): Confirming Podman is idle (checking $loops times, $check_interval second intervals)..."
     for ((i=1; i<=loops; i++)); do
         echo "$(date): Podman idle check $i/$loops..."
@@ -175,7 +173,6 @@ process_podman_event() {
     local container_name="$1"
     local status="$2"
     local event_time="$3"
-    # Skip tunnel-api and frpc-api containers
     if [[ "$container_name" == tunnel-api-* ]] || [[ "$container_name" == frpc-api-* ]]; then
         echo "$(date): Skipping tunnel/frpc container: $container_name"
         return
@@ -196,7 +193,6 @@ process_podman_event() {
             fi
             ;;
         *)
-            # Ignore irrelevant Podman events
             ;;
     esac
 }
@@ -451,9 +447,7 @@ echo "$(date): Performing final cleanup..."
 stop_miner || true
 echo "$(date): Podman event monitor stopped gracefully"
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_cpu.sh
-# Create systemd service for proper management
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events CPU Miner Monitor (Podman)
@@ -476,7 +470,6 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
-# Reload systemd and enable service
 sudo systemctl daemon-reload
 sudo systemctl enable docker_events_cpu.service
 # Start/Stop Service

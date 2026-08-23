@@ -21,8 +21,6 @@ else
 fi
 TARGET_IMAGE="ubuntu:24.04"
 TARGET_NAME="clore-default-"
-# TARGET_NAME="octa_idle_job"
-# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
 SERVICE_TYPE="gpu"
 START_CMD="/opt/miners/rigel/current/rigel"
 ARGS="-a kawpow -o stratum+ssl://ca.quai.herominers.com:1185 -o stratum+ssl://us2.quai.herominers.com:1185 -u wallet-address -p x -w 5950X-2-3070 --api-bind 127.0.0.1:5000"
@@ -45,14 +43,11 @@ handle_signal() {
     if [[ -n "${DIAG_HEARTBEAT_PID:-}" ]]; then
         kill "$DIAG_HEARTBEAT_PID" 2>/dev/null || true
     fi
-    # Ensure miner is stopped
     echo "$(date): Stopping miner if running..."
     stop_miner || true
-    # Kill any docker events process
     pkill -f "docker events" 2>/dev/null || true
     exit 0
 }
-# Setup signal handlers
 trap 'handle_signal TERM' TERM
 trap 'handle_signal INT' INT
 trap 'handle_signal HUP' HUP
@@ -91,8 +86,6 @@ is_miner_alive() {
     [[ -n "$pid" ]] || return 1
     ps -p "$pid" > /dev/null 2>&1
 }
-# FUNCTIONS
-# Function to start miner
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
@@ -105,14 +98,12 @@ start_miner() {
         stop_miner || true
         echo "$(date): Starting fresh miner after cleanup..."
     fi
-    # Apply GPU OC's if configured
     if [[ "${APPLY_OC,,}" == "true" ]]; then
         echo "$(date): Applying GPU clocks..."
         /usr/local/bin/gpu_apply_ocs.sh
     fi
     echo "$(date): Starting $SERVICE_TYPE..."
     echo "$(date): Command: $START_CMD $ARGS"
-    # Create PID file directory
     mkdir -p /run/rigcontrol
     rm -f "$LOG_FILE"
     setsid bash -c \
@@ -128,9 +119,7 @@ start_miner() {
          '"$START_CMD $ARGS"' 2>&1 | tee -a "'"$LOG_FILE"'"' \
         < /dev/null &
     echo $! > "$pid_file"
-    # Wait a moment for PID file / process to come up
     sleep 2
-    # Verify startup
     if is_miner_alive; then
         local miner_pid=$(cat "$pid_file")
         echo "$(date): Miner started (PID: $miner_pid)"
@@ -142,7 +131,6 @@ start_miner() {
         return 1
     fi
 }
-# Function to stop miner (clean closure first)
 stop_miner() {
     echo "$(date): Stopping $SERVICE_TYPE miner..."
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
@@ -153,12 +141,10 @@ stop_miner() {
     fi
     local miner_pid=$(cat "$pid_file")
     kill_by_pid
-    # Reset GPU if configured
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "$(date): Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
-    # Final verification
     echo "$(date): Verifying cleanup..."
     if ps -p "$miner_pid" > /dev/null 2>&1; then
         echo "$(date): WARNING: Miner process still exists! Waiting 5s before retrying kill_by_pid..."
@@ -179,33 +165,27 @@ stop_miner() {
     sleep 2
 }
 check_target_container() {
-    # Get all containers based on image
     candidates=$(docker ps -a \
         --filter "ancestor=${TARGET_IMAGE}" \
         --format "{{.ID}} {{.Names}}")
     match_id=""
     while read -r cid cname; do
-        # Exact match
         if [[ "$cname" == "$TARGET_NAME" ]]; then
             match_id="$cid"
             break
         fi
-        # Prefix match: name begins with TARGET_NAME
         if [[ "$cname" == ${TARGET_NAME}* ]]; then
             suffix="${cname#${TARGET_NAME}}"
-            # Suffix must be 1+ digits ONLY
             if [[ "$suffix" =~ ^[0-9]+$ ]]; then
                 match_id="$cid"
                 break
             fi
         fi
     done <<< "$candidates"
-    # No matching container found
     if [ -z "$match_id" ]; then
         echo "no matching container treat as stopped"
         return 1
     fi
-    # Check container status
     status=$(docker inspect -f '{{.State.Status}}' "$match_id" 2>/dev/null)
     if [ "$status" = "running" ]; then
         return 0
@@ -309,17 +289,14 @@ else
 fi
 # DOCKER EVENT LOOP WITH RETRY AND SIGNAL HANDLING
 echo "$(date): Starting Docker event monitor..."
-# Main monitoring loop with restart on failure
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Docker events stream..."
     docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
     while read -r type action name image; do
-        # Check for shutdown request
         if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
             echo "$(date): Shutdown requested, breaking event loop..."
-            break 2  # Break out of both loops
+            break 2
         fi
-        # Skip non-container events
         if [ "$type" != "container" ]; then
             echo "$(date): non-container event: Type: $type, Action: $action, Name: $name"
             continue
@@ -327,26 +304,22 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
         echo "$(date): Container event detected - Action: $action, Name: $name, Image: $image"
         # NAME MATCHING — Exact, or Starts-With + DIGIT SUFFIX
         name_match=0
-        # Exact match
         if [[ "$name" == "$TARGET_NAME" ]]; then
             name_match=1
-        # Starts-with, check digit suffix
         elif [[ "$name" == ${TARGET_NAME}* ]]; then
             suffix="${name#${TARGET_NAME}}"
             if [[ "$suffix" =~ ^[0-9]+$ ]]; then
                 name_match=1
             fi
         fi
-        # Process only if image AND name match
         if [[ "$image" == "$TARGET_IMAGE" && "$name_match" -eq 1 ]]; then
         case "$action" in
             start|create|unpause)
                 echo "$(date): START event detected → Wait for start to complete"
                 retry_count=0
                 started=false
-                while [[ $retry_count -lt 10 && $SHUTDOWN_REQUESTED -eq 0 ]]; do  # Added shutdown check
-                    sleep 0.2  # Slightly longer delay for start operations
-                    # Check if container exists and is running
+                while [[ $retry_count -lt 10 && $SHUTDOWN_REQUESTED -eq 0 ]]; do
+                    sleep 0.2
                     if docker inspect --format '{{.State.Status}}' "$name" 2>/dev/null | grep -q "running"; then
                         echo "$(date): Container confirmed running → start_miner"
                         start_miner || true
@@ -356,10 +329,8 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
                     retry_count=$((retry_count + 1))
                     echo "$(date): Start check attempt $retry_count: container not yet running"
                 done
-                # Final check if loop completed without success
                 if [[ "$started" = false && $SHUTDOWN_REQUESTED -eq 0 ]]; then
                     echo "$(date): WARNING: Container $name never reached 'running' state after $retry_count attempts"
-                    # Optional: Check if container exists at all
                     if ! docker inspect "$name" &>/dev/null; then
                         echo "$(date): Container $name no longer exists"
                     fi
@@ -367,7 +338,6 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
                 ;;
             kill|destroy|stop|die)
                 echo "$(date): STOP event detected ($action) → stop_miner"
-                # Immediate action for destructive events
                 stop_miner || true
                 ;;
             pause)
@@ -395,7 +365,6 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
                     esac
                     retry_count=$((retry_count + 1))
                 done
-                # Final check after loop
                 if [[ $retry_count -eq 5 && $SHUTDOWN_REQUESTED -eq 0 ]]; then
                     echo "$(date): WARNING: Container $name never reached 'paused' state, checking current status"
                     final_status=$(docker inspect --format '{{.State.Status}}' "$name" 2>/dev/null || echo "not_found")
@@ -406,36 +375,28 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
                 fi
                 ;;
             *)
-                # Ignore irrelevant Docker events
                 echo "$(date): DEBUG: Unhandled action: $action for $name"
                 ;;
         esac
         fi
     done
-    # Docker events stream ended
-    # Check if shutdown was requested
     if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
         echo "$(date): Shutdown requested, exiting main loop..."
         break
     fi
-    # Check if docker is running
     if ! docker ps > /dev/null 2>&1; then
         echo "$(date): ERROR: Docker daemon not responding. Waiting 30 seconds..."
         sleep 30
         continue
     fi
-    # Wait before retrying
     echo "$(date): Docker events stream ended, restarting monitor in 5 seconds..."
     sleep 5
 done
-# Final cleanup before exit
 echo "$(date): Performing final cleanup..."
 stop_miner || true
 echo "$(date): Docker event monitor stopped gracefully"
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_gpu.sh
-# Create systemd service for proper management
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events GPU Miner Monitor
@@ -458,7 +419,6 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
-# Reload systemd and enable service
 sudo systemctl daemon-reload
 sudo systemctl enable docker_events_gpu.service
 # Start/Stop Service

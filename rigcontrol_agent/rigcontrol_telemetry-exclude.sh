@@ -776,13 +776,6 @@ def detect_running_miners():
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
                 line_lower = line.lower()
-                # Custom miners are checked against their own dedicated
-                # per-slot names, never merged into _BUILTIN_MINER_PROCESS_MAP,
-                # so a custom name can never be mistaken for (or overwrite) a
-                # real built-in collector entry. Each slot is matched
-                # independently so e.g. keryx-miner (gpu) and keryxd (aux)
-                # can both be detected in the same pass instead of only
-                # whichever slot happened to be checked first.
                 _matched_slot = None
                 for _slot, _cname in custom_names.items():
                     if _cname and _cname in line_lower:
@@ -817,11 +810,6 @@ def collect_miner_stats_based_on_processes():
         "teamredminer": collect_teamredminer_stats,
         "trex":         collect_trex_stats,
         "peakminer":    collect_peakminer_stats,
-        # One entry per slot (not a single shared "custom_log") so an
-        # unrecognized miner on more than one slot at once - e.g. GPU
-        # running keryx-miner while AUX runs keryxd - gets collected
-        # independently instead of only whichever slot detect_running_miners()
-        # happened to match first.
         "custom_log_cpu": lambda: collect_named_custom_miner_stats("cpu"),
         "custom_log_gpu": lambda: collect_named_custom_miner_stats("gpu"),
         "custom_log_aux": lambda: collect_named_custom_miner_stats("aux"),

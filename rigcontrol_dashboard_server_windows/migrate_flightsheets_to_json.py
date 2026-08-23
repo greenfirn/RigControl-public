@@ -103,8 +103,7 @@ LEGACY_WRAPPER_RE = re.compile(
 )
 EOF_BODY_RE = re.compile(r"<<'EOF'\n([\s\S]*?)\nEOF\n?")
 def load_templates(templates_path):
-    """Returns (cpu_template, gpu_template) from the given templates.json
-    if present/valid, else the built-in defaults above."""
+    """Returns (cpu_template, gpu_template) from templates.json, or the built-in defaults."""
     if templates_path:
         p = Path(templates_path)
         if p.exists():
@@ -123,8 +122,7 @@ def extract_field(raw, key):
     m = re.search(rf'^{re.escape(key)}\s+(?:0\s+)?"([^"]*)"', raw, re.MULTILINE)
     return m.group(1) if m else None
 def already_json(raw):
-    """True if raw's EOF body already parses as the new {"items":[...]}
-    shape - nothing to do."""
+    """True if raw's EOF body already parses as the new {"items":[...]} shape."""
     m = EOF_BODY_RE.search(raw)
     body = (m.group(1) if m else raw).strip()
     if not body.startswith("{"):
@@ -149,9 +147,7 @@ def classify(raw):
         return "not-a-flightsheet"
     return "legacy"
 def build_json_body(values):
-    """Mirrors buildRigGpuJsonBody() in app.js / the jq filter in
-    00-get_rig_conf.sh exactly - same key set, same conditional-inclusion
-    rules for optional fields."""
+    """Mirrors buildRigGpuJsonBody() in app.js / the jq filter in 00-get_rig_conf.sh - keep in sync."""
     is_custom = bool(values.get("CUSTOM_MINER")) and values["CUSTOM_MINER"] != "0"
     pool = values.get("POOL") or ""
     pool_ssl = False
@@ -191,8 +187,7 @@ def build_json_body(values):
     item["miner_config"] = miner_config
     return json.dumps({"items": [item]}, indent=2)
 def convert_raw(raw, cpu_template, gpu_template):
-    """Converts one confirmed-legacy raw flightsheet text to the new
-    JSON-embedded format. Returns the new raw text."""
+    """Converts one confirmed-legacy raw flightsheet text to the new JSON-embedded format."""
     values = {}
     for key, kind in FS_RAW_KEYS.items():
         v = extract_field(raw, key)

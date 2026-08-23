@@ -2,24 +2,14 @@ sudo apt install -y unzip
 
 sudo mkdir -p /opt/miners/keryx-node
 cd /opt/miners
-#keryx-node in zip
 sudo wget https://github.com/Keryx-Labs/keryx-node/releases/download/v1.5.0-PoM/keryx-node-v1.5.0-PoM-linux-amd64.zip
 sudo unzip -o keryx-node-v1.5.0-PoM-linux-amd64.zip
 sudo rm -v keryx-node-v1.5.0-PoM-linux-amd64.zip
 /opt/miners/keryx-node/keryxd --version
 
-# if using different location, update details below in the service file:
-# ** must be the full absolute path, can not be the home shortcut ~/ **
-# 'WorkingDirectory=/' - your node location
-# 'ExecStart=/' - path to the node itself
+# WorkingDirectory / ExecStart below must be full absolute paths if using a different install location
+# optional extra flags available: --disable-upnp, --ram-scale=10.0
 
-# copy/paste from 'write the service file' to 'reload the daemon' into your rigs console and press enter to write and load the service file
-# enable, start the node, watch node output/service logs
-
-# --disable-upnp
-# --ram-scale=10.0
-
-# write the service file
 sudo tee /etc/systemd/system/keryxd.service > /dev/null << 'EOF'
 [Unit]
 Description=Keryx Node
@@ -39,25 +29,20 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 EOF
 
-# reload the daemon to let it know about new service
 sudo systemctl daemon-reload
 
 # enable if you want it to start on boot
 sudo systemctl enable keryxd.service
 
-# start the node
 sudo systemctl start keryxd.service
 
 # watch node output/service logs - ctrl+c to exit
 journalctl -u keryxd.service -f
 
-# show extended logs
 journalctl -u keryxd.service -e
 
-# show service status
 sudo systemctl status keryxd.service
 
-# stop the node
 sudo systemctl stop keryxd.service
 
 # disable so it doesnt start on boot
@@ -69,7 +54,6 @@ sudo systemctl disable keryxd.service
 # datadir location
 /root/.keryx-labs/keryx-mainnet/datadir
 
-# check total size
 sudo du -sh /root/.keryx-labs/keryx-mainnet/datadir
 
 # copy from windows pc
@@ -96,20 +80,16 @@ rpc get-block-dag-info
 
 # Update / Test
 
-#stop the node
 sudo systemctl stop keryxd.service
 
 cd /opt/miners
-#keryx-node in zip
 sudo wget https://github.com/Keryx-Labs/keryx-node/releases/download/v1.5.0-PoM/keryx-node-v1.5.0-PoM-linux-amd64.zip
 sudo unzip -o keryx-node-v1.5.0-PoM-linux-amd64.zip
 sudo rm -v keryx-node-v1.5.0-PoM-linux-amd64.zip
 /opt/miners/keryx-node/keryxd --version
 
-#start the node
 sudo systemctl start keryxd.service
 
-#watch logs
 journalctl -u keryxd.service -f
 
 journalctl -u keryxd.service -n 50 --no-pager

@@ -17,7 +17,6 @@ case "$CFG_FILE" in
     *.json) RIG_GPU_JSON="$CFG_FILE" ;;
     *) RIG_GPU_JSON="${CFG_FILE%.conf}.json" ;;
 esac
-# Load miner paths environment
 if [[ -f "$BASE_DIR/miner_paths.env" ]]; then
     echo "[init] Loading miner paths from: $BASE_DIR/miner_paths.env"
     source "$BASE_DIR/miner_paths.env"
@@ -25,7 +24,6 @@ else
     echo "[init] WARNING: miner_paths.env not found at $BASE_DIR/miner_paths.env"
     echo "[init] Miner binary locations may not be set correctly"
 fi
-# Check config files exist
 [[ -f "$CFG_FILE" || -f "$RIG_GPU_JSON" ]] || {
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
@@ -43,16 +41,10 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-# Slot is fixed by which service instance this is - not user-configurable
-# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
 SERVICE_TYPE="gpu"
-# Get OC settings from rig.conf
 RESET_OC=$(get_rig_conf "RESET_OC" "0")
-# Remove quotes if present
 RESET_OC="${RESET_OC//\"/}"
-# Convert to lowercase for comparison
 RESET_OC="${RESET_OC,,}"
-# Default to false if empty
 : "${RESET_OC:=false}"
 : "${POWER_LIMIT:=}"
 echo "Miner Name:      $MINER_NAME"
@@ -92,7 +84,6 @@ kill_by_pid() {
                 echo "[$(date)] Miner process group $miner_pid terminated (forcefully)"
             fi
         fi
-        # Clean up PID file
         rm -f "$pid_file"
     fi
 }
@@ -122,7 +113,6 @@ stop_miner() {
             rm -f "$pid_file"
         fi
     fi
-    # Reset GPU if configured (always run this if RESET_OC is true)
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "[$(date)] Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
@@ -142,5 +132,4 @@ else
 fi
 stop_miner
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/manual_stop_gpu.sh

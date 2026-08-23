@@ -19,7 +19,6 @@ if [ ! -f "/opt/miners/rigel/current/rigel" ]; then
 else
     echo "rigel already exists in current directory"
 fi
-# SERVICE_TYPE is one of "cpu" / "gpu" / "aux" system-wide - this script is hardcoded to gpu
 SERVICE_TYPE="gpu"
 START_CMD="/opt/miners/rigel/current/rigel"
 ARGS="-a kawpow -o stratum+ssl://ca.quai.herominers.com:1185 -o stratum+ssl://us2.quai.herominers.com:1185 -u wallet-address -p x -w 5950X-2-3070 --api-bind 127.0.0.1:5000"
@@ -105,7 +104,7 @@ get_podman_child_containers() {
 }
 confirm_podman_idle() {
     local loops=${1:-$IDLE_CONFIRM_LOOPS}
-    local check_interval=5  # seconds
+    local check_interval=5
     echo "$(date): Confirming Podman is idle (checking $loops times, $check_interval second intervals)..."
     for ((i=1; i<=loops; i++)); do
         echo "$(date): Podman idle check $i/$loops..."
@@ -136,7 +135,6 @@ process_podman_event() {
     local container_name="$1"
     local status="$2"
     local event_time="$3"
-    # Skip tunnel-api and frpc-api containers
     if [[ "$container_name" == tunnel-api-* ]] || [[ "$container_name" == frpc-api-* ]]; then
         echo "$(date): Skipping tunnel/frpc container: $container_name"
         return
@@ -157,7 +155,6 @@ process_podman_event() {
             fi
             ;;
         *)
-            # Ignore irrelevant Podman events
             ;;
     esac
 }
@@ -412,9 +409,7 @@ echo "$(date): Performing final cleanup..."
 stop_miner || true
 echo "$(date): Podman event monitor stopped gracefully"
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_gpu.sh
-# Create systemd service for proper management
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events GPU Miner Monitor (Podman)
@@ -439,7 +434,6 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
-# Reload systemd and enable service
 sudo systemctl daemon-reload
 sudo systemctl enable docker_events_gpu.service
 # Start/Stop Service

@@ -180,7 +180,6 @@ if [[ "$API_PORT" -gt 0 ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
-# SERVICE_TYPE: one of "cpu" / "gpu" / "aux" - fixed by which service instance this is, not user-configurable
 case "$OC_FILE" in
     *rig-gpu*) SERVICE_TYPE="gpu" ;;
     *rig-cpu*) SERVICE_TYPE="cpu" ;;
@@ -234,33 +233,27 @@ is_docker_running() {
     return $?
 }
 check_docker_target_container() {
-    # Get all containers based on image
     candidates=$(docker ps -a \
         --filter "ancestor=${TARGET_IMAGE}" \
         --format "{{.ID}} {{.Names}}")
     match_id=""
     while read -r cid cname; do
-        # Exact match
         if [[ "$cname" == "$TARGET_NAME" ]]; then
             match_id="$cid"
             break
         fi
-        # Prefix match: name begins with TARGET_NAME
         if [[ "$cname" == ${TARGET_NAME}* ]]; then
             suffix="${cname#${TARGET_NAME}}"
-            # Suffix must be 1+ digits ONLY
             if [[ "$suffix" =~ ^[0-9]+$ ]]; then
                 match_id="$cid"
                 break
             fi
         fi
     done <<< "$candidates"
-    # No matching container found
     if [ -z "$match_id" ]; then
         echo "no matching container found"
         return 1
     fi
-    # Check container status
     status=$(docker inspect -f '{{.State.Status}}' "$match_id" 2>/dev/null)
     if [ "$status" = "running" ]; then
         echo "target container running"
@@ -272,29 +265,24 @@ check_docker_target_container() {
 }
 confirm_docker_container_running() {
     local loops=${1:-$IDLE_CONFIRM_LOOPS}
-    local check_interval=2  # seconds
+    local check_interval=2
     echo "$(date): Confirming Docker target container is running (checking $loops times, $check_interval second intervals)..."
     for ((i=1; i<=loops; i++)); do
         echo "$(date): Docker running check $i/$loops..."
-        # Check if shutdown was requested
         if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
             echo "$(date): Shutdown requested during running confirmation, aborting..."
             return 1
         fi
-        # Check if Docker is running
         if ! is_docker_running; then
             echo "$(date): Docker not running → UNAVAILABLE → BREAKING (cannot confirm)"
             return 1
         fi
-        # Check if target container exists and is running
         if check_docker_target_container; then
             echo "$(date): Target container confirmed running → continue checking"
-            # Continue checking to confirm it's stable
         else
             echo "$(date): Target container NOT running → BREAKING (container not running)"
             return 1
         fi
-        # If this is not the last check, wait and continue
         if [ $i -lt $loops ]; then
             echo "$(date): Waiting $check_interval seconds for next running check..."
             sleep $check_interval
@@ -307,7 +295,6 @@ process_docker_event() {
     local container_name="$1"
     local status="$2"
     local image="$3"
-    # DOCKER-SPECIFIC LOGIC: Name matching with image
     name_match=0
     if [[ "$container_name" == "$TARGET_NAME" ]]; then
         name_match=1
@@ -317,7 +304,6 @@ process_docker_event() {
             name_match=1
         fi
     fi
-    # Process only if image AND name match
     if [[ "$image" != "$TARGET_IMAGE" ]] || [[ "$name_match" -eq 0 ]]; then
         echo "$(date): Skipping non-matching container"
         return
@@ -325,9 +311,7 @@ process_docker_event() {
     case "$status" in
         start|create|unpause|restart)
             echo "$(date): Docker START event ($status) → Confirm container is running, then start miner..."
-            # Wait a moment for container to fully start
             sleep 1
-            # Confirm container is actually running (not just transient)
             if confirm_docker_container_running $IDLE_CONFIRM_LOOPS; then
                 echo "$(date): Docker container confirmed running → START miner"
                 start_miner || true
@@ -344,22 +328,17 @@ process_docker_event() {
     esac
 }
 # MINER CONTROL FUNCTIONS
-# Function to start miner
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
-    # Check if miner is already running
     if is_miner_alive; then
         echo "$(date): Miner already running for $SERVICE_TYPE (PID: $(cat "$pid_file"))"
         echo "$(date): Miner output goes to this service's journal (journalctl -f)"
-        return 0  # Exit early - miner is already running
+        return 0
     elif [[ -f "$pid_file" ]]; then
         echo "$(date): Stale PID file found for $SERVICE_TYPE - cleaning up..."
         stop_miner || true
         echo "$(date): Starting fresh miner after cleanup..."
-        # Continue to start fresh miner
     fi
-    # Start fresh miner
-    # Apply GPU OC's if configured
     if [[ "${APPLY_OC,,}" == "true" ]]; then
         OC_TARGET="${ALGO:-}"
         if [[ -z "$OC_TARGET" || "$OC_TARGET" == "0" ]]; then
@@ -381,7 +360,6 @@ start_miner() {
         echo "$(date): Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
     fi
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
-    # Create PID file directory
     mkdir -p /run/rigcontrol
     if [[ "$API_PORT" -gt 0 && "${ALWAYS_LOGS,,}" != "true" ]]; then
         echo "$(date): Known miner with API - starting without log file (nothing reads it)"
@@ -418,7 +396,6 @@ start_miner() {
     if is_miner_alive; then
         local miner_pid=$(cat "$pid_file")
         echo "$(date): Miner started (PID: $miner_pid)"
-        # Wait for API to come up if enabled
         if [[ "$API_PORT" -gt 0 ]]; then
             echo "$(date): Waiting for API to start (max 30 seconds)..."
             local max_wait=30
@@ -443,7 +420,6 @@ start_miner() {
         return 1
     fi
 }
-# Function to stop miner (clean closure first)
 stop_miner() {
     echo "$(date): Stopping $SERVICE_TYPE miner..."
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
@@ -454,7 +430,6 @@ stop_miner() {
     fi
     local miner_pid=$(cat "$pid_file")
     kill_by_pid
-    # Reset GPU if configured
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "$(date): Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
@@ -490,46 +465,35 @@ else
 fi
 # DOCKER EVENT MONITORING LOOP
 echo "$(date): Starting Docker event monitor..."
-# Main monitoring loop with restart on failure
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
-    # DOCKER EVENT STREAM
     echo "$(date): Connecting to Docker events stream..."
     docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
     while read -r type action name image; do
-        # Check for shutdown request
         if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
             echo "$(date): Shutdown requested, breaking event loop..."
-            break 2  # Break out of both loops
+            break 2
         fi
-        # Skip non-container events
         if [ "$type" != "container" ]; then
             continue
         fi
-        # Process Docker event
         process_docker_event "$name" "$action" "$image"
     done
-    # Events stream ended
-    # Check if shutdown was requested
     if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
         echo "$(date): Shutdown requested, exiting main loop..."
         break
     fi
-    # Check if docker is running
     if ! is_docker_running; then
         echo "$(date): ERROR: Docker daemon not responding. Waiting 30 seconds..."
         sleep 30
         continue
     fi
-    # Wait before retrying
     echo "$(date): Docker events stream ended, restarting monitor in 5 seconds..."
     sleep 5
 done
-# Final cleanup before exit
 echo "$(date): Performing final cleanup..."
 stop_miner || true
 echo "$(date): Docker event monitor stopped gracefully"
 EOF
-# Make the script executable
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
 # -- write CPU service --
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'

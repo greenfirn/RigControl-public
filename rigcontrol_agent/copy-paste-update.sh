@@ -788,10 +788,6 @@ def detect_running_miners():
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
                 line_lower = line.lower()
-                # Custom miner is checked against its own dedicated variable,
-                # never merged into _BUILTIN_MINER_PROCESS_MAP, so a custom
-                # name can never be mistaken for (or overwrite) a real
-                # built-in collector entry.
                 if custom_name and custom_name in line_lower:
                     found["custom_log"] = True
                     continue

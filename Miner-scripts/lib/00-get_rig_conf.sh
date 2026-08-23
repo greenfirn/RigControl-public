@@ -147,11 +147,7 @@ get_rig_conf() {
     fi
     if [[ ! -f "$RIG_GPU_JSON" && -z "$RIG_GPU_JSON_GENERATE_ATTEMPTED" ]]; then
         RIG_GPU_JSON_GENERATE_ATTEMPTED=1
-        # Guarded with || true: generate_rig_gpu_json_from_conf() returns 1
-        # in several normal, non-fatal cases (jq missing, no MINER/CUSTOM_MINER
-        # resolvable yet, etc). Without the guard, that non-zero return kills
-        # this whole script under set -e - a failed generation attempt should
-        # just fall through to parsing $cfg_file directly below, not crash.
+        # || true: non-fatal failure here should fall through to parsing $cfg_file directly
         generate_rig_gpu_json_from_conf || true
     fi
     if [[ -f "$RIG_GPU_JSON" ]] && command -v jq >/dev/null 2>&1 && [[ "$RIG_GPU_JSON_KEYS" == *" $key "* ]]; then
@@ -161,7 +157,6 @@ get_rig_conf() {
             echo "$json_val"
             return
         fi
-        # rig-gpu.json exists but failed to parse — fall through below.
     fi
     [[ -f "$cfg_file" ]] || { echo ""; return; }
     local selected_value=""

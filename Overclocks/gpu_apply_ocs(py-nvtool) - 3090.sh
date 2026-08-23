@@ -2,9 +2,6 @@ sudo tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'
 #!/bin/bash
 # gpu_apply_ocs.sh <algo_name> / <custom miner name>
 # Generated from the dashboard's Overclock module - edit there, not by hand.
-# Note: a row's Algorithm field can list multiple comma-separated algo names
-# (e.g. keryxhash,keryx-miner,keryx-minerx) - they're combined into one case
-# pattern below, joined by '|', so they all share this row's OC settings.
 
 ALGO="${1:-}"
 if [[ -z "$ALGO" ]]; then
