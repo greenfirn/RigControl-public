@@ -10187,7 +10187,7 @@ function buildWdConfigRawFromSettings() {
         "# LOG_WATCHER_TERM_SCRIPT_BEGIN/END block per term (in the same order as the",
         "# terms listed in LOG_WATCHER_TERMS above) - click its row above to edit it.",
         "",
-        `GLOBAL_STOP_AFTER_FAILS "${globalStopFails}"`,
+        `MINING_WATCHDOG_STOP_AFTER_FAILS "${globalStopFails}"`,
         `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
         `MINING_INTERVAL_SECONDS "${miningInterval}"`,
         `LOG_WATCHER_ENABLED "${logWatcherEnabled ? "1" : "0"}"`,
@@ -10273,7 +10273,7 @@ function populateWdSettingsFromRaw(rawText) {
     }
     const globalStopEl = document.getElementById("wdconfig-global-stop-fails");
     if (globalStopEl) {
-        const gm = rawText.match(/^GLOBAL_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$/m);
+        const gm = rawText.match(/^MINING_WATCHDOG_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$/m);
         if (gm) globalStopEl.value = Math.max(0, Number(gm[1]) || 0);
     }
     const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");

@@ -193,7 +193,7 @@ def load_global_watchdog_settings(path):
     except Exception as e:
         log(f"[conf] Error reading {path} for global settings: {e}")
         return settings
-    m = re.search(r'^GLOBAL_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$', text, re.MULTILINE)
+    m = re.search(r'^MINING_WATCHDOG_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$', text, re.MULTILINE)
     if m:
         try:
             settings["stop_after_fails"] = max(0, int(m.group(1)))

@@ -194,7 +194,7 @@ def load_global_watchdog_settings(path):
     except Exception as e:
         log(f"[conf] Error reading {path} for global settings: {e}")
         return settings
-    m = re.search(r'^GLOBAL_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$', text, re.MULTILINE)
+    m = re.search(r'^MINING_WATCHDOG_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$', text, re.MULTILINE)
     if m:
         try:
             settings["stop_after_fails"] = max(0, int(m.group(1)))
@@ -694,7 +694,7 @@ else
 fi
 sudo tee /etc/systemd/system/rigcontrol_watchdog.service > /dev/null <<EOF
 [Unit]
-Description=RigControl Per-Algorithm Mining Watchdog
+Description=RigControl Mining & Log Watchdog
 After=docker_events_gpu.service docker_events_cpu.service rigcontrol-agent.service
 Wants=rigcontrol-agent.service
 [Service]
