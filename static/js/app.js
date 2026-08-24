@@ -842,8 +842,8 @@ let _lastStatsResp = null;
 let wdHashrateUnit = "MH/s";
 const WD_GLOBAL_STOP_FAILS_DEFAULT = 5;
 const WD_LOG_WATCHER_SLOT_IDS = ["cpu", "gpu", "aux"];
-const WD_LOG_WATCHER_INTERVAL_DEFAULT = 60;
-const WD_MINING_INTERVAL_DEFAULT = 60;
+const WD_LOG_WATCHER_INTERVAL_DEFAULT = 10;
+const WD_MINING_INTERVAL_DEFAULT = 30;
 const WD_LOG_WATCHER_SEVERITIES = ["good", "warn", "important", "critical"];
 const WD_LOG_WATCHER_SEVERITY_LABELS = { good: "Good", warn: "Warn", important: "Important", critical: "Critical" };
 const WD_LOG_TERM_ACTION_DEFS = [
@@ -9810,7 +9810,7 @@ function selectFirstWdLogTermRow() {
     }
 }
 function addWdLogTermRow(row, opts) {
-    const r = row || { contains: "", notContains: "", severity: "warn", actions: {}, customScript: "", slot: "all" };
+    const r = row || { contains: "", notContains: "", severity: "warn", actions: {}, customScript: "", slot: "gpu" };
     const tbody = document.getElementById("wdconfig-logterm-rows");
     if (!tbody) return;
     const rowId = String(++wdLogTermRowIdCounter);
@@ -10293,7 +10293,7 @@ function populateWdSettingsFromRaw(rawText) {
     const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
     if (miningIntervalEl) {
         const mim = rawText.match(/^MINING_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
-        miningIntervalEl.value = mim ? Math.max(5, Number(mim[1]) || 60) : WD_MINING_INTERVAL_DEFAULT;
+        miningIntervalEl.value = mim ? Math.max(5, Number(mim[1]) || WD_MINING_INTERVAL_DEFAULT) : WD_MINING_INTERVAL_DEFAULT;
     }
     const logWatcherEnabledEl = document.getElementById("wdconfig-logwatcher-enabled");
     if (logWatcherEnabledEl) {
@@ -10303,7 +10303,7 @@ function populateWdSettingsFromRaw(rawText) {
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     if (logWatcherIntervalEl) {
         const im = rawText.match(/^LOG_WATCHER_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
-        logWatcherIntervalEl.value = im ? Math.max(5, Number(im[1]) || 60) : WD_LOG_WATCHER_INTERVAL_DEFAULT;
+        logWatcherIntervalEl.value = im ? Math.max(5, Number(im[1]) || WD_LOG_WATCHER_INTERVAL_DEFAULT) : WD_LOG_WATCHER_INTERVAL_DEFAULT;
     }
     // LOG_WATCHER_SLOTS is derived output only; which logs get tailed comes from each term's Slot dropdown, parsed below.
     const legacySharedScriptMatch = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
@@ -11288,10 +11288,19 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
         }
     });
 }
+function mostRecentStatsAlgoName(entries) {
+    for (let i = (entries || []).length - 1; i >= 0; i--) {
+        const algos = DataHelper.getAllAlgorithms(entries[i].data) || [];
+        const name = algos.map((a) => DataHelper.getAlgorithmName(a)).find((n) => n && n !== "--");
+        if (name) return name;
+    }
+    return "all";
+}
 function populateStatsAlgoSelect(entries) {
     const sel = document.getElementById("stats-algo-select");
     if (!sel) return;
     const prevValue = sel.value || "all";
+    const userTouched = sel.dataset.userSet === "1";
     const algoNames = new Set();
     (entries || []).forEach((entry) => {
         (DataHelper.getAllAlgorithms(entry.data) || []).forEach((algo) => {
@@ -11311,7 +11320,16 @@ function populateStatsAlgoSelect(entries) {
         opt.textContent = name;
         sel.appendChild(opt);
     });
-    sel.value = (prevValue === "all" || sortedNames.includes(prevValue)) ? prevValue : "all";
+    if (userTouched) {
+        // Respect whatever the person explicitly picked (including "-All-"), as long as it's
+        // still a valid option - only fall back if their choice disappeared from the list.
+        sel.value = (prevValue === "all" || sortedNames.includes(prevValue)) ? prevValue : "all";
+    } else {
+        // Never manually changed yet - default to the most recently active algorithm instead
+        // of "-All-", so the chart opens already focused on what's currently mining.
+        const mostRecent = mostRecentStatsAlgoName(entries);
+        sel.value = sortedNames.includes(mostRecent) ? mostRecent : "all";
+    }
 }
 function renderStatsCharts(resp) {
     const entries = resp.entries || [];
@@ -12070,14 +12088,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         autoResizeOcRaw();
     });
     document.getElementById("btn-stats-load")?.addEventListener("click", loadStatsForSelectedRig);
-    document.getElementById("stats-rig-select")?.addEventListener("change", loadStatsForSelectedRig);
+    document.getElementById("stats-rig-select")?.addEventListener("change", () => {
+        // Switching rigs - let the new rig auto-pick its own most-recent algo again
+        // instead of carrying over a choice that applied to the previous rig.
+        const algoSel = document.getElementById("stats-algo-select");
+        if (algoSel) delete algoSel.dataset.userSet;
+        loadStatsForSelectedRig();
+    });
     document.getElementById("logs-rig-select")?.addEventListener("change", () => {
         fetchLogs();
     });
     document.getElementById("stats-hashrate-unit-select")?.addEventListener("change", () => {
         if (_lastStatsResp) renderStatsCharts(_lastStatsResp);
     });
-    document.getElementById("stats-algo-select")?.addEventListener("change", () => {
+    document.getElementById("stats-algo-select")?.addEventListener("change", (e) => {
+        e.target.dataset.userSet = "1";
         if (_lastStatsResp) renderStatsCharts(_lastStatsResp);
     });
     document.getElementById("stats-days-input")?.addEventListener("keydown", (e) => {

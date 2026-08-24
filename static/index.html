@@ -211,6 +211,7 @@
                     <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
                     <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
                 </div>
+                <span id="wdconfig-status" class="wdconfig-status wdconfig-status-top"></span>
                 <div class="wdconfig-main-tab-panel hidden" data-tab-panel="mining">
                 <div class="fs-editor-panel">
                     <div class="wdconfig-mining-pause-note" title="Checked once per Mining Watchdog cycle, independently of the Log Watcher loop.">
@@ -364,7 +365,7 @@
                             <label for="wdconfig-mining-interval">Check Interval (s)</label>
                             <span class="wdconfig-interval-stepper">
                                 <button type="button" class="wdconfig-unit-btn" id="wdconfig-mining-interval-down" title="Decrease">▼</button>
-                                <input type="number" id="wdconfig-mining-interval" min="5" step="1" value="60" class="wdconfig-narrow-input" title="How often Mining Watchdog checks (seconds)" />
+                                <input type="number" id="wdconfig-mining-interval" min="5" step="1" value="30" class="wdconfig-narrow-input" title="How often Mining Watchdog checks (seconds)" />
                                 <button type="button" class="wdconfig-unit-btn" id="wdconfig-mining-interval-up" title="Increase">▲</button>
                             </span>
                         </div>
@@ -378,7 +379,7 @@
                             <label for="wdconfig-logwatcher-interval">Check Interval (s)</label>
                             <span class="wdconfig-interval-stepper">
                                 <button type="button" class="wdconfig-unit-btn" id="wdconfig-logwatcher-interval-down" title="Decrease">▼</button>
-                                <input type="number" id="wdconfig-logwatcher-interval" min="5" step="1" value="60" class="wdconfig-narrow-input" title="How often Log Watcher scans (seconds)" />
+                                <input type="number" id="wdconfig-logwatcher-interval" min="5" step="1" value="10" class="wdconfig-narrow-input" title="How often Log Watcher scans (seconds)" />
                                 <button type="button" class="wdconfig-unit-btn" id="wdconfig-logwatcher-interval-up" title="Increase">▲</button>
                             </span>
                         </div>
@@ -403,7 +404,6 @@
                         />
                     </div>
                     <div class="cmd-btn-row">
-                        <span id="wdconfig-status" class="wdconfig-status"></span>
                         <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
                             <input type="checkbox" id="confirm-wd" checked>
                             <span class="checkbox-text">Confirm</span>

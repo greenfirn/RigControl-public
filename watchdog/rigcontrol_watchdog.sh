@@ -51,9 +51,9 @@ DEFAULT_ALGO_SETTINGS = {
 DEFAULT_GLOBAL_SETTINGS = {
     "stop_after_fails": 5,  # 0 disables this - the service never self-stops
     "mining_watchdog_enabled": True,  # False skips hashrate/watts monitoring entirely
-    "mining_interval_seconds": 60,  # how often the mining watchdog re-checks health
+    "mining_interval_seconds": 30,  # how often the mining watchdog re-checks health
     "log_watcher_enabled": False,
-    "log_watcher_interval_seconds": 60,  # how often the log watcher re-scans its log(s)
+    "log_watcher_interval_seconds": 10,  # how often the log watcher re-scans its log(s)
     "log_watcher_slots": [],  # e.g. ["cpu", "gpu", "aux"]
     "log_watcher_terms": [],  # e.g. [("Found a block on", "important"), ("error", "critical")]
     "log_watcher_custom_script": "",  # legacy shared-script fallback (pre-per-term profiles)
@@ -550,7 +550,7 @@ def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=
     if global_settings is None:
         global_settings = load_global_watchdog_settings(conf_path)
     agent_service_names = load_agent_service_names()
-    sleep_seconds = global_settings.get("mining_interval_seconds", 60)
+    sleep_seconds = global_settings.get("mining_interval_seconds", 30)
     if not global_settings.get("mining_watchdog_enabled", True):
         if consecutive_fails:
             log("[skip] Mining Watchdog is disabled (MINING_WATCHDOG_ENABLED \"0\") - resetting fail counters")
@@ -654,7 +654,7 @@ def main():
                 break
             next_mining_check_at = time.time() + mining_interval
         if global_settings.get("log_watcher_enabled") and now >= next_log_watcher_at:
-            log_watcher_interval = global_settings.get("log_watcher_interval_seconds", 60)
+            log_watcher_interval = global_settings.get("log_watcher_interval_seconds", 10)
             try:
                 run_log_watcher_cycle(global_settings)
             except Exception as e:

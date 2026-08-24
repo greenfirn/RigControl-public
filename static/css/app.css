@@ -4535,7 +4535,7 @@ h1 {
 }
 .wdconfig-mining-pause-note {
     flex: 0 0 auto;
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.4;
     color: var(--text-muted);
     background: var(--surface-modal-panel);
@@ -5080,11 +5080,11 @@ h1 {
     flex: 0 0 auto;
     cursor: pointer;
 }
-.wdconfig-table td:nth-child(2) .wdconfig-input,
-.wdconfig-table td:nth-child(3) .wdconfig-input,
-.wdconfig-table td:nth-child(4) .wdconfig-input,
-.wdconfig-table td:nth-child(5) .wdconfig-input,
-.wdconfig-table td:nth-child(6) .wdconfig-input {
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(2) .wdconfig-input,
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(3) .wdconfig-input,
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(4) .wdconfig-input,
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(5) .wdconfig-input,
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(6) .wdconfig-input {
     max-width: 77px;
 }
 .wdconfig-logterm-table td .wdconfig-input {
@@ -5266,6 +5266,19 @@ h1 {
     color: var(--text-muted);
     font-size: var(--font-size-status-bar);
     align-self: center;
+}
+.wdconfig-status-top {
+    flex: 0 0 auto;
+    align-self: stretch;
+    min-height: 1em;
+    font-size: 14px;
+    background: var(--surface-modal-panel);
+    border: 1px solid var(--border-modal);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+.wdconfig-status-top:empty {
+    display: none;
 }
 #statuslog-modal .cmd-dialog {
     width: 75%;
