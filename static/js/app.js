@@ -6763,14 +6763,16 @@ function buildRigGpuItemObject(values, stash) {
     }
     if (poolUrls.length > 0) poolUrls[0] = poolUrl;
     let resolvedMinerUrl;
-    if (isCustom || hasLiteralPoolOverride) {
-        // Custom miners resolve %URL% themselves inside user_config (via pool_urls on the rig
-        // side), so miner_config.url just mirrors the actual resolved pool address here. A
-        // literal pool override does the same for non-custom miners - it skips the
-        // backup/failover pool list entirely and uses the real address directly.
+    if (hasLiteralPoolOverride) {
+        // An explicit literal pool override was set via the Miner Configuration modal's POOL
+        // field - skip the backup/failover pool_urls list entirely and use the real address
+        // directly. Applies the same way for custom and non-custom miners.
         resolvedMinerUrl = poolUrl;
     } else {
-        // Default token, resolved at deploy time from the full pool_urls list.
+        // Default token, resolved at deploy time from the full pool_urls list (with backups).
+        // Custom miners also embed this same %URL% token inside user_config/ARGS and resolve
+        // it rig-side the same way, so miner_config.url should stay "%URL%" here too instead
+        // of being pinned to whatever the currently-resolved pool address happens to be.
         resolvedMinerUrl = "%URL%";
     }
     const minerConfig = {

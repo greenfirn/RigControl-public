@@ -71,7 +71,7 @@ fi
 _read_agent_conf_val() {
     local key="$1"
     [[ -f "$AGENT_CONF" ]] || return 0
-    grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2-
+    grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2- || true
 }
 MINER_UPPER=$(echo "$API_LOOKUP_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
 MINER_API_PORT_VAR="${MINER_UPPER}_API_PORT"
