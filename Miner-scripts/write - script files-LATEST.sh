@@ -921,6 +921,16 @@ POOL_URLS=$(get_rig_conf "POOL_URLS" "0")
 POOL_URLS=$(resolve_worker_name "$POOL_URLS")
 POOL_URLS=$(resolve_wallet "$POOL_URLS")
 POOL_URLS=$(resolve_pass "$POOL_URLS")
+# For custom miners, miner_config.url is left as the literal token "%URL%" (rather than a
+# hardcoded address) so it always tracks the flightsheet's pool_urls list, backups included.
+# POOL itself needs to be resolved to a real address here (index 0 = primary; use %URL%[N] in
+# ARGS/ALGO directly to reach a specific backup) before it's used below as the substitution
+# value for any other field's %URL% token via resolve_url().
+if [[ "$POOL" == *"%URL%"* ]]; then
+    _pool_url_list=()
+    mapfile -t _pool_url_list < <(get_pool_url_list)
+    POOL="${POOL//%URL%/${_pool_url_list[0]:-}}"
+fi
 ALGO=$(get_rig_conf "ALGO" "0")
 ALGO=$(resolve_worker_name "$ALGO")
 ALGO=$(resolve_wallet "$ALGO")
