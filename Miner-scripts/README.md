@@ -10,7 +10,7 @@
 
 - keryx-miner: version change overwrites any files in miner folder '/opt/miners/keryx-miner/current'
 
-save escrow file/models outside of current:
+save escrow file/models/etc outside of current:
 ```
 --models-dir /opt/miners/models --escrow-cert-file /opt/miners/escrow.cert --escrow-key-file /opt/miners/escrow.key --escrow-state-file /opt/miners/escrow_state.json
 ```
