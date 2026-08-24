@@ -2853,8 +2853,7 @@ async function saveCurrentColorSchemeToServer() {
     }
     try {
         const data = buildCurrentColorSchemeData();
-        const saved = await saveColorSchemeToServerAndConfirm(name, data);
-        if (saved) alert(`Theme "${name}" saved to server.`);
+        await saveColorSchemeToServerAndConfirm(name, data);
     } catch (err) {
         console.error("Failed to save theme to server", err);
         alert("Failed to save theme to the server.");
@@ -5170,7 +5169,6 @@ async function applyStatsSettingsToSelectedRigs() {
             body: JSON.stringify(body)
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        alert(`Stats settings applied to ${rigs.length} worker${rigs.length === 1 ? "" : "s"}!`);
     } catch (err) {
         console.error("Failed to apply stats settings", err);
         alert(`Failed to apply stats settings: ${err.message}\n\nModal will remain open.`);
@@ -5368,7 +5366,6 @@ function saveRefreshSettings() {
     Promise.all(promises)
         .then(results => {
             console.log("All server updates completed successfully");
-            alert("All settings saved successfully!");
             updateRefreshTimerUI();
         })
         .catch(error => {
@@ -6349,7 +6346,6 @@ async function saveFlightsheetFromDialog() {
         const entries = collectFlightsheetEntries();
         await saveFlightsheet(flightsheetId, entries);
 		loadFlightsheets();
-        alert(`Flightsheet "${flightsheetId}" saved successfully!`);
     } catch (err) {
         alert(`Error saving flightsheet: ${err.message}`);
     }
@@ -8354,8 +8350,6 @@ async function deleteFlightsheet() {
         loadFlightsheets();
         if (failed.length > 0) {
             alert(`Deleted ${ids.length - failed.length} of ${ids.length}. Failed: ${failed.join(", ")}`);
-        } else {
-            alert(`${ids.length} flightsheet${ids.length !== 1 ? "s" : ""} deleted`);
         }
         return;
     }
@@ -8373,7 +8367,6 @@ async function deleteFlightsheet() {
         );
         if (!res.ok) throw new Error("Failed to delete");
 		loadFlightsheets();
-        alert("Flightsheet deleted");
         document.getElementById("fs-name").value = "";
         document.getElementById("fs-raw").value = "";
         selectedFlightsheetId = null;
@@ -8461,7 +8454,6 @@ async function confirmFsWalletSave() {
         await saveWallet(walletId, entries);
         loadWallets();
         closeFsWalletSaveDialog();
-        alert(`Wallet "${walletId}" saved successfully!`);
     } catch (err) {
         alert(`Error saving wallet: ${err.message}`);
     }
@@ -8789,7 +8781,6 @@ async function saveOverclockFromDialog() {
         const entries = collectOverclockEntries();
         await saveOverclock(overclockId, entries);
         loadOverclocks();
-        alert(`Overclock "${overclockId}" saved successfully!`);
     } catch (err) {
         alert(`Error saving overclock: ${err.message}`);
     }
@@ -9123,8 +9114,6 @@ async function deleteOverclock() {
         loadOverclocks();
         if (failed.length > 0) {
             alert(`Deleted ${ids.length - failed.length} of ${ids.length}. Failed: ${failed.join(", ")}`);
-        } else {
-            alert(`${ids.length} overclock profile${ids.length !== 1 ? "s" : ""} deleted`);
         }
         return;
     }
@@ -9142,7 +9131,6 @@ async function deleteOverclock() {
         );
         if (!res.ok) throw new Error("Failed to delete");
         loadOverclocks();
-        alert("Overclock deleted");
         document.getElementById("oc-name").value = "";
         clearOcRows();
         addOcRow(null, { skipRebuild: true });
@@ -9440,7 +9428,6 @@ async function saveWalletFromDialog() {
         const walletId = computeWalletIdForSave(rawName, coin);
         await saveWallet(walletId, entries);
         loadWallets();
-        alert(`Wallet "${walletId}" saved successfully!`);
     } catch (err) {
         alert(`Error saving wallet: ${err.message}`);
     }
@@ -9468,7 +9455,6 @@ async function deleteWallet() {
         );
         if (!res.ok) throw new Error("Failed to delete");
         loadWallets();
-        alert("Wallet deleted");
         document.getElementById("wallet-name").value = "";
         clearWalletFields();
         selectedWalletId = null;
@@ -10082,7 +10068,6 @@ async function saveWatchdogProfileFromDialog() {
         const entries = collectWatchdogProfileEntries();
         await saveWatchdogProfile(profileId, entries);
         loadWatchdogProfiles();
-        alert(`Watchdog profile "${profileId}" saved successfully!`);
     } catch (err) {
         alert(`Error saving watchdog profile: ${err.message}`);
     }
@@ -10102,7 +10087,6 @@ async function deleteWatchdogProfile() {
         );
         if (!res.ok) throw new Error("Delete failed");
         loadWatchdogProfiles();
-        alert("Watchdog profile deleted");
     } catch (err) {
         alert(`Error deleting watchdog profile: ${err.message}`);
     } finally {
