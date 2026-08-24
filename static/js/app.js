@@ -8078,7 +8078,18 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     {
         const origUrlRaw = (jsonItem.miner_config || {}).url;
         const origUrlTrimmed = typeof origUrlRaw === "string" ? origUrlRaw.trim() : "";
-        fsPoolUrlToken = origUrlTrimmed !== "" ? origUrlTrimmed : "%URL%";
+        // If the saved miner_config.url is just a mirror of the resolved pool address (bare
+        // comparison, ignoring stratum+ssl/tcp prefixes) rather than a genuinely different
+        // address, don't treat it as an explicit override - fall back to the "%URL%" token so
+        // it resolves from the live pool_urls list again instead of staying pinned to whatever
+        // address happened to be resolved when this was last saved (older saves, before the
+        // %URL% resolution fix, always wrote the literal address here even with no real
+        // override set).
+        const looksLikeMirroredPool =
+            origUrlTrimmed !== "" &&
+            origUrlTrimmed !== "%URL%" &&
+            bareFsPoolUrl(origUrlTrimmed) === bareFsPoolUrl(values.POOL);
+        fsPoolUrlToken = (origUrlTrimmed !== "" && !looksLikeMirroredPool) ? origUrlTrimmed : "%URL%";
         fsPoolUrlNeedsToken = fsPoolUrlToken === "%URL%";
         const poolTokenEl = document.getElementById("fs-mc-pool-token");
         if (poolTokenEl) poolTokenEl.value = fsPoolUrlToken;
