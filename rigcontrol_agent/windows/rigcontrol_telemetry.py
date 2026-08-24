@@ -1522,10 +1522,23 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
         reading any of that already-seen tail, and leave the running
         counters alone.
 
-    We tell the two apart by how small the file ends up: a fresh restart
-    log is only ever a few KB until the next poll catches it, while a
-    size-based trim always leaves it much larger. `restart_threshold_bytes`
-    is the cutoff between them.
+    We used to tell the two apart purely by how small the file ends up
+    (`restart_threshold_bytes` as the cutoff), but that's a guess - it can
+    misfire on a stalled/rotated log and re-read the retained tail as "new",
+    double-counting/re-matching lines already seen in earlier polls. We also
+    tried the file's inode/NTFS file index, but that's not reliable either -
+    a freed file ID can be reused immediately by the fresh log after a real
+    restart, so a genuine restart can land on the very same ID as before.
+
+    Instead we keep a small fingerprint of the last bytes we actually read
+    (state['tail_fp']). On a shrink, we check whether that fingerprint still
+    appears in the file: if it does, it's an in-place trim (e.g. tail -c N >
+    file, same fd the writer still holds) - resume right after the
+    fingerprint so nothing already seen gets re-read, while any genuinely
+    new bytes appended in that same window still come through. If the
+    fingerprint is gone, it's a real restart - start over from byte 0.
+    `restart_threshold_bytes` only remains as a fallback guess for the very
+    first call, before we have any fingerprint yet.
     """
     try:
         with open(path, "rb") as f:
@@ -1533,12 +1546,26 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
             size = f.tell()
 
             if size < state.get("offset", 0):
-                if size < restart_threshold_bytes:
-                    # Real restart - fresh log, start over from byte 0
+                fp = state.get("tail_fp")
+                f.seek(0)
+                whole = f.read()
+                idx = whole.find(fp) if fp else -1
+                if idx != -1:
+                    # Fingerprint still present - trimmed in place, not a restart. Resume
+                    # right after it so nothing already seen gets re-read.
+                    resume_at = idx + len(fp)
+                    state["offset"] = size
+                    state["reset"] = False
+                    new_tail = whole[resume_at:]
+                    if new_tail:
+                        state["tail_fp"] = new_tail[-256:]
+                    return _decode_log_bytes(new_tail)
+                elif size < restart_threshold_bytes:
+                    # No fingerprint to check yet - fall back to the size guess
                     state["offset"] = 0
                     state["reset"] = True
                 else:
-                    # Periodic size-based trim, not a restart - just resync the offset
+                    # Can't confirm either way - just resync without re-reading
                     state["offset"] = size
                     state["reset"] = False
                     return ""
@@ -1549,6 +1576,8 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
             data = f.read()
             state["offset"] = size
 
+        if data:
+            state["tail_fp"] = data[-256:]
         return _decode_log_bytes(data)
     except Exception:
         return None

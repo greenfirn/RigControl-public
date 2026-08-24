@@ -1770,13 +1770,34 @@ def _tail_file(path, max_bytes=131072):
         return None
 _log_event_state = {}
 def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
-    """Reads only what's been appended to path since the last call, resetting the offset on a real restart (tiny file) but fast-forwarding without re-reading on a size-based trim (large file), distinguished by restart_threshold_bytes."""
+    """Reads only what's been appended to path since the last call. A shrink is checked
+    against a small fingerprint of the last bytes we actually read (state['tail_fp']): if
+    that fingerprint still appears in the shrunk file, it's an in-place trim (e.g.
+    tail -c N > file, same fd the writer still holds) - resume right after the fingerprint
+    so an already-seen/already-matched line never gets read (and re-actioned) twice, while
+    any genuinely new bytes appended in that same window still come through. If the
+    fingerprint isn't found, it's a real restart - start over from byte 0. (Inode alone
+    isn't reliable here - a freed inode can be reused immediately by the fresh log, so a
+    genuine restart can land on the very same inode number.) Falls back to the old
+    size-threshold guess only before we have any fingerprint yet."""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
             size = f.tell()
             if size < state.get("offset", 0):
-                if size < restart_threshold_bytes:
+                fp = state.get("tail_fp")
+                f.seek(0)
+                whole = f.read()
+                idx = whole.find(fp) if fp else -1
+                if idx != -1:
+                    resume_at = idx + len(fp)
+                    state["offset"] = size
+                    state["reset"] = False
+                    new_tail = whole[resume_at:]
+                    if new_tail:
+                        state["tail_fp"] = new_tail[-256:]
+                    return new_tail.decode("utf-8", errors="ignore")
+                elif size < restart_threshold_bytes:
                     state["offset"] = 0
                     state["reset"] = True
                 else:
@@ -1788,6 +1809,8 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
             f.seek(state.get("offset", 0))
             data = f.read()
             state["offset"] = size
+        if data:
+            state["tail_fp"] = data[-256:]
         return data.decode("utf-8", errors="ignore")
     except Exception:
         return None
