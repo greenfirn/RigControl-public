@@ -3291,6 +3291,7 @@ function initWebSocket() {
                     if (evtRig) {
                         statusLogCounts[evtRig] = (statusLogCounts[evtRig] || 0) + 1;
                         queueRender();
+                        refreshStatusLogRigSelectIfOpen();
                     }
                     if (!document.getElementById("statuslog-modal")?.classList.contains("hidden")) {
                         loadStatusLogList();
@@ -4341,10 +4342,11 @@ function updateActionStats() {
                 }
                 algoShares[algoName].accepted += DataHelper.getAcceptedShares(algo) || 0;
                 algoShares[algoName].rejected += DataHelper.getRejectedShares(algo) || 0;
-                if (DataHelper.getMiningType(algo) === "CPU") {
+                const mtype = DataHelper.getMiningType(algo);
+                if (mtype === "CPU") {
                     algoIsCpu[algoName] = true;
                     rigHasActiveCpuMiner = true;
-                } else {
+                } else if (mtype === "GPU") {
                     rigHasActiveGpuMiner = true;
                 }
             }
@@ -10473,11 +10475,17 @@ function populateStatusLogRigSelect() {
     const rigNames = Object.keys(rigsState || {})
         .filter(name => name !== "rigs")
         .sort();
-    sel.innerHTML = '<option value="">All Rigs</option>';
+    const totalCount = rigNames.reduce((sum, name) => sum + (statusLogCounts[name] || 0), 0);
+    sel.innerHTML = "";
+    const allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = totalCount > 0 ? `All Workers (${totalCount})` : "All Workers";
+    sel.appendChild(allOpt);
     rigNames.forEach((name) => {
         const opt = document.createElement("option");
         opt.value = name;
-        opt.textContent = name;
+        const count = statusLogCounts[name] || 0;
+        opt.textContent = count > 0 ? `${name} (${count})` : name;
         sel.appendChild(opt);
     });
     if (selectedRigs && selectedRigs.size === 1) {
@@ -11555,12 +11563,18 @@ function resetModalCollapseState(modalId, buttonId) {
     if (btn) btn.textContent = "Collapse";
 }
 let statusLogCounts = {};
+function refreshStatusLogRigSelectIfOpen() {
+    if (!document.getElementById("statuslog-modal")?.classList.contains("hidden")) {
+        populateStatusLogRigSelect();
+    }
+}
 async function fetchStatusLogCounts() {
     try {
         const res = await fetch(`${API}/api/status-log-counts`);
         if (!res.ok) return;
         statusLogCounts = await res.json();
         queueRender();
+        refreshStatusLogRigSelectIfOpen();
     } catch (e) {
         console.error("Error fetching status log counts:", e);
     }

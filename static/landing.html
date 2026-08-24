@@ -190,6 +190,7 @@
         return {
             state: serviceData?.state || "unknown",
             isActive: serviceData?.state === "active",
+            name: serviceData?.service || "",
         };
     }
     const MINER_KEY_PREFIX = "miner_";
@@ -225,9 +226,38 @@
         const algoTotals = {};
         const algoIsCpu = {};
         const algoShares = {};
-        const rigNames = Object.keys(rigs).filter((name) => {
-            if (name === "rigs") return false;
-            return !rigs[name]?.data?.exclude_from_totals;
+        // "Services Running" (CPU/GPU/AUX mining + service-active counts) intentionally ignores
+        // exclude_from_totals - it's an operational health check, not a hashrate/watts total, so
+        // an excluded rig's services should still be reflected here. Everything else below (GPU
+        // count, docker, watts, algo totals) still respects the exclude flag as before. Now that
+        // custom miners always report an explicit mining_type (CPU/GPU/AUX, never guessed), this
+        // no longer misclassifies AUX-slot miners as GPU.
+        const allRigNames = Object.keys(rigs).filter((name) => name !== "rigs");
+        const rigNames = allRigNames.filter((name) => !rigs[name]?.data?.exclude_from_totals);
+        allRigNames.forEach((name) => {
+            const d = rigs[name]?.data;
+            if (!d) return;
+            const algorithms = getAllAlgorithms(d);
+            let rigHasActiveCpuMiner = false;
+            let rigHasActiveGpuMiner = false;
+            algorithms.forEach((algo) => {
+                if (getTotalHashrateHS(algo) <= 0) return;
+                const mtype = getMiningType(algo);
+                if (mtype === "CPU") {
+                    rigHasActiveCpuMiner = true;
+                } else if (mtype === "GPU") {
+                    rigHasActiveGpuMiner = true;
+                }
+            });
+            if (rigHasActiveCpuMiner) miningCpuRigs++;
+            if (rigHasActiveGpuMiner) miningGpuRigs++;
+            if (getServiceStatus(d, "cpu_service").isActive) activeCpuServiceRigs++;
+            if (getServiceStatus(d, "gpu_service").isActive) activeGpuServiceRigs++;
+            const auxService = getServiceStatus(d, "aux_service");
+            if (auxService.isActive) {
+                activeAuxServiceRigs++;
+                auxActiveEntries.push(`${name} (${auxService.name || "unknown service"})`);
+            }
         });
         rigNames.forEach((name) => {
             const d = rigs[name]?.data;
@@ -243,8 +273,6 @@
             });
             totalWatts += getTotalGpuPower(d);
             const algorithms = getAllAlgorithms(d);
-            let rigHasActiveCpuMiner = false;
-            let rigHasActiveGpuMiner = false;
             algorithms.forEach((algo) => {
                 const algoName = algo.algorithm || "--";
                 const hashrate = getTotalHashrateHS(algo);
@@ -255,20 +283,8 @@
                 algoShares[algoName].rejected += algo.rejected_shares || 0;
                 if (getMiningType(algo) === "CPU") {
                     algoIsCpu[algoName] = true;
-                    rigHasActiveCpuMiner = true;
-                } else {
-                    rigHasActiveGpuMiner = true;
                 }
             });
-            if (rigHasActiveCpuMiner) miningCpuRigs++;
-            if (rigHasActiveGpuMiner) miningGpuRigs++;
-            if (getServiceStatus(d, "cpu_service").isActive) activeCpuServiceRigs++;
-            if (getServiceStatus(d, "gpu_service").isActive) activeGpuServiceRigs++;
-            const auxService = getServiceStatus(d, "aux_service");
-            if (auxService.isActive) {
-                activeAuxServiceRigs++;
-                auxActiveEntries.push(`${name} (${auxService.name || "unknown service"})`);
-            }
         });
         const sortedAlgos = Object.keys(algoTotals).sort((a, b) => {
             const aCpu = algoIsCpu[a] ? 0 : 1;

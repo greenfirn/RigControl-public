@@ -2010,16 +2010,17 @@ def collect_named_custom_miner_stats(slot):
     if not name:
         return {"status": "error", "error": f"no custom miner registered for slot '{slot}'"}
     key = _sanitize_miner_key(name)
+    mining_type = {"cpu": "CPU", "gpu": "GPU"}.get((slot or "").lower(), "AUX")
     api_host = _read_agent_conf_val(f"{key}_API_HOST") or os.environ.get(f"{key}_API_HOST", "").strip()
     api_port = _read_agent_conf_val(f"{key}_API_PORT") or os.environ.get(f"{key}_API_PORT", "").strip()
     if api_host and api_port:
-        return _collect_named_miner_api_stats(name, api_host, int(api_port))
+        return _collect_named_miner_api_stats(name, api_host, int(api_port), mining_type)
     log_path = _read_agent_conf_val(f"{key}_LOG_PATH") or os.environ.get(f"{key}_LOG_PATH", "").strip()
     log_style = _read_agent_conf_val(f"{key}_LOG_STYLE") or os.environ.get(f"{key}_LOG_STYLE", "").strip()
     if log_style.lower() == "blocks":
-        return _collect_named_miner_block_log_stats(name, log_path)
-    return _collect_named_miner_generic_log_stats(name, key, log_path)
-def _collect_named_miner_api_stats(name, api_host, api_port):
+        return _collect_named_miner_block_log_stats(name, log_path, mining_type)
+    return _collect_named_miner_generic_log_stats(name, key, log_path, mining_type)
+def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     """Reads a keryx-style JSON /stats API for hashrate and accepted/rejected block counts; temp/fan/power still come from collect_nvidia_gpu_stats()."""
     data = None
     last_err = None
@@ -2066,6 +2067,9 @@ def _collect_named_miner_api_stats(name, api_host, api_port):
         "algorithms": [{
             "algorithm":       "keryxhash",
             "hashrate_hs":     total_hr_hs,
+            "cpu_hashrate_hs": total_hr_hs if mining_type == "CPU" else 0,
+            "gpu_hashrate_hs": total_hr_hs if mining_type == "GPU" else 0,
+            "mining_type":     mining_type,
             "accepted_shares": accepted_blocks,
             "rejected_shares": rejected_blocks,
         }],
@@ -2074,7 +2078,7 @@ def _collect_named_miner_api_stats(name, api_host, api_port):
         "total_accepted_shares": accepted_blocks,
         "total_rejected_shares": rejected_blocks,
     }
-def _collect_named_miner_block_log_stats(name, log_path):
+def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
     counts since the last poll, offset-tracked via _read_new_log_bytes -
     same as before, this total still feeds hashrate_hs/total_hashrate_hs.
@@ -2119,6 +2123,9 @@ def _collect_named_miner_block_log_stats(name, log_path):
         "algorithms": [{
             "algorithm":       f"{name}-node",
             "hashrate_hs":     accepted_shares,
+            "cpu_hashrate_hs": accepted_shares if mining_type == "CPU" else 0,
+            "gpu_hashrate_hs": accepted_shares if mining_type == "GPU" else 0,
+            "mining_type":     mining_type,
             "accepted_shares": submit_block_shares,
         }],
         "gpus": [],
@@ -2131,7 +2138,7 @@ _CUSTOM_HASHRATE_RE = re.compile(
 _CUSTOM_ACCEPTED_RE = re.compile(r"accepted[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_REJECTED_RE = re.compile(r"rejected[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12, "p": 1e15}
-def _collect_named_miner_generic_log_stats(name, key, log_path):
+def _collect_named_miner_generic_log_stats(name, key, log_path, mining_type="AUX"):
     """Best-effort telemetry scraped from a custom miner's own log, taking the last matching hashrate/accepted/rejected line in the tail window; tail size configurable via <NAME>_LOG_TAIL_BYTES."""
     tail_bytes = int(os.environ.get(f"{key}_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
@@ -2157,6 +2164,9 @@ def _collect_named_miner_generic_log_stats(name, key, log_path):
         "algorithms": [{
             "algorithm":       "unknown",
             "hashrate_hs":     hashrate_hs,
+            "cpu_hashrate_hs": hashrate_hs if mining_type == "CPU" else 0,
+            "gpu_hashrate_hs": hashrate_hs if mining_type == "GPU" else 0,
+            "mining_type":     mining_type,
             "accepted_shares": accepted_shares,
             "rejected_shares": rejected_shares,
         }],
