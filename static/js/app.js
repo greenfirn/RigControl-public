@@ -10466,6 +10466,13 @@ function populateStatusLogRigSelect() {
         opt.textContent = name;
         sel.appendChild(opt);
     });
+    if (selectedRigs && selectedRigs.size === 1) {
+        const [only] = selectedRigs;
+        if (rigNames.includes(only)) {
+            sel.value = only;
+            return;
+        }
+    }
     if (rigNames.includes(prevValue)) {
         sel.value = prevValue;
     }
