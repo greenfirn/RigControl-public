@@ -1277,7 +1277,13 @@ const DataHelper = {
         "miner_gminer": "GMiner",
         "miner_teamredminer": "TeamRedMiner",
         "miner_trex": "T-Rex",
-        "miner_keryx": "Keryx",
+        // "miner_keryx" deliberately NOT in this table (unlike every other entry here) - the
+        // "keryx" collector key covers TWO distinct binaries (plain keryx-miner and
+        // keryx-miner-supr) that can each be running under it depending on the rig/time, so there's
+        // no single correct static label the way there is for e.g. xmrig. Falling through to the
+        // live minerData.miner value below (which both the Linux and Windows agents resolve to
+        // whichever binary is actually running) is what shows the correct one instead of always
+        // showing a generic "Keryx" regardless of which variant is live.
 		"miner_peakminer": "PeakMiner"
     },
     getMinerDisplayName: (minerKey, minerData) => {

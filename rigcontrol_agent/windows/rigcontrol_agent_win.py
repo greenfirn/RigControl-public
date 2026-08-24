@@ -58,6 +58,18 @@ def load_broker_config():
     return cfg
 # CONFIG - LOCAL MQTT OR AWS
 cfg = load_broker_config()
+# Export every KEY=VALUE parsed from rigcontrol_agent.conf into this process's environment,
+# mirroring what happens on Linux when rigcontrol_agent.sh does `source`/`export` on
+# rigcontrol-agent.conf before launching the telemetry heredoc. Without this, rigcontrol_telemetry.py's
+# os.environ.get("KERYX_MINER_API_HOST", ...) calls (and KERYX_MINER_SUPR_API_HOST/PORT,
+# KERYX_BIN_PATH, CUSTOM_MINER_PROCESS_NAME, etc.) would never see values placed in the conf file -
+# only variables set some other way directly in the Windows environment. This makes conf-file entries
+# the source of truth (same as Linux), overriding any same-named var that happened to already be set
+# in the OS environment. Safe to do unconditionally: telemetry.py only reads env vars lazily at
+# collect-time (inside collect_keryx_stats() etc.), not at import time, so it doesn't matter that
+# `import rigcontrol_telemetry as telemetry` above happens before this line runs.
+for _k, _v in cfg.items():
+    os.environ[_k] = _v
 USE_AWS = "AWS_MQTT_HOST" in cfg
 if USE_AWS:
     BROKER_HOST = cfg["AWS_MQTT_HOST"]

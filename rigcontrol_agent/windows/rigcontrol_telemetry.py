@@ -17,9 +17,32 @@ except ImportError:
 RIG_NAME = socket.gethostname().lower()
 # Set True per-rig to exclude it from dashboard totals/status bar numbers (rig still shows its own card/row)
 EXCLUDE_FROM_TOTALS = False
-# Path to keryx-miner.exe, used only for `--version`; set KERYX_BIN_PATH env var if install location differs
-KERYX_BIN_PATH_DEFAULT = r"C:\miners\keryx-miner\current\keryx-miner.exe"
-KERYX_BIN_PATH = os.environ.get("KERYX_BIN_PATH", KERYX_BIN_PATH_DEFAULT)
+# Default install paths for the two keryx binaries this fleet runs (never both at once on the same
+# rig, but which one is active can change over time on a given rig - e.g. testing keryx-miner-supr
+# vs falling back to plain keryx-miner). Rather than trust one static path that would need manual
+# updating every time the active binary changes, collect_keryx_stats() below detects which one is
+# actually running (via psutil) and picks the matching path/display name automatically.
+# KERYX_MINER_BIN / KERYX_MINER_SUPR_BIN (matching the Linux agent's <NAME>_BIN convention, e.g.
+# rigcontrol-agent.conf's "KERYX_MINER_SUPR_BIN=/opt/miners/custom/keryx-miner-supr/current/
+# keryx-miner-supr") override the two _DEFAULT paths below per-binary when a rig's install location
+# isn't the fleet-standard one - checked inside _detect_keryx_variant(), not here, since which one
+# applies depends on which binary auto-detection finds running. KERYX_BIN_PATH (a single generic
+# override, no per-binary distinction) and CUSTOM_MINER_PROCESS_NAME still work too and take
+# priority over both the per-binary vars and auto-detection when set - useful for a genuinely
+# non-standard setup where even the display name needs to be something other than either binary's
+# real name.
+KERYX_MINER_BIN_DEFAULT      = r"C:\miners\keryx-miner\keryx-miner.exe"
+KERYX_MINER_SUPR_BIN_DEFAULT = r"C:\miners\keryx-miner-supr-windows-nvidia-pom\keryx-miner-supr.exe"
+KERYX_BIN_PATH = os.environ.get("KERYX_BIN_PATH", "").strip()
+# Per-binary API host/port, matching the Linux agent's <NAME>_API_HOST/<NAME>_API_PORT convention
+# (KERYX_MINER_API_HOST/PORT for plain keryx-miner, KERYX_MINER_SUPR_API_HOST/PORT for
+# keryx-miner-supr) so each binary can have its own independent setting instead of assuming they
+# always share one port. Generic KERYX_API_HOST/KERYX_API_PORT (checked second) still works as a
+# fallback for whichever variant doesn't have its own specific override set. Must match whatever
+# --api-bind was actually passed to the running miner - its stats API is disabled unless explicitly
+# bound (see start-log-output-us.bat / start-logs.bat).
+KERYX_API_HOST_DEFAULT = "127.0.0.1"
+KERYX_API_PORT_DEFAULT = "3338"
 # Log file for a custom miner with no stats API, matches start.bat's LOGDIR default (literal C:\Temp, not %TEMP%)
 CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"
 CUSTOM_MINER_LOG_PATH = os.environ.get("CUSTOM_MINER_LOG_PATH", CUSTOM_MINER_LOG_PATH_DEFAULT)
@@ -50,10 +73,15 @@ MINER_PROCESSES = {
     "onezerominer": "onezerominer",
     "wildrig.exe": "wildrig",
     "wildrig": "wildrig",
-    # Must precede "keryx-miner" entries below - first-match-wins substring scan would otherwise
-    # misclassify keryx-miner-supr as plain keryx
-    "keryx-miner-supr.exe": "custom_log",
-    "keryx-miner-supr": "custom_log",
+    # keryx-miner-supr DOES have a JSON stats API (collect_keryx_stats(), same shape as plain
+    # keryx-miner) as long as --api-bind is passed on its own command line - it's disabled unless
+    # explicitly bound, unlike plain keryx-miner. Routed to the same "keryx" collector as plain
+    # keryx-miner rather than "custom_log" (log-scraping) now that this is confirmed. These entries
+    # must still precede "keryx-miner" below - first-match-wins substring scan would otherwise match
+    # "keryx-miner-supr.exe" against the "keryx-miner.exe" entry first (both map to "keryx" now
+    # anyway, but the explicit entries stay in case that ever needs to diverge again).
+    "keryx-miner-supr.exe": "keryx",
+    "keryx-miner-supr": "keryx",
     "keryx-miner.exe": "keryx",
     "keryx-miner": "keryx",
     "keryxd.exe": "keryxd",
@@ -1354,6 +1382,43 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
         return _decode_log_bytes(data)
     except Exception:
         return None
+def _keryx_bin_for(display_name, default_bin):
+    """Resolves a keryx binary's path via <NAME>_BIN (KERYX_MINER_BIN / KERYX_MINER_SUPR_BIN,
+    sanitized the same way as the API host/port prefix - see collect_keryx_stats()), falling back
+    to that variant's hardcoded _DEFAULT constant. Mirrors the Linux agent's _named_miner_bin(),
+    which reads <NAME>_BIN out of rigcontrol-agent.conf the same way - lets a rig whose install
+    path isn't the fleet-standard C:\\miners\\... location override just that one binary's path
+    without needing the single generic KERYX_BIN_PATH (which also overrides display_name/
+    auto-detection entirely - see collect_keryx_stats())."""
+    prefix = re.sub(r"[^A-Za-z0-9]+", "_", display_name).strip("_").upper()
+    return os.environ.get(f"{prefix}_BIN", "").strip() or default_bin
+def _detect_keryx_variant():
+    """Checks the actually-running process list for keryx-miner-supr.exe vs plain keryx-miner.exe
+    (checked in that order - "keryx-miner-supr.exe" contains "keryx-miner" as a substring, so supr
+    must be checked first) and returns ("keryx-miner-supr", <resolved supr bin path>) or
+    ("keryx-miner", <resolved plain bin path>), where the bin path comes from _keryx_bin_for()
+    (KERYX_MINER_SUPR_BIN / KERYX_MINER_BIN env var override, or that variant's _DEFAULT constant).
+    Falls back to the supr variant if neither is actually found running (e.g. this is called right
+    as the miner is restarting) - matches this fleet's more common configuration, and either
+    default is only ever used when KERYX_BIN_PATH isn't set anyway."""
+    try:
+        for proc in psutil.process_iter(['name']):
+            try:
+                proc_name = (proc.info['name'] or "").lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            if "keryx-miner-supr" in proc_name:
+                return "keryx-miner-supr", _keryx_bin_for("keryx-miner-supr", KERYX_MINER_SUPR_BIN_DEFAULT)
+        for proc in psutil.process_iter(['name']):
+            try:
+                proc_name = (proc.info['name'] or "").lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            if "keryx-miner" in proc_name:
+                return "keryx-miner", _keryx_bin_for("keryx-miner", KERYX_MINER_BIN_DEFAULT)
+    except Exception:
+        pass
+    return "keryx-miner-supr", _keryx_bin_for("keryx-miner-supr", KERYX_MINER_SUPR_BIN_DEFAULT)
 # Cached keryx-miner --version output; only re-queried when uptime_s drops (miner restarted)
 _keryx_version_cache = {"version": "", "last_uptime_s": None}
 def _query_keryx_version(bin_path):
@@ -1397,8 +1462,26 @@ def collect_keryx_stats():
     API now, so a failed request here is a real error, not "an older
     build without it."
     """
-    api_host = os.environ.get("KERYX_API_HOST", "127.0.0.1")
-    api_port = int(os.environ.get("KERYX_API_PORT", "3338"))
+    # Resolve which binary is actually running BEFORE the API call, not after - the per-name
+    # API_HOST/API_PORT lookup right below needs display_name to build its env var prefix.
+    # KERYX_BIN_PATH env var wins if explicitly set (e.g. non-standard install location),
+    # otherwise auto-detect from the actually-running process so switching between keryx-miner
+    # and keryx-miner-supr on this rig doesn't require remembering to update a static path.
+    if KERYX_BIN_PATH:
+        display_name, bin_path = CUSTOM_MINER_DISPLAY_NAME, KERYX_BIN_PATH
+    else:
+        display_name, bin_path = _detect_keryx_variant()
+    # Per-binary API host/port, matching the Linux agent's <NAME>_API_HOST/<NAME>_API_PORT
+    # convention exactly (same sanitize rule: non-alphanumerics -> "_", uppercased), e.g.
+    # "keryx-miner" -> KERYX_MINER_API_HOST/PORT, "keryx-miner-supr" -> KERYX_MINER_SUPR_API_HOST/PORT.
+    # Falls back to the generic KERYX_API_HOST/KERYX_API_PORT (which themselves fall back to the
+    # _DEFAULT constants) if the per-name vars aren't set - lets one binary have an explicit override
+    # while the other still uses the shared default. Both rigcontrol_agent.conf (loaded and exported
+    # into this process's environment by rigcontrol_agent_win.py) and a directly-set OS environment
+    # variable work here, since this is just os.environ.get() either way.
+    _name_prefix = re.sub(r"[^A-Za-z0-9]+", "_", display_name).strip("_").upper()
+    api_host = os.environ.get(f"{_name_prefix}_API_HOST", os.environ.get("KERYX_API_HOST", KERYX_API_HOST_DEFAULT))
+    api_port = int(os.environ.get(f"{_name_prefix}_API_PORT", os.environ.get("KERYX_API_PORT", KERYX_API_PORT_DEFAULT)))
     # Try the plain path first, fall back to the versioned one if a future build drops the alias
     data = None
     last_err = None
@@ -1429,13 +1512,15 @@ def collect_keryx_stats():
     accepted_blocks = data.get("accepted_blocks", 0)
     rejected_blocks = data.get("rejected_blocks", 0)
     uptime_s        = data.get("uptime_s", 0)
+    # display_name/bin_path were already resolved above (needed earlier for the per-name
+    # API_HOST/API_PORT lookup) - reused here to query --version against the right binary.
     # Re-check --version only on first poll or after a restart (uptime_s dropped)
     last_uptime = _keryx_version_cache["last_uptime_s"]
     if last_uptime is None or uptime_s < last_uptime:
-        _keryx_version_cache["version"] = _query_keryx_version(KERYX_BIN_PATH)
+        _keryx_version_cache["version"] = _query_keryx_version(bin_path)
     _keryx_version_cache["last_uptime_s"] = uptime_s
     return {
-        "status": "ok", "miner": "keryx",
+        "status": "ok", "miner": display_name,
         "miner_version":  _keryx_version_cache["version"],
         "uptime_s":       uptime_s,
         "synced":         data.get("synced"),
@@ -1517,9 +1602,13 @@ _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e
 def collect_custom_log_miner_stats():
     """
     Best-effort telemetry for a custom miner with no known stats API,
-    scraped from its own log file instead - built for exactly the case
-    keryx-miner-supr turned out to be: no documented HTTP/RPC endpoint
-    at all, just plain stdout. start.bat tees that stdout into
+    scraped from its own log file instead. Originally built for
+    keryx-miner-supr on the assumption it had no documented HTTP/RPC
+    endpoint - that assumption turned out to be wrong (it has one,
+    gated behind an explicit --api-bind flag on its own command line;
+    see collect_keryx_stats()), so keryx-miner-supr no longer routes
+    here by default. Kept as the fallback path for any future custom
+    miner that genuinely has no stats API. start.bat tees that stdout into
     CUSTOM_MINER_LOG_PATH via PowerShell's Tee-Object, same as keryxd's
     log on this fleet - _decode_log_bytes() above already handles that
     encoding.
