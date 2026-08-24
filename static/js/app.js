@@ -10930,6 +10930,7 @@ function openStatusLogModal(autoSelectId) {
     switchViewTab("statuslog");
     loadStatusLogList(autoSelectId);
     lastSyncedStatuslogRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
+    lastObservedStatuslogSelectionRig = lastSyncedStatuslogRig;
 }
 function openStatusLogForRig(rigName) {
     closeCmdModal();
@@ -10940,6 +10941,11 @@ function openStatusLogForRig(rigName) {
         sel.value = rigName;
     }
     lastSyncedStatuslogRig = rigName;
+    // Snapshot the checkbox selection as-is (which may well be a DIFFERENT rig than rigName - that's
+    // the whole point of clicking a specific rig's badge instead of relying on the checkbox) so
+    // syncOpenModulesToSelection() treats this as already-observed and doesn't immediately stomp the
+    // badge click back to whatever's checkbox-selected on its next tick.
+    lastObservedStatuslogSelectionRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
     const statusEl = document.getElementById("statuslog-status");
     if (statusEl) statusEl.textContent = "";
     loadStatusLogList();
@@ -11582,6 +11588,16 @@ async function fetchStatusLogCounts() {
 }
 let lastSyncedStatsRig = null;
 let lastSyncedStatuslogRig = null;
+// Tracks the checkbox-selected rig we've already reacted to, separately from
+// lastSyncedStatuslogRig (which tracks what rig the status log is currently showing). These used to
+// be the same variable, which broke openStatusLogForRig()'s circle-badge click: clicking a badge for
+// rig B while some other rig A was checkbox-selected set lastSyncedStatuslogRig to B, so the very
+// next syncOpenModulesToSelection() tick saw "checkbox-selected rig A !== lastSyncedStatuslogRig B"
+// and treated that as a fresh selection change, auto-syncing the dropdown right back to A - silently
+// overriding the badge click. Keeping a separate baseline that only openStatusLogForRig()/
+// openStatusLogModal() are allowed to move lets this function tell "the checkbox selection itself
+// changed" apart from "the displayed rig changed for some other reason".
+let lastObservedStatuslogSelectionRig = null;
 let lastSyncedWdConfigRig = null;
 function syncOpenModulesToSelection() {
     const count = selectedRigs.size;
@@ -11631,12 +11647,19 @@ function syncOpenModulesToSelection() {
     const statuslogModal = document.getElementById("statuslog-modal");
     if (statuslogModal && !statuslogModal.classList.contains("hidden") && count === 1) {
         const [onlyLog] = selectedRigs;
-        if (onlyLog !== lastSyncedStatuslogRig) {
-            lastSyncedStatuslogRig = onlyLog;
-            const sel = document.getElementById("statuslog-rig-select");
-            if (sel && Array.from(sel.options).some(opt => opt.value === onlyLog)) {
-                sel.value = onlyLog;
-                loadStatusLogList();
+        // Only auto-sync when the checkbox selection has itself actually changed since we last
+        // looked - NOT just whenever it happens to differ from whatever rig is currently displayed
+        // (lastSyncedStatuslogRig), which would also be true right after a circle-badge click on a
+        // different rig and would incorrectly stomp it back to the checkbox selection.
+        if (onlyLog !== lastObservedStatuslogSelectionRig) {
+            lastObservedStatuslogSelectionRig = onlyLog;
+            if (onlyLog !== lastSyncedStatuslogRig) {
+                lastSyncedStatuslogRig = onlyLog;
+                const sel = document.getElementById("statuslog-rig-select");
+                if (sel && Array.from(sel.options).some(opt => opt.value === onlyLog)) {
+                    sel.value = onlyLog;
+                    loadStatusLogList();
+                }
             }
         }
     }
