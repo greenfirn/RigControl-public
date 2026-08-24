@@ -3098,6 +3098,7 @@ function initAfterConfig() {
         return;
     }
     wsInitialized = true;
+    fetchStatusLogCounts();
     setTimeout(function() {
         initWebSocket();
     }, 500);
@@ -3287,6 +3288,11 @@ function initWebSocket() {
                 }
                 if (msg.status_log_event) {
                     showStatusLogLink(msg.status_log_event);
+                    const evtRig = msg.status_log_event?.rig;
+                    if (evtRig) {
+                        statusLogCounts[evtRig] = (statusLogCounts[evtRig] || 0) + 1;
+                        queueRender();
+                    }
                     if (!document.getElementById("statuslog-modal")?.classList.contains("hidden")) {
                         loadStatusLogList();
                     }
@@ -4003,7 +4009,21 @@ function render() {
         if (boardPartner.includes("NVIDIA") && boardPartner.includes("(")) {
             boardPartner = boardPartner.split("(")[1]?.replace(")", "") || "";
         }
-        nameEl.textContent = rigName + (boardPartner ? " " + boardPartner : "");
+        const rigStatusLogCount = statusLogCounts[rigName] || 0;
+        if (rigStatusLogCount > 0) {
+            const statusLogBadge = document.createElement("span");
+            statusLogBadge.className = "rig-status-log-badge";
+            statusLogBadge.textContent = rigStatusLogCount > 99 ? "99+" : String(rigStatusLogCount);
+            statusLogBadge.title = `${rigStatusLogCount} status log ${rigStatusLogCount === 1 ? "entry" : "entries"} - click to view`;
+            statusLogBadge.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                openStatusLogForRig(rigName);
+            });
+            nameEl.appendChild(statusLogBadge);
+        }
+        const nameTextEl = document.createElement("span");
+        nameTextEl.textContent = rigName + (boardPartner ? " " + boardPartner : "");
+        nameEl.appendChild(nameTextEl);
         nameEl.dataset.rigName = rigName;
         nameEl.classList.toggle("rig-name-watchdog-active", watchdogActive && !watchdogStandingDown);
         nameEl.classList.toggle("rig-name-watchdog-standby", watchdogStandingDown);
@@ -10908,6 +10928,19 @@ function openStatusLogModal(autoSelectId) {
     loadStatusLogList(autoSelectId);
     lastSyncedStatuslogRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
 }
+function openStatusLogForRig(rigName) {
+    closeCmdModal();
+    populateStatusLogRigSelect();
+    switchViewTab("statuslog");
+    const sel = document.getElementById("statuslog-rig-select");
+    if (sel && Array.from(sel.options).some(opt => opt.value === rigName)) {
+        sel.value = rigName;
+    }
+    lastSyncedStatuslogRig = rigName;
+    const statusEl = document.getElementById("statuslog-status");
+    if (statusEl) statusEl.textContent = "";
+    loadStatusLogList();
+}
 async function loadStatusLogList(autoSelectId) {
     const list = document.getElementById("statuslog-list");
     const statusEl = document.getElementById("statuslog-status");
@@ -11015,6 +11048,7 @@ async function deleteStatusLogEntriesByIds(ids, statusEl) {
         const details = document.getElementById("statuslog-details");
         if (details) details.value = "";
         await loadStatusLogList();
+        fetchStatusLogCounts();
     } catch (e) {
         console.error("Error deleting status log entries:", e);
         if (statusEl) statusEl.textContent = "Failed to delete";
@@ -11507,6 +11541,17 @@ function resetModalCollapseState(modalId, buttonId) {
     modal?.classList.remove("row-collapsed");
     btn?.classList.remove("active");
     if (btn) btn.textContent = "Collapse";
+}
+let statusLogCounts = {};
+async function fetchStatusLogCounts() {
+    try {
+        const res = await fetch(`${API}/api/status-log-counts`);
+        if (!res.ok) return;
+        statusLogCounts = await res.json();
+        queueRender();
+    } catch (e) {
+        console.error("Error fetching status log counts:", e);
+    }
 }
 let lastSyncedStatsRig = null;
 let lastSyncedStatuslogRig = null;

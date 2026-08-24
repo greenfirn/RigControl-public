@@ -1262,6 +1262,15 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] List error: {e}")
             return []
+    def count_by_rig(self):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT rig, COUNT(*) as cnt FROM status_log_events GROUP BY rig')
+            return {row["rig"]: row["cnt"] for row in cursor.fetchall()}
+        except Exception as e:
+            log(f"[StatusLogDB] Count error: {e}")
+            return {}
     def get_event(self, event_id):
         try:
             conn = self._get_connection()
@@ -3045,6 +3054,13 @@ def get_status_log(rig: Optional[str] = None, limit: int = 200, title_q: Optiona
     except Exception as e:
         log(f"[STATUSLOG GET ERROR] Exception: {e}")
         return []
+@router.get("/api/status-log-counts")
+def get_status_log_counts():
+    try:
+        return local_status_log_db.count_by_rig()
+    except Exception as e:
+        log(f"[STATUSLOG COUNTS ERROR] Exception: {e}")
+        return {}
 @router.get("/api/status-log/{event_id}")
 def get_status_log_entry(event_id: int):
     try:
