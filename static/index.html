@@ -208,11 +208,14 @@
             </div>
             <div class="cmd-body">
                 <div class="wdconfig-main-tabs" id="wdconfig-main-tabs">
-                    <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
-                    <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
+                    <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
+                    <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
                 </div>
-                <div class="wdconfig-main-tab-panel" data-tab-panel="mining">
+                <div class="wdconfig-main-tab-panel hidden" data-tab-panel="mining">
                 <div class="fs-editor-panel">
+                    <div class="wdconfig-mining-pause-note" title="Checked once per Mining Watchdog cycle, independently of the Log Watcher loop.">
+                        Mining checks pause automatically (fail counters reset, nothing flagged) whenever no CPU/GPU/AUX docker_events service is active, or whenever a Docker container is currently running - checks resume on their own once a slot goes back to active with no container running.
+                    </div>
                     <div class="wdconfig-settings-panel" id="wdconfig-settings-panel">
                         <div class="wdconfig-upper-panel">
                         <div class="settings-section">
@@ -306,7 +309,7 @@
                     </div>
                 </div>
                 </div>
-                <div class="wdconfig-main-tab-panel hidden" data-tab-panel="logs">
+                <div class="wdconfig-main-tab-panel" data-tab-panel="logs">
                     <div class="wdconfig-logwatcher-panel" id="wdconfig-logwatcher-panel">
                         <div class="settings-section">
                             <div class="section-header">Watch Terms</div>
