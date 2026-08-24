@@ -6733,8 +6733,15 @@ function collectFsFieldValues() {
 }
 function buildRigGpuItemObject(values, stash) {
     const isCustom = !!values.CUSTOM_MINER && values.CUSTOM_MINER !== "0";
+    // The Miner Configuration modal's own POOL field (fs-mc-pool-token) is a literal override -
+    // it applies the same way for custom and non-custom miners alike, since for custom miners
+    // it's the only POOL-labeled field visible while that modal is open.
+    const poolUrlOverrideRaw = (stash.fsPoolUrlToken || "").trim();
+    const hasLiteralPoolOverride = poolUrlOverrideRaw !== "" && poolUrlOverrideRaw !== "%URL%";
     let poolUrls;
-    if (stash.fsPoolUrlsExplicitlySet) {
+    if (hasLiteralPoolOverride) {
+        poolUrls = [poolUrlOverrideRaw];
+    } else if (stash.fsPoolUrlsExplicitlySet) {
         poolUrls = [stash.fsPrimaryPoolUrl, ...stash.fsExtraPoolUrls];
     } else if (stash.fsExtraPoolUrls.length > 0) {
         poolUrls = [stash.fsPrimaryPoolUrl, ...stash.fsExtraPoolUrls];
@@ -6755,23 +6762,13 @@ function buildRigGpuItemObject(values, stash) {
         poolUrl = poolUrl.slice("stratum+tcp://".length);
     }
     if (poolUrls.length > 0) poolUrls[0] = poolUrl;
-    const poolUrlOverrideRaw = (stash.fsPoolUrlToken || "").trim();
-    const hasLiteralPoolOverride = !isCustom && poolUrlOverrideRaw !== "" && poolUrlOverrideRaw !== "%URL%";
     let resolvedMinerUrl;
-    if (isCustom) {
+    if (isCustom || hasLiteralPoolOverride) {
+        // Custom miners resolve %URL% themselves inside user_config (via pool_urls on the rig
+        // side), so miner_config.url just mirrors the actual resolved pool address here. A
+        // literal pool override does the same for non-custom miners - it skips the
+        // backup/failover pool list entirely and uses the real address directly.
         resolvedMinerUrl = poolUrl;
-    } else if (hasLiteralPoolOverride) {
-        // A literal pool override skips the backup/failover pool list entirely.
-        let overrideUrl = poolUrlOverrideRaw;
-        if (overrideUrl.startsWith("stratum+ssl://")) {
-            poolSsl = true;
-            overrideUrl = overrideUrl.slice("stratum+ssl://".length);
-        } else if (overrideUrl.startsWith("stratum+tcp://")) {
-            poolSsl = false;
-            overrideUrl = overrideUrl.slice("stratum+tcp://".length);
-        }
-        poolUrls = [overrideUrl];
-        resolvedMinerUrl = overrideUrl;
     } else {
         // Default token, resolved at deploy time from the full pool_urls list.
         resolvedMinerUrl = "%URL%";

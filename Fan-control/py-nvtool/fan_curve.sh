@@ -3,31 +3,7 @@
 sudo tee /usr/local/bin/fan_curve.py > /dev/null << 'EOF'
 #!/usr/bin/env python3
 """
-fan_curve.py — NVML-based fan curve daemon.
-
-Replaces the old nvidia-settings / Xorg / Coolbits / passthrough-detection
-stack with direct NVML calls (via nvtool.py). No X server, no Coolbits,
-no clock-bounce fallback needed — manual fan control works the same
-whether the GPU is idle or fully loaded with compute.
-
-Usage:
-    sudo python3 fan_curve.py                      # all GPUs, default curve
-    sudo python3 fan_curve.py --index 0             # GPU 0 only
-    sudo python3 fan_curve.py --interval 2 --hysteresis 3
-    sudo python3 fan_curve.py --curve "30:30,50:40,65:55,75:75,83:100"
-
-On exit (Ctrl+C or SIGTERM/systemd stop), all controlled fans are reset
-to automatic (driver/firmware) control before the process exits.
-
-Watchdog:
-    If run under systemd with Type=notify and WatchdogSec= set, this
-    script pings systemd once per successful tick (i.e. once every full
-    pass over all controlled GPUs). If an NVML call hangs (rather than
-    raising an error — the known failure mode with GSP firmware issues
-    like Xid 109/119/154) the ping stops, systemd's watchdog fires, and
-    the unit is killed + restarted by Restart=always. Without a running
-    NOTIFY_SOCKET (e.g. run by hand from a shell) this is a harmless
-    no-op.
+fan_curve.py — NVML-based fan curve daemon. Resets fans to automatic control on exit.
 """
 
 import argparse
