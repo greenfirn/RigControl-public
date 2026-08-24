@@ -27,6 +27,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 #KERYX_MINER_BIN=/opt/miners/keryx-miner/current/keryx-miner
 KERYX_MINER_API_HOST=127.0.0.1
 KERYX_MINER_API_PORT=3338
+#KERYX_MINER_SUPR_BIN=/opt/miners/custom/keryx-miner-supr/current/keryx-miner-supr
 KERYX_MINER_SUPR_API_HOST=127.0.0.1
 KERYX_MINER_SUPR_API_PORT=3338
 #KERYXD_BIN=/opt/miners/keryx-node/keryxd

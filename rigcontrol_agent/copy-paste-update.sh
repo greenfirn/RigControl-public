@@ -14,6 +14,20 @@ STATS_DB_MAX_HISTORY_DAYS=7
 STATS_DB_INTERVAL_SECONDS=90
 # Minimum seconds between telemetry pulls, prevents overlapping collection calls
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
+# Per-custom-miner overrides, keyed by the miner's own name (from CUSTOM_MINER
+# in rig-gpu/cpu/aux.conf or .json, sanitized to A-Z0-9_) - <NAME>_BIN for the
+# binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API,
+# or <NAME>_LOG_PATH for log scraping (<NAME>_LOG_STYLE=blocks for
+# keryxd-style "Accepted N blocks" counting instead of generic hashrate scraping)
+#KERYX_MINER_BIN=/opt/miners/keryx-miner/current/keryx-miner
+KERYX_MINER_API_HOST=127.0.0.1
+KERYX_MINER_API_PORT=3338
+#KERYX_MINER_SUPR_BIN=/opt/miners/custom/keryx-miner-supr/current/keryx-miner-supr
+KERYX_MINER_SUPR_API_HOST=127.0.0.1
+KERYX_MINER_SUPR_API_PORT=3338
+#KERYXD_BIN=/opt/miners/keryx-node/keryxd
+#KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
+#KERYXD_LOG_STYLE=blocks
 EOF
 sudo systemctl restart rigcontrol-agent.service
 sudo tee /usr/local/bin/rigcontrol_telemetry.py > /dev/null <<'EOF'
@@ -1741,13 +1755,13 @@ def _sanitize_miner_key(name):
     """Converts a miner name into a valid rigcontrol-agent.conf variable prefix, e.g. "keryx-miner" -> "KERYX_MINER"."""
     return re.sub(r"[^A-Za-z0-9]+", "_", (name or "").strip()).strip("_").upper()
 def _named_miner_bin(name):
-    """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back to CUSTOM_MINER_BASE_DIR/<name>/current/<name>."""
+    """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back to CUSTOM_MINER_BASE_DIR/custom/<name>/current/<name> - matches 01-miner_install.sh's install_custom_miner(), which always installs under a "custom/" subdirectory (miner_dir="$BASE_DIR/custom/$bin_name/current"). This fallback previously omitted "custom/", so it silently pointed at a different, never-installed/never-updated path instead of the real binary - version queries against a custom miner with no <NAME>_BIN override would keep reporting whatever (if anything) happened to already exist at that wrong location."""
     if not name:
         return ""
     bin_path = os.environ.get(f"{_sanitize_miner_key(name)}_BIN", "").strip()
     if bin_path:
         return bin_path
-    return f"{CUSTOM_MINER_BASE_DIR}/{name}/current/{name}"
+    return f"{CUSTOM_MINER_BASE_DIR}/custom/{name}/current/{name}"
 _named_miner_version_cache = {}
 def _named_miner_version(name, force=False):
     """Caches and returns `<name> --version`'s first line, re-querying only when forced (e.g. on a detected restart)."""
