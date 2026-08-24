@@ -1,10 +1,7 @@
-# stop old services
 sudo systemctl stop docker_events_gpu.service
 sudo systemctl stop docker_events_cpu.service
-# disable so it doesnt run on boot
 sudo systemctl disable docker_events_gpu.service
 sudo systemctl disable docker_events_cpu.service
-# -- write docker_events_gpu script --
 sudo mkdir -v /usr/local/bin
 sudo tee /usr/local/bin/docker_events_gpu.sh > /dev/null <<'EOF'
 #!/bin/bash
@@ -30,12 +27,10 @@ if [[ -z "$START_CMD" ]]; then
     echo "$(date): START_CMD empty — refusing to start miner"
     exit 1
 fi
-# GLOBAL VARIABLES FOR SIGNAL HANDLING
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
-# SIGNAL HANDLER
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -279,7 +274,6 @@ if [[ "$DIAGNOSTIC" == "true" ]]; then
     DIAG_HEARTBEAT_PID=$!
     echo "$(date): [DIAG] Diagnostic state tracker enabled (PID: $DIAG_HEARTBEAT_PID)"
 fi
-# INITIAL CHECK
 if check_target_container; then
     echo "$(date): Target container (${TARGET_IMAGE} name ${TARGET_NAME}) detected at startup"
     start_miner || true
@@ -287,7 +281,6 @@ else
     echo "$(date): Target container (${TARGET_IMAGE} name ${TARGET_NAME}) not found at startup"
     stop_miner || true
 fi
-# DOCKER EVENT LOOP WITH RETRY AND SIGNAL HANDLING
 echo "$(date): Starting Docker event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Docker events stream..."
@@ -302,7 +295,6 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
             continue
         fi
         echo "$(date): Container event detected - Action: $action, Name: $name, Image: $image"
-        # NAME MATCHING — Exact, or Starts-With + DIGIT SUFFIX
         name_match=0
         if [[ "$name" == "$TARGET_NAME" ]]; then
             name_match=1
@@ -421,12 +413,8 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable docker_events_gpu.service
-# Start/Stop Service
 sudo systemctl start docker_events_gpu.service
 sudo systemctl stop docker_events_gpu.service
-# check status
 sudo systemctl status docker_events_gpu.service
-# follow logs
 sudo journalctl -u docker_events_gpu.service -f
-# disable so it doesnt start on boot
 sudo systemctl disable docker_events_gpu.service

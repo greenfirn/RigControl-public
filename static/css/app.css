@@ -5619,7 +5619,6 @@ h1 {
     background: var(--text-accent);
     opacity: 0.35;
 }
-/* ===== Backups Tab ===== */
 #backups-modal .cmd-dialog {
     width: 80%;
     max-width: 95vw;
@@ -5979,7 +5978,6 @@ body.layout-left .rig-header {
     border-bottom-color: var(--text-accent);
     font-weight: 600;
 }
-/* Main-page GPU/CPU/AUX tabs (replaces the old Service dropdown) */
 .fs-service-tabs {
     flex: 0 0 auto;
     display: flex;
@@ -6003,7 +6001,6 @@ body.layout-left .rig-header {
     border-bottom-color: var(--text-accent);
     font-weight: 600;
 }
-/* Tabs turn green when that service's RESTART checkbox is checked */
 .fs-service-tab.restart-on,
 .fs-miner-config-tab.restart-on {
     color: var(--text-success);

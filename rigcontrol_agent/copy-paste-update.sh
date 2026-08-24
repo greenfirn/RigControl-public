@@ -17,7 +17,6 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 EOF
 sudo systemctl restart rigcontrol-agent.service
 sudo tee /usr/local/bin/rigcontrol_telemetry.py > /dev/null <<'EOF'
-# ========== TELEMETRY ===================================
 import os
 import subprocess
 import datetime
@@ -2204,7 +2203,6 @@ rc_miner_api_fetch() {
         echo "$body"
     fi
 }
-# Read entire command from STDIN (multi-line safe)
 RAW_CMD="$(cat)"
 if [[ -z "$RAW_CMD" ]]; then
     echo "No command received"
@@ -2213,12 +2211,10 @@ fi
 echo "==================================================" >> "$LOG"
 echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
 echo "$RAW_CMD" >> "$LOG"
-# Parse first line for structured commands
 FIRST_LINE="$(echo "$RAW_CMD" | head -n1)"
 CMD="$(echo "$FIRST_LINE" | awk '{print $1}')"
 ARG="$(echo "$FIRST_LINE" | cut -d' ' -f2-)"
 case "$CMD" in
-    # GPU Miner Controls
     gpu.start)
         systemctl start "$GPU_SERVICE"
         echo "Started $GPU_SERVICE"
@@ -2231,7 +2227,6 @@ case "$CMD" in
         systemctl restart "$GPU_SERVICE"
         echo "Restarted $GPU_SERVICE"
         ;;
-    # CPU Miner Controls
     cpu.start)
         systemctl start "$CPU_SERVICE"
         echo "Started $CPU_SERVICE"
@@ -2244,7 +2239,6 @@ case "$CMD" in
         systemctl restart "$CPU_SERVICE"
         echo "Restarted $CPU_SERVICE"
         ;;
-    # AUX Service Controls
     aux.start)
         systemctl start "$AUX_SERVICE"
         echo "Started $AUX_SERVICE"
@@ -2257,7 +2251,6 @@ case "$CMD" in
         systemctl restart "$AUX_SERVICE"
         echo "Restarted $AUX_SERVICE"
         ;;
-    # Watchdog Controls (single unified service - see WATCHDOG_SERVICE)
     watchdog.start)
         systemctl enable "$WATCHDOG_SERVICE"
         systemctl start "$WATCHDOG_SERVICE"
@@ -2272,7 +2265,6 @@ case "$CMD" in
         systemctl restart "$WATCHDOG_SERVICE"
         echo "Restarted $WATCHDOG_SERVICE"
         ;;
-    # MINER API CALL (Workers tab -> Logs -> CPU/GPU/AUX API)
     cpu.api)
         rc_miner_api_fetch CPU
         ;;
@@ -2282,7 +2274,6 @@ case "$CMD" in
     aux.api)
         rc_miner_api_fetch AUX
         ;;
-    # MODE SWITCHING
     mode.set)
         MODE="$(echo "$ARG" | tr '[:lower:]' '[:upper:]')"
         systemctl stop "$CPU_SERVICE" "$GPU_SERVICE"
@@ -2300,12 +2291,10 @@ case "$CMD" in
             exit 1
         fi
         ;;
-    # SYSTEM REBOOT
     reboot)
         echo "Rebooting system..."
         systemctl reboot
         ;;
-    # RAW MULTI-LINE SHELL COMMAND (DEFAULT)
     *)
         echo "[RAW EXECUTION]"
         bash -c "$RAW_CMD"
@@ -2325,7 +2314,6 @@ import urllib.request
 import os
 import datetime
 from aiomqtt import Client, MqttError
-# GLOBAL SETTINGS
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 1883
 BROKER_USER = None
@@ -2337,10 +2325,8 @@ STATS_DB_ENABLED = True
 STATS_DB_MAX_HISTORY_DAYS = 7
 STATS_DB_INTERVAL_SECONDS = 90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
-# LOGGING
 def log(msg):
     print(f"[RigControl] {msg}", flush=True)
-# CONFIG - load
 def load_broker_config():
     path = "/etc/rigcontrol/rigcontrol-agent.conf"
     cfg = {}
@@ -2361,7 +2347,6 @@ def load_broker_config():
     except Exception as e:
         log(f"Config load error: {e}")
     return cfg
-# CONFIG - LOCAL MQTT OR AWS
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
 if USE_AWS:
@@ -2386,7 +2371,6 @@ telemetry.OVERRIDE_LIST = [
 ]
 if telemetry.OVERRIDE_LIST:
     log(f"[Config] OVERRIDE_LIST = {telemetry.OVERRIDE_LIST}")
-# CONFIG - CUSTOM MINER (unknown-API log-scraper) DETECTION
 def _read_conf_key(path, *keys, gpu_id="0"):
     """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY "value" variant, stored under an ALL fallback), returning the first key in priority order with a resolved value."""
     if not os.path.isfile(path):
@@ -2512,7 +2496,6 @@ def resolve_custom_miner():
             os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_custom_miner_slot}_miner.log"
             log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_custom_miner_slot} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
 resolve_custom_miner()
-# CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
     STATS_DB_MAX_HISTORY_DAYS = int(cfg.get("STATS_DB_MAX_HISTORY_DAYS", STATS_DB_MAX_HISTORY_DAYS))
@@ -2534,7 +2517,6 @@ log(f"[Config] Local stats DB enabled = {STATS_DB_ENABLED}")
 log(f"[Config] Local stats DB max history days = {STATS_DB_MAX_HISTORY_DAYS}")
 log(f"[Config] Local stats DB periodic save interval = {STATS_DB_INTERVAL_SECONDS}s")
 log(f"[Config] Minimum telemetry pull interval = {MIN_TELEMETRY_PULL_INTERVAL_SECONDS}s")
-# CONFIG - SERVICE NAMES
 CPU_SERVICE_NAME = cfg.get("CPU_SERVICE_NAME", "").strip() or "docker_events_cpu.service"
 GPU_SERVICE_NAME = cfg.get("GPU_SERVICE_NAME", "").strip() or "docker_events_gpu.service"
 WATCHDOG_SERVICE_NAME = cfg.get("WATCHDOG_SERVICE_NAME", "").strip() or "rigcontrol_watchdog.service"
@@ -2547,7 +2529,6 @@ telemetry.CPU_SERVICE_NAME = CPU_SERVICE_NAME
 telemetry.GPU_SERVICE_NAME = GPU_SERVICE_NAME
 telemetry.WATCHDOG_SERVICE_NAME = WATCHDOG_SERVICE_NAME
 telemetry.AUX_SERVICE_NAME = AUX_SERVICE_NAME
-# TOPICS
 TOPIC_PREFIX = "rigcontrol"
 RIG_NAME = socket.gethostname()
 STATUS_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/status"
@@ -2561,7 +2542,6 @@ STATS_REQUEST_TOPIC_DIRECT = f"{TOPIC_PREFIX}/{RIG_NAME}/stats_request"
 STATS_REQUEST_TOPIC_ALL = f"{TOPIC_PREFIX}/all/stats_request"
 STATS_RESPONSE_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/stats_response"
 RESP_TOPIC   = f"{TOPIC_PREFIX}/{RIG_NAME}/cmd_response"
-# RUN SHELL HELPERS (unchanged)
 def run(cmd):
     proc = subprocess.run(cmd, shell=True, text=True,
                           stdout=subprocess.PIPE,
@@ -2711,7 +2691,6 @@ def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None)
                 f.writelines(lines)
     except Exception as e:
         log(f"[StatsDB] Error persisting stats config to conf: {e}")
-# RESILIENT PUBLISH HELPER
 async def mqtt_publish_resilient(mqtt, topic, payload_str, context):
     """Wraps mqtt.publish() with one retry on a transient disconnect, logging which request failed and waiting briefly for the client's automatic reconnect before retrying."""
     try:
@@ -2727,7 +2706,6 @@ async def mqtt_publish_resilient(mqtt, topic, payload_str, context):
         except Exception as e2:
             log(f"[MQTT] Retry failed for {context}: {e2} - giving up, response lost")
             return False
-# ASYNC PUBLISH
 async def publish_status(mqtt, reason="periodic", visible_groups=None):
     global _last_telemetry_pull_ts, _telemetry_pull_in_progress
     if _telemetry_pull_in_progress:
@@ -2763,7 +2741,6 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         log(f"Telemetry sent ({reason})")
     finally:
         _telemetry_pull_in_progress = False
-# ASYNC COMMAND HANDLER (EXTERNAL SCRIPT)
 async def handle_command(raw, mqtt):
     log(f"Command received RAW: {raw}")
     try:
@@ -2828,7 +2805,6 @@ async def handle_command(raw, mqtt):
         await publish_status(mqtt, "cmd-run")
     except Exception as e:
         log(f"Command execution error: {e}")
-# ASYNC STATS CONTROL HANDLER
 async def handle_stats_control(raw, mqtt):
     log(f"Stats control message received: {raw}")
     try:
@@ -2846,7 +2822,6 @@ async def handle_stats_control(raw, mqtt):
         data.get("interval_seconds"),
     )
     await publish_status(mqtt, "stats-control")
-# ASYNC STATS HISTORY REQUEST HANDLER
 async def handle_stats_request(raw, mqtt):
     log(f"Stats history request received: {raw}")
     try:
@@ -2926,7 +2901,6 @@ async def handle_stats_request(raw, mqtt):
         log(f"Stats history sent: {total_entries} entries covering {days} day(s) from {start_date} ({req_id}) in {chunk_count} chunk(s)")
     else:
         log(f"Stats history sent: {total_entries} entries covering last {days} day(s) ({req_id}) in {chunk_count} chunk(s)")
-# Publish check
 async def publish_check(mqtt, want_docker: bool = False):
     docker_containers = None
     if want_docker:
@@ -2946,7 +2920,6 @@ async def publish_check(mqtt, want_docker: bool = False):
         log(f"Offline ping check received - replied online ({len(docker_containers)} docker container(s), no other telemetry collected)")
     else:
         log("Offline ping check received - replied online (no telemetry collected)")
-# STATS DB PERIODIC SAVE LOOP
 async def stats_db_periodic_loop():
     """Background loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS) independent of refresh/cmd-triggered publishes, skipping a cycle if a more recent row already exists."""
     CHECK_EVERY = 5
@@ -2972,7 +2945,6 @@ async def stats_db_periodic_loop():
             log(f"[StatsDB] Periodic save ({STATS_DB_INTERVAL_SECONDS}s interval)")
         except Exception as e:
             log(f"[StatsDB] Periodic collection error: {e}")
-# MQTT LOOP (LOCAL BROKER, AUTH OPTIONAL)
 async def mqtt_loop():
     while True:
         try:
@@ -3033,7 +3005,6 @@ async def mqtt_loop():
         except MqttError as e:
             log(f"MQTT error: {e} — retrying in 3s")
             await asyncio.sleep(3)
-# MAIN
 async def main():
     await asyncio.gather(
         mqtt_loop(),

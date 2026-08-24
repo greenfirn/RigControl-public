@@ -324,7 +324,7 @@ start_miner() {
         else
             echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
         fi
-        if [[ "${START_CMD,,}" == *keryx* ]]; then
+        if [[ "${START_CMD,,}" == *"keryx-miner "* ]]; then
             LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
             SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
             rm -f "$LOG_FILE" "$SCRAP_LOG"
@@ -336,7 +336,7 @@ start_miner() {
                  echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
                  trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
                  ( while true; do \
-                     sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2} UTC \[[A-Z]+\].*?(?=  |[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2} UTC \[[A-Z]+\]|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
+                     sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\s+[A-Z]+\s+[^\]]*\].*?(?=\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
                      sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
                      if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
                          tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \

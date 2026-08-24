@@ -218,7 +218,6 @@ def log(msg: str) -> None:
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now))
     ms = int((now % 1) * 1000)
     print(f"[{ts}.{ms:03d} UTC] [RigControl] {msg}", flush=True)
-# SHARED THREAD-LOCAL SQLITE CONNECTION REGISTRY
 class _ThreadLocalSQLiteConnections:
     def __init__(self, db_path, ensure_schema_fn, label=None):
         self.db_path = db_path
@@ -1117,7 +1116,6 @@ class NotificationService:
                 log("Secondary SMS enabled but no phone number configured")
         return results
 notification_service = NotificationService()
-# NOTIFICATION WORKER POOL
 NOTIFICATION_WORKER_COUNT = 3
 _notification_queue: "queue.Queue" = queue.Queue()
 _notification_worker_threads: List[threading.Thread] = []

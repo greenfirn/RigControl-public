@@ -1,5 +1,4 @@
 sudo tee /usr/local/bin/rigcontrol_telemetry.py > /dev/null <<'EOF'
-# ========== TELEMETRY (Raspberry Pi Version) ===========
 import os
 import subprocess
 import datetime
@@ -26,14 +25,12 @@ def has_nvidia_gpu():
     """Check if NVIDIA GPU is present - always false for Pi"""
     return False
 def collect_system_uptime():
-    """Get overall system uptime in seconds (from /proc/uptime)"""
     try:
         with open("/proc/uptime", "r") as f:
             return int(float(f.read().split()[0]))
     except:
         return 0
 def collect_cpu_temp():
-    """Get Raspberry Pi CPU temperature"""
     try:
         with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
             temp = int(f.read().strip())
@@ -73,7 +70,6 @@ def collect_memory():
         "percent": round((used / total * 100), 1) if total else 0.0
     }
 def collect_docker_containers():
-    """Collect Docker container information"""
     containers = []
     rc, out, err = run(
         'docker ps --filter "status=running" --filter "status=paused" '

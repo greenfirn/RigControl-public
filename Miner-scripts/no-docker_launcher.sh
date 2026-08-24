@@ -7,7 +7,6 @@ SHUTDOWN_REQUESTED=0
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=10}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
-# SIGNAL HANDLER
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -44,7 +43,6 @@ fi
     echo "Missing miner.conf: $MINER_CONF"
     exit 1
 }
-# Source libraries
 for f in \
     "$SCRIPT_DIR/lib/00-get_rig_conf.sh" \
     "$SCRIPT_DIR/lib/01-miner_install.sh" \
@@ -106,7 +104,6 @@ fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
 echo "[api]   API_HOST=$API_HOST"
 echo "[api]   API_PORT=$API_PORT"
-# MINER-SPECIFIC API COMMAND GENERATION
 add_api_flags() {
     local miner_name="$1"
     local api_host="$2"
@@ -160,7 +157,6 @@ add_api_flags() {
             ;;
     esac
 }
-# FINAL PLACEHOLDER SUBSTITUTION
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
@@ -183,7 +179,6 @@ case "$OC_FILE" in
     *rig-cpu*) SERVICE_TYPE="cpu" ;;
     *rig-aux*) SERVICE_TYPE="aux" ;;
 esac
-# API HEALTH CHECK FUNCTION
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
         return 0
@@ -210,7 +205,6 @@ kill_by_pid() {
         rm -f "$pid_file"
     fi
 }
-# MINER CONTROL FUNCTIONS
 start_miner() {
     if screen -list | grep -q "$SERVICE_TYPE"; then
         echo "$(date): Screen session exists for $SERVICE_TYPE - checking if miner is alive..."
@@ -253,7 +247,7 @@ start_miner() {
         echo "$(date): Running in no-API mode (no known API integration for this miner - health checks disabled; use CUSTOM_MINER_PROCESS_NAME / CUSTOM_MINER_LOG_PATH telemetry log-scraping instead if needed)"
     fi
     mkdir -p /run/rigcontrol
-    if [[ "${START_CMD,,}" == *keryx* ]]; then
+    if [[ "${START_CMD,,}" == *"keryx-miner "* ]]; then
         LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
         SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
         rm -f "$LOG_FILE" "$SCRAP_LOG"
@@ -265,7 +259,7 @@ start_miner() {
              echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
              trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
              ( while true; do \
-                 sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2} UTC \[[A-Z]+\].*?(?=  |[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2} UTC \[[A-Z]+\]|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
+                 sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\s+[A-Z]+\s+[^\]]*\].*?(?=\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
                  sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
                  if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
                      tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \
@@ -365,7 +359,6 @@ stop_miner() {
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# START MINER
 echo "$(date): Starting miner (no container checks)..."
 start_miner
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
@@ -376,7 +369,6 @@ stop_miner
 echo "$(date): Miner launcher stopped gracefully"
 EOF
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write GPU service --
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
 Description=GPU Miner Launcher
@@ -399,7 +391,6 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write CPU service --
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
 Description=CPU Miner Launcher
@@ -445,7 +436,6 @@ sudo systemctl restart docker_events_aux.service
 sudo systemctl enable docker_events_cpu.service
 sudo systemctl enable docker_events_gpu.service
 sudo systemctl enable docker_events_aux.service
-# follow logs
 sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_gpu.service -f
 sudo journalctl -u docker_events_aux.service -f

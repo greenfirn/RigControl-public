@@ -10,7 +10,6 @@ import urllib.request
 import os
 import datetime
 from aiomqtt import Client, MqttError
-# GLOBAL SETTINGS
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 1883
 BROKER_USER = None
@@ -22,10 +21,8 @@ STATS_DB_ENABLED = True
 STATS_DB_MAX_HISTORY_DAYS = 7
 STATS_DB_INTERVAL_SECONDS = 90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
-# LOGGING
 def log(msg):
     print(f"[RigControl] {msg}", flush=True)
-# CONFIG - load
 def load_broker_config():
     path = "/etc/rigcontrol/rigcontrol-agent.conf"
     cfg = {}
@@ -237,7 +234,6 @@ telemetry.CPU_SERVICE_NAME = CPU_SERVICE_NAME
 telemetry.GPU_SERVICE_NAME = GPU_SERVICE_NAME
 telemetry.WATCHDOG_SERVICE_NAME = WATCHDOG_SERVICE_NAME
 telemetry.AUX_SERVICE_NAME = AUX_SERVICE_NAME
-# TOPICS
 TOPIC_PREFIX = "rigcontrol"
 RIG_NAME = socket.gethostname()
 STATUS_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/status"
@@ -251,7 +247,6 @@ STATS_REQUEST_TOPIC_DIRECT = f"{TOPIC_PREFIX}/{RIG_NAME}/stats_request"
 STATS_REQUEST_TOPIC_ALL = f"{TOPIC_PREFIX}/all/stats_request"
 STATS_RESPONSE_TOPIC = f"{TOPIC_PREFIX}/{RIG_NAME}/stats_response"
 RESP_TOPIC   = f"{TOPIC_PREFIX}/{RIG_NAME}/cmd_response"
-# RUN SHELL HELPERS (unchanged)
 def run(cmd):
     proc = subprocess.run(cmd, shell=True, text=True,
                           stdout=subprocess.PIPE,
@@ -401,7 +396,6 @@ def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None)
                 f.writelines(lines)
     except Exception as e:
         log(f"[StatsDB] Error persisting stats config to conf: {e}")
-# RESILIENT PUBLISH HELPER
 async def mqtt_publish_resilient(mqtt, topic, payload_str, context):
     """Wraps mqtt.publish() with one retry on a transient disconnect, logging which request failed and waiting briefly for the client's automatic reconnect before retrying."""
     try:
@@ -417,7 +411,6 @@ async def mqtt_publish_resilient(mqtt, topic, payload_str, context):
         except Exception as e2:
             log(f"[MQTT] Retry failed for {context}: {e2} - giving up, response lost")
             return False
-# ASYNC PUBLISH
 async def publish_status(mqtt, reason="periodic", visible_groups=None):
     global _last_telemetry_pull_ts, _telemetry_pull_in_progress
     if _telemetry_pull_in_progress:
@@ -453,7 +446,6 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         log(f"Telemetry sent ({reason})")
     finally:
         _telemetry_pull_in_progress = False
-# ASYNC COMMAND HANDLER (EXTERNAL SCRIPT)
 async def handle_command(raw, mqtt):
     log(f"Command received RAW: {raw}")
     try:
@@ -518,7 +510,6 @@ async def handle_command(raw, mqtt):
         await publish_status(mqtt, "cmd-run")
     except Exception as e:
         log(f"Command execution error: {e}")
-# ASYNC STATS CONTROL HANDLER
 async def handle_stats_control(raw, mqtt):
     log(f"Stats control message received: {raw}")
     try:
@@ -536,7 +527,6 @@ async def handle_stats_control(raw, mqtt):
         data.get("interval_seconds"),
     )
     await publish_status(mqtt, "stats-control")
-# ASYNC STATS HISTORY REQUEST HANDLER
 async def handle_stats_request(raw, mqtt):
     log(f"Stats history request received: {raw}")
     try:
@@ -616,7 +606,6 @@ async def handle_stats_request(raw, mqtt):
         log(f"Stats history sent: {total_entries} entries covering {days} day(s) from {start_date} ({req_id}) in {chunk_count} chunk(s)")
     else:
         log(f"Stats history sent: {total_entries} entries covering last {days} day(s) ({req_id}) in {chunk_count} chunk(s)")
-# Publish check
 async def publish_check(mqtt, want_docker: bool = False):
     docker_containers = None
     if want_docker:
@@ -636,7 +625,6 @@ async def publish_check(mqtt, want_docker: bool = False):
         log(f"Offline ping check received - replied online ({len(docker_containers)} docker container(s), no other telemetry collected)")
     else:
         log("Offline ping check received - replied online (no telemetry collected)")
-# STATS DB PERIODIC SAVE LOOP
 async def stats_db_periodic_loop():
     """Background loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS) independent of refresh/cmd-triggered publishes, skipping a cycle if a more recent row already exists."""
     CHECK_EVERY = 5
@@ -662,7 +650,6 @@ async def stats_db_periodic_loop():
             log(f"[StatsDB] Periodic save ({STATS_DB_INTERVAL_SECONDS}s interval)")
         except Exception as e:
             log(f"[StatsDB] Periodic collection error: {e}")
-# MQTT LOOP (LOCAL BROKER, AUTH OPTIONAL)
 async def mqtt_loop():
     while True:
         try:
@@ -723,7 +710,6 @@ async def mqtt_loop():
         except MqttError as e:
             log(f"MQTT error: {e} — retrying in 3s")
             await asyncio.sleep(3)
-# MAIN
 async def main():
     await asyncio.gather(
         mqtt_loop(),

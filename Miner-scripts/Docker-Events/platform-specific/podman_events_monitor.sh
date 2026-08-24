@@ -1,4 +1,3 @@
-# Nosana-podman_events_monitor.sh
 sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
@@ -10,7 +9,6 @@ PODMAN_READY=false
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=10}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
-# SIGNAL HANDLER
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -57,7 +55,6 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-# PODMAN EVENT SOURCE
 echo "$(date): Confirming Podman config..."
 if [ "$TARGET_NAME" = "podman" ]; then
     echo "$(date): Using Podman events monitor"
@@ -116,7 +113,6 @@ fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
 echo "[api]   API_HOST=$API_HOST"
 echo "[api]   API_PORT=$API_PORT"
-# MINER-SPECIFIC API COMMAND GENERATION
 add_api_flags() {
     local miner_name="$1"
     local api_host="$2"
@@ -166,7 +162,6 @@ add_api_flags() {
             ;;
     esac
 }
-# FINAL PLACEHOLDER SUBSTITUTION
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
@@ -194,7 +189,6 @@ check_api_health() {
     fi
     return 0
 }
-# PID-BASED KILL - Backup for crashed miners
 kill_by_pid() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
@@ -214,7 +208,6 @@ kill_by_pid() {
         rm -f "$pid_file"
     fi
 }
-# PODMAN-SPECIFIC FUNCTIONS
 is_docker_running() {
     docker ps > /dev/null 2>&1
     return $?
@@ -288,7 +281,6 @@ process_podman_event() {
             ;;
     esac
 }
-# MINER CONTROL FUNCTIONS
 start_miner() {
     if screen -list | grep -q "$SERVICE_TYPE"; then
         echo "$(date): Screen session exists for $SERVICE_TYPE - checking if miner is alive..."
@@ -340,7 +332,7 @@ start_miner() {
         else
             echo "$(date): No API for this miner - starting with log file (needed for log-scraping telemetry)"
         fi
-        if [[ "${START_CMD,,}" == *keryx* ]]; then
+        if [[ "${START_CMD,,}" == *"keryx-miner "* ]]; then
             LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
             SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
             rm -f "$LOG_FILE" "$SCRAP_LOG"
@@ -352,7 +344,7 @@ start_miner() {
                  echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
                  trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
                  ( while true; do \
-                     sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2} UTC \[[A-Z]+\].*?(?=  |[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2} UTC \[[A-Z]+\]|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
+                     sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | grep -Pao "\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\s+[A-Z]+\s+[^\]]*\].*?(?=\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|$)" 2>/dev/null | sed -r "s/ +$//" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
                      sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
                      if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
                          tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \
@@ -416,12 +408,10 @@ stop_miner() {
         echo "$(date): No $SERVICE_TYPE screen session found - nothing to stop."
         return 0
     fi
-    # 1. FIRST ATTEMPT: Clean screen quit (let miner cleanup)
     echo "$(date): Sending clean quit to screen session..."
     screen -S "$SERVICE_TYPE" -X quit
     echo "$(date): Waiting 10 seconds for miner cleanup..."
     sleep 10
-    # 2. CHECK: If miner process still exists after clean quit
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
         local miner_pid=$(cat "$pid_file")
@@ -433,7 +423,6 @@ stop_miner() {
             rm -f "$pid_file"
         fi
     fi
-    # 3. CLEANUP: Any leftover screen processes
     local screen_pids=$(pgrep -f "SCREEN.*$SERVICE_TYPE" 2>/dev/null || true)
     if [[ -n "$screen_pids" ]]; then
         echo "$(date): Cleaning up leftover screen processes..."
@@ -441,12 +430,10 @@ stop_miner() {
         sleep 2
         kill -9 $screen_pids 2>/dev/null 2>&1 || true
     fi
-    # 4. Reset GPU if configured
     if [[ "${RESET_OC,,}" == "true" ]]; then
         echo "$(date): Resetting GPU clocks and power limits..."
         /usr/local/bin/gpu_reset_poststop.sh "$POWER_LIMIT"
     fi
-    # 5. Final verification
     echo "$(date): Verifying cleanup..."
     if screen -list | grep -q "$SERVICE_TYPE"; then
         echo "$(date): WARNING: Screen session still exists!"
@@ -458,7 +445,6 @@ stop_miner() {
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# INITIAL PODMAN CHECK
 echo "$(date): Performing initial Podman check..."
 echo "$(date): Waiting for Podman container to be ready..."
 max_wait=60
@@ -484,7 +470,6 @@ else
     echo "$(date): Podman container not ready after $max_wait seconds → stop_miner"
     stop_miner || true
 fi
-# PODMAN EVENT MONITORING LOOP
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
@@ -537,7 +522,6 @@ stop_miner || true
 echo "$(date): Podman event monitor stopped gracefully"
 EOF
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write CPU service --
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events CPU Miner Monitor
@@ -561,7 +545,6 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write GPU service --
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events GPU Miner Monitor
@@ -615,7 +598,6 @@ sudo systemctl restart docker_events_aux.service
 sudo systemctl enable docker_events_cpu.service
 sudo systemctl enable docker_events_gpu.service
 sudo systemctl enable docker_events_aux.service
-# follow logs
 sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_gpu.service -f
 sudo journalctl -u docker_events_aux.service -f

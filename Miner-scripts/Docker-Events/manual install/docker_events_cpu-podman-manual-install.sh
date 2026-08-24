@@ -1,7 +1,5 @@
-# stop old services
 sudo systemctl stop docker_events_gpu.service
 sudo systemctl stop docker_events_cpu.service
-# disable so it doesnt run on boot
 sudo systemctl disable docker_events_gpu.service
 sudo systemctl disable docker_events_cpu.service
 sudo mkdir -v /usr/local/bin
@@ -19,7 +17,6 @@ if [ ! -f "/opt/miners/xmrig/current/xmrig" ]; then
 else
     echo "xmrig already exists in current directory"
 fi
-# =============== AUTO CPU THREADS AND AFFINITY ===============
 MINER_NAME="xmrig"
 ALGO="rx/0"
 TOTAL_THREADS=$(nproc)
@@ -43,11 +40,9 @@ if [[ "$MINER_NAME" == "xmrig" && "$ALGO" == "rx/0" ]]; then
         AUTOFILL_CPU="$RX_THREADS --cpu-affinity=$RX_MASK"
     fi
 fi
-# =============== MINER CONFIG ===============
 APPLY_OC="false"
 RESET_OC="false"
 MINER_START_CMD="/opt/miners/xmrig/current/xmrig"
-# WORKER_NAME as hostname capital x,t,s
 WORKER_NAME="$(cat /etc/hostname)"
 WORKER_NAME="${WORKER_NAME//x/X}"
 WORKER_NAME="${WORKER_NAME//t/T}"
@@ -122,7 +117,6 @@ kill_by_pid() {
     fi
     return 0
 }
-# PODMAN-SPECIFIC FUNCTIONS
 is_docker_running() {
     docker ps > /dev/null 2>&1
     return $?
@@ -285,7 +279,6 @@ diag_heartbeat_loop() {
         sleep 5
     done
 }
-# MINER CONTROL FUNCTIONS
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
@@ -369,7 +362,6 @@ if [[ "$DIAGNOSTIC" == "true" ]]; then
     DIAG_HEARTBEAT_PID=$!
     echo "$(date): [DIAG] Diagnostic state tracker enabled (PID: $DIAG_HEARTBEAT_PID)"
 fi
-# INITIAL PODMAN CHECK
 echo "$(date): Performing initial Podman check..."
 echo "$(date): Waiting for Podman container to be ready..."
 max_wait=60
@@ -395,7 +387,6 @@ else
     echo "$(date): Podman container not ready after $max_wait seconds → stop_miner"
     stop_miner || true
 fi
-# PODMAN EVENT MONITORING LOOP
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
@@ -472,12 +463,8 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable docker_events_cpu.service
-# Start/Stop Service
 sudo systemctl start docker_events_cpu.service
 sudo systemctl stop docker_events_cpu.service
-# check status
 sudo systemctl status docker_events_cpu.service
-# follow logs
 sudo journalctl -u docker_events_cpu.service -f
-# disable so it doesnt start on boot
 sudo systemctl disable docker_events_cpu.service

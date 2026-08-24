@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# rigcontrol_telemetry.py
 import subprocess
 import json
 import urllib.request
@@ -15,24 +14,17 @@ try:
     WMI_AVAILABLE = True
 except ImportError:
     WMI_AVAILABLE = False
-
 RIG_NAME = socket.gethostname().lower()
-
 # Set True per-rig to exclude it from dashboard totals/status bar numbers (rig still shows its own card/row)
 EXCLUDE_FROM_TOTALS = False
-
 # Path to keryx-miner.exe, used only for `--version`; set KERYX_BIN_PATH env var if install location differs
 KERYX_BIN_PATH_DEFAULT = r"C:\miners\keryx-miner\current\keryx-miner.exe"
 KERYX_BIN_PATH = os.environ.get("KERYX_BIN_PATH", KERYX_BIN_PATH_DEFAULT)
-
 # Log file for a custom miner with no stats API, matches start.bat's LOGDIR default (literal C:\Temp, not %TEMP%)
 CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"
 CUSTOM_MINER_LOG_PATH = os.environ.get("CUSTOM_MINER_LOG_PATH", CUSTOM_MINER_LOG_PATH_DEFAULT)
-
 # Dashboard display name for the custom-log collector; set CUSTOM_MINER_PROCESS_NAME env var to override
 CUSTOM_MINER_DISPLAY_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "keryx-miner-supr")
-
-# Miner detection mapping
 MINER_PROCESSES = {
     "xmrig.exe": "xmrig",
     "xmrig": "xmrig",
@@ -67,18 +59,15 @@ MINER_PROCESSES = {
     "keryxd.exe": "keryxd",
     "keryxd": "keryxd",
 }
-
 # Processes checked by exact name (not substring) BEFORE the MINER_PROCESSES scan, so they're
 # never misclassified as the miner they share a name substring with (e.g. lolMinerGUI.exe vs lolMiner)
 NON_MINER_PROCESS_EXCLUSIONS = {
     "lolminergui.exe",
     "lolminergui",
 }
-
 def detect_running_miners():
     """Detect which miners are currently running on Windows"""
     running_miners = {}
-    
     if platform.system() != "Windows":
         for proc in psutil.process_iter(['name']):
             try:
@@ -92,7 +81,6 @@ def detect_running_miners():
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
         return list(running_miners.keys())
-    
     try:
         result = subprocess.run(
             'tasklist /fo csv /nh',
@@ -103,7 +91,6 @@ def detect_running_miners():
             encoding='utf-8',
             errors='ignore'
         )
-        
         if result.returncode == 0:
             lines = result.stdout.strip().split('\n')
             for line in lines:
@@ -119,7 +106,6 @@ def detect_running_miners():
                                 break
     except Exception as e:
         print(f"Error detecting miners with tasklist: {e}")
-    
     try:
         for proc in psutil.process_iter(['name']):
             try:
@@ -134,14 +120,11 @@ def detect_running_miners():
                 continue
     except Exception as e:
         print(f"Error detecting miners with psutil: {e}")
-    
     return list(running_miners.keys())
-
 def collect_miner_stats_based_on_processes():
     """Collect stats only for miners that are actually running"""
     detected_miners = detect_running_miners()
     miner_stats = {}
-    
     miner_collectors = {
         "xmrig": collect_xmrig_stats,
         "lolminer": collect_lolminer_stats,
@@ -155,7 +138,6 @@ def collect_miner_stats_based_on_processes():
         "keryxd": collect_keryxd_stats,
         "custom_log": collect_custom_log_miner_stats,
     }
-    
     for miner_name in detected_miners:
         if miner_name in miner_collectors:
             try:
@@ -166,7 +148,6 @@ def collect_miner_stats_based_on_processes():
                     "status": "error",
                     "error": f"Failed to collect stats: {str(e)}"
                 }
-    
     try:
         cpu_service_result = subprocess.run(
             'sc query CPU_Miner_Service',
@@ -181,7 +162,6 @@ def collect_miner_stats_based_on_processes():
             }
     except:
         pass
-    
     try:
         gpu_service_result = subprocess.run(
             'sc query GPU_Miner_Service',
@@ -196,16 +176,13 @@ def collect_miner_stats_based_on_processes():
             }
     except:
         pass
-    
     return miner_stats
-
 def collect_service_uptime(service_name):
     """Get service status and uptime for Windows"""
     try:
         result = subprocess.run(f"sc query {service_name}", shell=True, capture_output=True, text=True)
         if result.returncode != 0:
             return {"state": "unknown", "uptime_seconds": 0}
-
         state = "unknown"
         for line in result.stdout.splitlines():
             if "STATE" in line:
@@ -214,7 +191,6 @@ def collect_service_uptime(service_name):
                 elif "STOPPED" in line:
                     state = "inactive"
                 break
-
         uptime_seconds = 0
         if state == "active":
             try:
@@ -230,18 +206,15 @@ def collect_service_uptime(service_name):
                     uptime_seconds = int(time.time() - start_time_unix)
             except:
                 pass
-        
         return {
             "state": state,
             "uptime_seconds": uptime_seconds
         }
     except:
         return {"state": "unknown", "uptime_seconds": 0}
-
 def collect_docker_containers():
     """Check for Docker containers on Windows"""
     containers = []
-    
     try:
         result = subprocess.run("docker ps --format \"{{.Names}}|{{.Image}}|{{.ID}}|{{.Status}}\"",
                                shell=True, capture_output=True, text=True)
@@ -250,10 +223,8 @@ def collect_docker_containers():
                 try:
                     name, image, cid, status = line.split("|", 3)
                     state = "paused" if "Paused" in status else "running"
-
                     start_result = subprocess.run(f'docker inspect -f "{{{{.State.StartedAt}}}}" {cid}', 
                                                  shell=True, capture_output=True, text=True)
-                    
                     uptime_seconds = None
                     if start_result.returncode == 0 and start_result.stdout.strip():
                         ts = start_result.stdout.strip()
@@ -263,7 +234,6 @@ def collect_docker_containers():
                             uptime_seconds = int((now - dt).total_seconds())
                         except:
                             pass
-                    
                     containers.append({
                         "name": name,
                         "image": image,
@@ -274,13 +244,10 @@ def collect_docker_containers():
                     continue
     except:
         pass
-    
     return containers
-
 def collect_system_uptime():
     """Collect system uptime in seconds on Windows - matches Ubuntu version naming"""
     try:
-        # Method 1: Using GetTickCount64 via PowerShell
         ps_result = subprocess.run(
             'powershell -command "[Environment]::TickCount / 1000"',
             shell=True,
@@ -291,8 +258,6 @@ def collect_system_uptime():
         if ps_result.returncode == 0 and ps_result.stdout.strip():
             uptime_seconds = float(ps_result.stdout.strip())
             return uptime_seconds
-        
-        # Method 2: Using WMI (Win32_OperatingSystem)
         if WMI_AVAILABLE:
             import pythoncom
             pythoncom.CoInitialize()
@@ -308,8 +273,6 @@ def collect_system_uptime():
                         return uptime_seconds
             finally:
                 pythoncom.CoUninitialize()
-        
-        # Method 3: Using net stats server command
         result = subprocess.run(
             'net stats server | find "Statistics since"',
             shell=True,
@@ -332,29 +295,24 @@ def collect_system_uptime():
                     pass
     except Exception as e:
         print(f"Error collecting system uptime: {e}")
-    
     return 0
-
 def normalize_to_hs(value, unit=None):
     """Convert any hash rate unit to H/s"""
     if value is None:
         return None
-    
     try:
         val = float(value)
-        
         if unit is None:
             if val >= 1e12:
-                return val  # Assume already H/s if huge
+                return val
             elif val >= 1e9:
-                return val * 1e9  # GH/s to H/s
+                return val * 1e9
             elif val >= 1e6:
-                return val * 1e6  # MH/s to H/s
+                return val * 1e6
             elif val >= 1e3:
-                return val * 1e3  # kH/s to H/s
+                return val * 1e3
             else:
-                return val  # Assume H/s
-        
+                return val
         unit = unit.lower().strip()
         if unit in ['h/s', 'hs', 'hash', 'hashes']:
             return val
@@ -369,59 +327,42 @@ def normalize_to_hs(value, unit=None):
         elif unit in ['ph/s', 'phs', 'peta']:
             return val * 1e15
         else:
-            return val  # Default to H/s
+            return val
     except (ValueError, TypeError):
         return None
-
 def detect_board_partner(gpu_name, pnp_device_id=None, power_watts=0):
     """Detect board partner from GPU name and/or PNPDeviceID"""
-    
     name_lower = gpu_name.lower()
     board_partner = "NVIDIA"
-    
-    # Phase 1: Check GPU name patterns
     name_patterns = {
-        # Founders Edition
         "founders edition": "NVIDIA Founders Edition",
         "founder's edition": "NVIDIA Founders Edition",
         "fe ": "NVIDIA Founders Edition",
-        
-        # ASUS
         "asus": "ASUS",
         "rog strix": "ASUS ROG Strix",
         "strix": "ASUS Strix",
         "rog ": "ASUS ROG",
         "tuf": "ASUS TUF",
         "dual": "ASUS Dual",
-        
-        # EVGA
         "evga": "EVGA",
         "ftw3": "EVGA FTW3",
         "ftw": "EVGA FTW",
         "xc3": "EVGA XC3",
         "xc": "EVGA XC",
         "kingpin": "EVGA Kingpin",
-        
-        # MSI
         "msi": "MSI",
         "suprim x": "MSI Suprim X",
         "suprim": "MSI Suprim",
         "gaming x trio": "MSI Gaming X Trio",
         "ventus": "MSI Ventus",
-        
-        # Gigabyte
         "gigabyte": "Gigabyte",
         "aorus": "Gigabyte AORUS",
         "gaming oc": "Gigabyte Gaming OC",
         "windforce": "Gigabyte Windforce",
         "eagle": "Gigabyte Eagle",
-        
-        # Zotac
         "zotac": "Zotac",
         "amp": "Zotac AMP",
         "trinity": "Zotac Trinity",
-        
-        # Others
         "pny": "PNY",
         "palit": "Palit",
         "gainward": "Gainward",
@@ -429,20 +370,15 @@ def detect_board_partner(gpu_name, pnp_device_id=None, power_watts=0):
         "inno3d": "Inno3D",
         "colorful": "Colorful",
     }
-    
     for pattern, partner in name_patterns.items():
         if pattern in name_lower:
             return partner
-    
-    # Phase 2: Check PNPDeviceID if available
     if pnp_device_id:
         import re
         pnp_lower = pnp_device_id.lower()
-        
         subsys_match = re.search(r'subsys_([0-9a-f]{4})([0-9a-f]{4})', pnp_lower)
         if subsys_match:
             vendor_id = subsys_match.group(2)
-            
             vendor_map = {
                 "1043": "ASUS",
                 "3842": "EVGA",
@@ -457,25 +393,17 @@ def detect_board_partner(gpu_name, pnp_device_id=None, power_watts=0):
                 "1c5c": "Inno3D",
                 "10de": "NVIDIA Founders Edition",
             }
-            
             if vendor_id in vendor_map:
                 return vendor_map[vendor_id]
-    
-    # Phase 3: If name contains "NVIDIA" but no other brand
     if "nvidia" in name_lower and not any(brand in name_lower for brand in 
                                          ["asus", "evga", "msi", "gigabyte", "zotac"]):
         return "NVIDIA"
-    
     return board_partner
-
-
 def collect_gpu_stats():
     """Collect GPU statistics for any NVIDIA GPU - Complete metrics"""
     gpus = []
-    
     if platform.system() != "Windows":
         return []
-    
     try:
         cmd = (
             'nvidia-smi --query-gpu='
@@ -484,18 +412,14 @@ def collect_gpu_stats():
             'memory.used,memory.total,driver_version,pci.bus_id '
             '--format=csv,noheader,nounits'
         )
-        
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=3)
-        
         if result.returncode != 0:
             return []
-        
         lines = result.stdout.strip().split("\n")
         for i, line in enumerate(lines):
             fields = [x.strip() for x in line.split(",")]
             if len(fields) < 12:
                 continue
-            
             try:
                 idx = fields[0]
                 name = fields[1]
@@ -504,13 +428,12 @@ def collect_gpu_stats():
                 mem_util = fields[4]
                 power_watts = fields[5]
                 fan_percent = fields[6]
-                sm_clock = fields[7]      # Core clock
-                mem_clock = fields[8]     # Memory clock
+                sm_clock = fields[7]
+                mem_clock = fields[8]
                 vram_used = fields[9]
                 vram_total = fields[10]
                 driver_version = fields[11]
                 pci_bus = fields[12] if len(fields) > 12 else ""
-                
                 pnp_id = None
                 if WMI_AVAILABLE:
                     try:
@@ -526,9 +449,7 @@ def collect_gpu_stats():
                             pythoncom.CoUninitialize()
                     except:
                         pass
-                
                 board_partner = detect_board_partner(name, pnp_id, float(power_watts) if power_watts.replace('.', '', 1).isdigit() else 0)
-
                 temp_val = int(temp) if temp.isdigit() else 0
                 util_val = int(util) if util.isdigit() else 0
                 memutil_val = int(mem_util) if mem_util.isdigit() else 0
@@ -538,11 +459,9 @@ def collect_gpu_stats():
                 memclk_val = int(mem_clock) if mem_clock.isdigit() else 0
                 memused_val = int(vram_used) if vram_used.isdigit() else 0
                 memtotal_val = int(vram_total) if vram_total.isdigit() else 0
-                
                 gpu_uuid = f"GPU_{idx}"
                 if pnp_id:
                     gpu_uuid = pnp_id
-                
                 gpus.append({
                     "index": int(idx),
                     "uuid": gpu_uuid,
@@ -562,21 +481,16 @@ def collect_gpu_stats():
                     "pci_bus_id": pci_bus,
                     "pci_slot": pci_bus.split(":")[-1] if pci_bus else ""
                 })
-                
             except Exception as e:
                 print(f"Error parsing GPU {i}: {e}")
                 continue
-                
     except Exception as e:
         print(f"Error collecting GPU stats: {e}")
-    
     return gpus
-
 def has_nvidia_gpu():
     """Check if NVIDIA GPU is present on Windows"""
     if platform.system() != "Windows":
         return False
-    
     try:
         # Try nvidia-smi first (doesn't need COM)
         result = subprocess.run("nvidia-smi -L", shell=True, capture_output=True, text=True)
@@ -584,8 +498,6 @@ def has_nvidia_gpu():
             return True
     except:
         pass
-    
-    # Check via WMI (with COM initialization)
     if WMI_AVAILABLE:
         try:
             import pythoncom
@@ -600,9 +512,7 @@ def has_nvidia_gpu():
                 pythoncom.CoUninitialize()
         except:
             pass
-    
     return False
-
 def _cpu_temp_debug(msg):
     """Diagnostic trace for collect_cpu_temp(), off by default. Set
     RIGCONTROL_CPU_TEMP_DEBUG=1 in the environment (or rigcontrol_agent.conf,
@@ -612,11 +522,8 @@ def _cpu_temp_debug(msg):
     given rig without guessing blind."""
     if os.environ.get("RIGCONTROL_CPU_TEMP_DEBUG", "").strip().lower() in ("1", "true", "yes", "on"):
         print(f"[cpu_temp] {msg}", flush=True)
-
-
 def collect_cpu_temp():
     """Get CPU temperature for Windows - similar structure to Ubuntu version.
-
     None of these sources are guaranteed to exist on a given board:
       - Methods 1/4/6 read the ACPI MSAcpi_ThermalZoneTemperature WMI class,
         which only a subset of desktop/server motherboards actually expose
@@ -629,7 +536,6 @@ def collect_cpu_temp():
       - Method 5 (psutil.sensors_temperatures) is Linux-only; psutil does
         not implement it on Windows, so this basically never contributes
         here, it's kept only for parity with the Ubuntu collector.
-
     In practice, if method 1 doesn't work on a board, installing and
     running LibreHardwareMonitor (actively maintained, unlike
     OpenHardwareMonitor - needed for modern Ryzen chips) is the most
@@ -637,7 +543,6 @@ def collect_cpu_temp():
     """
     if platform.system() != "Windows":
         return None
-
     # 1) Try WMI ThermalZone (MSAcpi_ThermalZoneTemperature) - works on many Intel/AMD systems
     try:
         import pythoncom
@@ -651,7 +556,7 @@ def collect_cpu_temp():
                 if hasattr(temp_obj, 'CurrentTemperature'):
                     temp_kelvin = temp_obj.CurrentTemperature / 10.0
                     celsius = temp_kelvin - 273.15
-                    if -20 <= celsius <= 120:  # Reasonable range
+                    if -20 <= celsius <= 120:
                         _cpu_temp_debug(f"1) MSAcpi_ThermalZoneTemperature succeeded: {celsius:.1f}C")
                         return round(celsius, 1)
                     _cpu_temp_debug(f"1) MSAcpi_ThermalZoneTemperature out of range: {celsius:.1f}C, ignoring")
@@ -659,7 +564,6 @@ def collect_cpu_temp():
             pythoncom.CoUninitialize()
     except Exception as e:
         _cpu_temp_debug(f"1) MSAcpi_ThermalZoneTemperature raised: {e}")
-
     # 2) Try OpenHardwareMonitor if running - similar to reading hwmon files
     try:
         result = subprocess.run(
@@ -697,7 +601,6 @@ def collect_cpu_temp():
             _cpu_temp_debug("2) OpenHardwareMonitor.exe is not running - skipped")
     except Exception as e:
         _cpu_temp_debug(f"2) OpenHardwareMonitor check raised: {e}")
-
     # 3) Try LibreHardwareMonitor if available - similar to alternative hwmon
     try:
         # Same argv-list fix as method 2 above
@@ -725,7 +628,6 @@ def collect_cpu_temp():
             _cpu_temp_debug(f"3) LibreHardwareMonitor WMI query returned nothing - likely not installed/running, or its 'Expose WMI' option is off (rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r})")
     except Exception as e:
         _cpu_temp_debug(f"3) LibreHardwareMonitor query raised: {e}")
-
     # 4) Try wmic command-line - fallback method
     try:
         result = subprocess.run(
@@ -753,7 +655,6 @@ def collect_cpu_temp():
             _cpu_temp_debug(f"4) wmic exited non-zero (rc={result.returncode}, stderr={result.stderr!r}) - wmic may have been removed (Windows 11 23H2+ drops it by default)")
     except Exception as e:
         _cpu_temp_debug(f"4) wmic raised: {e}")
-
     # 5) Try psutil sensors if available - similar to reading /sys files
     # NOTE: not implemented on Windows by psutil; kept for parity with the Ubuntu collector
     try:
@@ -767,7 +668,6 @@ def collect_cpu_temp():
                             if entry.current:
                                 _cpu_temp_debug(f"5) psutil succeeded via '{name}': {entry.current}C")
                                 return round(entry.current, 1)
-
                 # If no CPU specifically found, take the highest temperature
                 all_temps = []
                 for name, entries in temps.items():
@@ -782,7 +682,6 @@ def collect_cpu_temp():
             _cpu_temp_debug("5) psutil.sensors_temperatures not available on this platform (expected on Windows) - skipped")
     except Exception as e:
         _cpu_temp_debug(f"5) psutil.sensors_temperatures raised: {e}")
-
     # 6) Try PowerShell direct WMI query - final fallback
     try:
         result = subprocess.run(
@@ -806,22 +705,17 @@ def collect_cpu_temp():
             _cpu_temp_debug(f"6) PowerShell WMI returned nothing (rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}) - same ACPI limitation as method 1")
     except Exception as e:
         _cpu_temp_debug(f"6) PowerShell WMI raised: {e}")
-
     _cpu_temp_debug("All 6 methods failed - returning None. If method 1/4/6 all report 'no ACPI thermal zone data', install and run LibreHardwareMonitor with its WMI/'Remote Web Server' option enabled so method 3 can pick it up.")
     return None
-
 def collect_cpu_usage():
     """Get CPU usage percentage"""
     return psutil.cpu_percent(interval=0.1)
-
 def collect_load():
     """Get load averages in Linux format (load1, load5, load15)"""
     cpu_count = psutil.cpu_count()
     current_load = psutil.cpu_percent(interval=0.1) / 100.0 * cpu_count
-    
     # Round to 2 decimal places like Linux does
     load_rounded = round(current_load, 2)
-    
     # Return all three as the same (Windows limitation)
     # Linux format: [1min, 5min, 15min]
     return {
@@ -829,7 +723,6 @@ def collect_load():
         "5m": load_rounded,
         "15m": load_rounded
     }
-
 def collect_memory():
     """Get memory usage"""
     mem = psutil.virtual_memory()
@@ -839,7 +732,6 @@ def collect_memory():
         "free_mb": mem.available // (1024 * 1024),
         "percent": mem.percent
     }
-
 def collect_bzminer_stats():
     API_URL = "http://127.0.0.1:4014/status"
     try:
@@ -848,39 +740,30 @@ def collect_bzminer_stats():
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-    
     method = data.get("method", "")
     if method != "fullstatus":
         return {"status": "unexpected_format", "data": data}
-    
     pools = data.get("pools") or []
     devices = data.get("devices") or []
-    
     algorithms = []
-    
     for pool in pools:
         pool_id = pool.get("id", -1)
         pool_algo = pool.get("algorithm", "unknown")
         pool_url = ""
-        
         current_url = pool.get("current_url", "")
         if current_url:
             url_parts = current_url.split("://")
             if len(url_parts) > 1:
                 host_part = url_parts[1].split(":")[0]
                 pool_url = host_part.split(".")[-2] if "." in host_part else host_part
-        
         total_hashrate = 0
-        
         for device in devices:
             device_pools = device.get("pool", [])
             device_hr = device.get("hashrate", [])
-            
             if isinstance(device_pools, list) and isinstance(device_hr, list):
                 for i, p_id in enumerate(device_pools):
                     if p_id == pool_id and i < len(device_hr):
                         total_hashrate += device_hr[i]
-        
         if total_hashrate > 0 or pool.get("status", 0) > 0:
             algo_data = {
                 "algorithm": pool_algo,
@@ -892,7 +775,6 @@ def collect_bzminer_stats():
                 "workers": None
             }
             algorithms.append(algo_data)
-    
     return {
         "status": "ok",
         "miner": "bzminer",
@@ -903,26 +785,21 @@ def collect_bzminer_stats():
         "cuda_driver_version": data.get("cuda_driver_version"),
         "algorithms": algorithms
     }
-
 def collect_rigel_stats():
     host = os.environ.get("RIGEL_API_HOST", "127.0.0.1")
     port = int(os.environ.get("RIGEL_API_PORT", "5000"))
     url = f"http://{host}:{port}"
-
     try:
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-
     hr = data.get("hashrate", {})
     pool_hr = data.get("pool_hashrate", {})
     sol = data.get("solution_stat", {})
     pool_data = data.get("pool", {})
-    
     algorithms = []
-    
     all_algos = set()
     if isinstance(hr, dict):
         all_algos.update(hr.keys())
@@ -930,12 +807,9 @@ def collect_rigel_stats():
         all_algos.update(pool_hr.keys())
     if isinstance(sol, dict):
         all_algos.update(sol.keys())
-    
     for algo in all_algos:
         algo_sol = sol.get(algo, {}) if isinstance(sol, dict) else {}
-        
         hashrate_hs = hr.get(algo) if isinstance(hr, dict) else None
-        
         algo_data = {
             "algorithm": algo,
             "hashrate_hs": hashrate_hs,
@@ -945,7 +819,6 @@ def collect_rigel_stats():
             "pool": pool_data.get("url", "").split("://")[-1].split(":")[0] if algo == list(all_algos)[0] else None
         }
         algorithms.append(algo_data)
-
     return {
         "status": "ok",
         "miner": "rigel",
@@ -954,12 +827,10 @@ def collect_rigel_stats():
         "uptime_s": data.get("uptime"),
         "algorithms": algorithms
     }
-
 def collect_srbminer_stats():
     host = os.environ.get("SRB_API_HOST", "127.0.0.1")
     main_port = int(os.environ.get("SRB_API_PORT", "21550"))
     cpu_port = 21551
-    
     main_data = {}
     main_status = "offline"
     try:
@@ -970,7 +841,6 @@ def collect_srbminer_stats():
     except Exception as e:
         main_data = {}
         main_status = "offline"
-    
     cpu_data = {}
     cpu_status = "offline"
     try:
@@ -980,29 +850,23 @@ def collect_srbminer_stats():
         cpu_status = "ok"
     except Exception:
         pass
-    
     if main_status == "offline" and cpu_status == "offline":
         return {
             "status": "offline",
             "error": "Both main and CPU ports unavailable"
         }
-    
     algorithms = []
-    
     if main_status == "ok":
         main_algos = main_data.get("algorithms", [])
         for algo_data in main_algos:
             name = algo_data.get("name")
             if not name:
                 continue
-                
             hr = algo_data.get("hashrate", {})
             gpu_block = hr.get("gpu", {}) if isinstance(hr, dict) else {}
             gpu_hs = gpu_block.get("total")
-            
             if gpu_hs and gpu_hs > 0:
                 shares = algo_data.get("shares", {})
-                
                 algo_info = {
                     "algorithm": name,
                     "cpu_hashrate_hs": 0,
@@ -1016,27 +880,22 @@ def collect_srbminer_stats():
                     "mining_type": "GPU"
                 }
                 algorithms.append(algo_info)
-    
     if main_status == "ok":
         main_algos = main_data.get("algorithms", [])
         for algo_data in main_algos:
             name = algo_data.get("name")
             if not name:
                 continue
-                
             hr = algo_data.get("hashrate", {})
             cpu_block = hr.get("cpu", {}) if isinstance(hr, dict) else {}
             cpu_hs = cpu_block.get("total")
-            
             if cpu_hs and cpu_hs > 0:
                 thread_hashrates = {}
                 if isinstance(cpu_block, dict):
                     for key, value in cpu_block.items():
                         if key.startswith("thread") and isinstance(value, (int, float)):
                             thread_hashrates[key] = value
-                
                 shares = algo_data.get("shares", {})
-                
                 algo_info = {
                     "algorithm": name,
                     "cpu_hashrate_hs": cpu_hs,
@@ -1050,27 +909,22 @@ def collect_srbminer_stats():
                     "mining_type": "CPU"
                 }
                 algorithms.append(algo_info)
-    
     if cpu_status == "ok":
         cpu_algos = cpu_data.get("algorithms", [])
         for algo_data in cpu_algos:
             name = algo_data.get("name")
             if not name:
                 continue
-                
             hr = algo_data.get("hashrate", {})
             cpu_block = hr.get("cpu", {}) if isinstance(hr, dict) else {}
             cpu_hs = cpu_block.get("total")
-            
             if cpu_hs and cpu_hs > 0:
                 thread_hashrates = {}
                 if isinstance(cpu_block, dict):
                     for key, value in cpu_block.items():
                         if key.startswith("thread") and isinstance(value, (int, float)):
                             thread_hashrates[key] = value
-                
                 shares = algo_data.get("shares", {})
-                
                 algo_info = {
                     "algorithm": name,
                     "cpu_hashrate_hs": cpu_hs,
@@ -1085,10 +939,8 @@ def collect_srbminer_stats():
                     "source_port": "21551"
                 }
                 algorithms.append(algo_info)
-    
     overall_status = "ok" if algorithms else "offline"
     source_data = main_data if main_status == "ok" else cpu_data
-    
     return {
         "status": overall_status,
         "miner": "srbminer",
@@ -1098,41 +950,32 @@ def collect_srbminer_stats():
         "uptime_s": source_data.get("mining_time") or source_data.get("uptime") or source_data.get("uptime_s"),
         "algorithms": algorithms
     }
-
 def collect_wildrig_stats():
     host = os.environ.get("WILDRIG_API_HOST", "127.0.0.1")
     port = int(os.environ.get("WILDRIG_API_PORT", "4000"))
     url = f"http://{host}:{port}"
-
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-
     algo = data.get("algo")
     algorithms = []
-    
     if algo:
         hr = data.get("hashrate", {})
         total_hr = hr.get("total")
         threads_hr = hr.get("threads")
-        
         hashrate_hs = total_hr[0] if isinstance(total_hr, list) and len(total_hr) > 0 else None
-        
         thread_hashrates = {}
         if isinstance(threads_hr, list):
             for i, thread_hr in enumerate(threads_hr):
                 if isinstance(thread_hr, list) and len(thread_hr) > 0:
                     thread_hashrates[f"thread_{i}"] = thread_hr[0]
-        
         results = data.get("results", {})
         acc = results.get("shares_accepted")
         rej = results.get("shares_rejected")
-        
         accepted = acc[0] if isinstance(acc, list) and acc else None
         rejected = rej[0] if isinstance(rej, list) and rej else None
-        
         algo_data = {
             "algorithm": algo,
             "hashrate_hs": hashrate_hs,
@@ -1141,7 +984,6 @@ def collect_wildrig_stats():
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_data)
-
     return {
         "status": "ok",
         "miner": "wildrig",
@@ -1149,38 +991,30 @@ def collect_wildrig_stats():
         "uptime_s": data.get("uptime"),
         "algorithms": algorithms
     }
-
 def collect_lolminer_stats():
     host = os.environ.get("LOLMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("LOLMINER_API_PORT", "8020"))
     url = f"http://{host}:{port}/summary"
-
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-
     algos = data.get("Algorithms", [])
     algorithms = []
-    
     for algo_data in algos:
         algo_name = algo_data.get("Algorithm")
         if not algo_name:
             continue
-            
         total_perf = algo_data.get("Total_Performance")
         factor = algo_data.get("Performance_Factor", 1)
-        
         hashrate_hs = total_perf * factor if isinstance(total_perf, (int, float)) else None
-        
         worker_perf = algo_data.get("Worker_Performance", [])
         thread_hashrates = {}
         if isinstance(worker_perf, list):
             for i, perf in enumerate(worker_perf):
                 if isinstance(perf, (int, float)):
                     thread_hashrates[f"worker_{i}"] = perf * factor
-        
         algo_info = {
             "algorithm": algo_name,
             "hashrate_hs": hashrate_hs,
@@ -1190,7 +1024,6 @@ def collect_lolminer_stats():
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_info)
-
     return {
         "status": "ok",
         "miner": "lolminer",
@@ -1198,35 +1031,28 @@ def collect_lolminer_stats():
         "uptime_s": data.get("Session", {}).get("Uptime"),
         "algorithms": algorithms
     }
-
 def collect_onezerominer_stats():
     host = os.environ.get("ONEZEROMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("ONEZEROMINER_API_PORT", "3001"))
     url = f"http://{host}:{port}"
-
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-
     algos = data.get("algos", [])
     algorithms = []
-    
     for algo_data in algos:
         name = algo_data.get("name")
         if not name:
             continue
-            
         hashrate_hs = algo_data.get("total_hashrate")
-        
         device_hr = algo_data.get("hashrates", [])
         thread_hashrates = {}
         if isinstance(device_hr, list):
             for i, hr_value in enumerate(device_hr):
                 if isinstance(hr_value, (int, float)):
                     thread_hashrates[f"device_{i}"] = hr_value
-        
         algo_info = {
             "algorithm": name,
             "hashrate_hs": hashrate_hs,
@@ -1236,7 +1062,6 @@ def collect_onezerominer_stats():
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_info)
-
     return {
         "status": "ok",
         "miner": "onezerominer",
@@ -1244,36 +1069,28 @@ def collect_onezerominer_stats():
         "uptime_s": data.get("uptime_seconds"),
         "algorithms": algorithms
     }
-
 def collect_gminer_stats():
     host = os.environ.get("GMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("GMINER_API_PORT", "10050"))
     url = f"http://{host}:{port}/stat"
-
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-
     algo = data.get("algorithm")
     algorithms = []
-    
     if algo:
         total_hs = 0
         devices = data.get("devices", [])
-        
         thread_hashrates = {}
-        
         if isinstance(devices, list):
             for i, d in enumerate(devices):
                 speed = d.get("speed")
                 if isinstance(speed, (int, float)):
                     total_hs += speed
                     thread_hashrates[f"gpu_{i}"] = speed
-        
         hashrate_hs = total_hs if total_hs > 0 else None
-        
         algo_data = {
             "algorithm": algo,
             "hashrate_hs": hashrate_hs,
@@ -1283,7 +1100,6 @@ def collect_gminer_stats():
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_data)
-
     return {
         "status": "ok",
         "miner": "gminer",
@@ -1291,40 +1107,31 @@ def collect_gminer_stats():
         "uptime_s": data.get("uptime"),
         "algorithms": algorithms
     }
-
 def collect_xmrig_stats():
     host = os.environ.get("XMRIG_HTTP_HOST", "127.0.0.1")
     port = int(os.environ.get("XMRIG_HTTP_PORT", "18080"))
     url = f"http://{host}:{port}/2/summary"
-
     try:
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-
     algo = data.get("algo")
     algorithms = []
-    
     if algo:
         hashrate = data.get("hashrate", {})
         total = hashrate.get("total") or [0]
         hashrate_hs = float(total[0]) if total else 0
-
         shares_good = data.get("results", {}).get("shares_good")
         shares_total = data.get("results", {}).get("shares_total")
-        
         rejected_shares = None
         if shares_total is not None and shares_good is not None:
             rejected_shares = shares_total - shares_good
-        
         connection = data.get("connection", {})
         pool_url = connection.get("url", "").split("://")[-1].split(":")[0] if connection else None
-
         cpu_info = data.get("cpu", {})
         threads = cpu_info.get("threads", 0)
-        
         algo_data = {
             "algorithm": algo,
             "hashrate_hs": hashrate_hs,
@@ -1338,7 +1145,6 @@ def collect_xmrig_stats():
             "mining_type": "CPU" if threads > 0 else "GPU"
         }
         algorithms.append(algo_data)
-
     return {
         "status": "ok",
         "miner": "xmrig",
@@ -1346,27 +1152,22 @@ def collect_xmrig_stats():
         "uptime_s": data.get("uptime"),
         "algorithms": algorithms
     }
-
 def collect_trex_stats():
     """Collect T-Rex miner stats"""
     host = os.environ.get("TREX_API_HOST", "127.0.0.1")
     port = int(os.environ.get("TREX_API_PORT", "4067"))
     url = f"http://{host}:{port}/summary"
-    
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-    
     algo = data.get("algorithm")
     algorithms = []
-    
     if algo:
         hashrate = data.get("hashrate", 0)
         # T-Rex reports in H/s
         hashrate_hs = float(hashrate)
-        
         gpus = data.get("gpus", [])
         thread_hashrates = {}
         if isinstance(gpus, list):
@@ -1374,7 +1175,6 @@ def collect_trex_stats():
                 gpu_hashrate = gpu.get("hashrate", 0)
                 if gpu_hashrate:
                     thread_hashrates[f"gpu_{i}"] = gpu_hashrate
-        
         algo_data = {
             "algorithm": algo,
             "hashrate_hs": hashrate_hs,
@@ -1384,7 +1184,6 @@ def collect_trex_stats():
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_data)
-    
     return {
         "status": "ok",
         "miner": "trex",
@@ -1392,27 +1191,22 @@ def collect_trex_stats():
         "uptime_s": data.get("uptime"),
         "algorithms": algorithms
     }
-
 def collect_nbminer_stats():
     """Collect NBminer stats"""
     host = os.environ.get("NBMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("NBMINER_API_PORT", "22333"))
     url = f"http://{host}:{port}/api/v1/status"
-    
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"status": "offline", "error": str(e)}
-    
     algo = data.get("miner", {}).get("algorithm")
     algorithms = []
-    
     if algo:
         hashrate = data.get("miner", {}).get("total_hashrate_raw", 0)
         # NBminer reports in H/s
         hashrate_hs = float(hashrate)
-        
         devices = data.get("miner", {}).get("devices", [])
         thread_hashrates = {}
         if isinstance(devices, list):
@@ -1420,7 +1214,6 @@ def collect_nbminer_stats():
                 device_hashrate = device.get("hashrate_raw", 0)
                 if device_hashrate:
                     thread_hashrates[f"gpu_{i}"] = device_hashrate
-        
         algo_data = {
             "algorithm": algo,
             "hashrate_hs": hashrate_hs,
@@ -1430,7 +1223,6 @@ def collect_nbminer_stats():
             "thread_hashrates": thread_hashrates if thread_hashrates else None
         }
         algorithms.append(algo_data)
-    
     return {
         "status": "ok",
         "miner": "nbminer",
@@ -1438,16 +1230,10 @@ def collect_nbminer_stats():
         "uptime_s": data.get("miner", {}).get("runtime"),
         "algorithms": algorithms
     }
-
-# ════════════════════════════════════════════════════════
-#  LOG TAIL HELPER
-# ════════════════════════════════════════════════════════
-
 def _decode_log_bytes(data):
     """
     Decode miner log bytes to text, tolerating both UTF-8/ASCII and
     UTF-16 - including a single chunk that mixes BOTH.
-
     PowerShell's Tee-Object defaults to UTF-16 ("Unicode") when no
     -Encoding is given, which silently corrupts naive UTF-8 decoding by
     leaving a null byte between every character. But start.bat's OWN
@@ -1458,7 +1244,6 @@ def _decode_log_bytes(data):
     CUSTOM_LOG_TAIL_BYTES, a restart banner and the UTF-16 miner output
     that follows it can both fall inside the SAME tail window read by
     _tail_file().
-
     An earlier version of this function sampled the first 4096 bytes
     once, decided "this whole chunk is UTF-16" (or UTF-8) from null-byte
     parity, and decoded the ENTIRE chunk that one way. That's correct
@@ -1470,7 +1255,6 @@ def _decode_log_bytes(data):
     good "Current hashrate is 22.65 Mhash/s" lines into unmatched
     CJK-looking garbage - hashrate silently stopped being detected with
     no error anywhere.
-
     Fix: every character this fleet's miners actually log is plain ASCII
     (0-127). UTF-16LE encodes those as [ascii_byte, 0x00] - so simply
     stripping every 0x00 byte out of the raw data BEFORE decoding
@@ -1486,8 +1270,6 @@ def _decode_log_bytes(data):
     if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
         data = data[2:]
     return data.replace(b"\x00", b"").decode("utf-8", errors="ignore")
-
-
 def _tail_file(path, max_bytes=131072):
     """Read the last max_bytes of a file as text (cheap tail, no deps)."""
     try:
@@ -1499,15 +1281,11 @@ def _tail_file(path, max_bytes=131072):
         return _decode_log_bytes(data)
     except Exception:
         return None
-
-
 # Per-log-path offset + running counters for events counted exactly once, keyed by log path
 _log_event_state = {}
-
 def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
     """Read only what's been appended to `path` since the last call for
     this state dict (tracked via state['offset']).
-
     Log files here can shrink two different ways, and they need different
     handling:
       - A real process restart truncates/recreates the log from scratch -
@@ -1521,7 +1299,6 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
         instead we just fast-forward our offset to the new size without
         reading any of that already-seen tail, and leave the running
         counters alone.
-
     We used to tell the two apart purely by how small the file ends up
     (`restart_threshold_bytes` as the cutoff), but that's a guess - it can
     misfire on a stalled/rotated log and re-read the retained tail as "new",
@@ -1529,7 +1306,6 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
     tried the file's inode/NTFS file index, but that's not reliable either -
     a freed file ID can be reused immediately by the fresh log after a real
     restart, so a genuine restart can land on the very same ID as before.
-
     Instead we keep a small fingerprint of the last bytes we actually read
     (state['tail_fp']). On a shrink, we check whether that fingerprint still
     appears in the file: if it does, it's an in-place trim (e.g. tail -c N >
@@ -1544,7 +1320,6 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
             size = f.tell()
-
             if size < state.get("offset", 0):
                 fp = state.get("tail_fp")
                 f.seek(0)
@@ -1571,25 +1346,16 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
                     return ""
             else:
                 state["reset"] = False
-
             f.seek(state.get("offset", 0))
             data = f.read()
             state["offset"] = size
-
         if data:
             state["tail_fp"] = data[-256:]
         return _decode_log_bytes(data)
     except Exception:
         return None
-
-
-# ════════════════════════════════════════════════════════
-#  MINER STATS — KERYX (HTTP stats API)
-# ════════════════════════════════════════════════════════
-
 # Cached keryx-miner --version output; only re-queried when uptime_s drops (miner restarted)
 _keryx_version_cache = {"version": "", "last_uptime_s": None}
-
 def _query_keryx_version(bin_path):
     """Runs `<bin_path> --version` and returns its first line, or "" on
     any failure (binary missing, doesn't support --version, times out,
@@ -1603,7 +1369,6 @@ def _query_keryx_version(bin_path):
         return text.splitlines()[0] if text else ""
     except Exception:
         return ""
-
 def collect_keryx_stats():
     """
     keryx-miner 0.3.7+ exposes a small JSON stats API on 127.0.0.1:3338
@@ -1621,7 +1386,6 @@ def collect_keryx_stats():
     (Root path "/" 404s with {"error":"not found"} - real data is /stats.
     The miner's own startup banner also lists this route under its
     versioned form, /v1/miner/stats.)
-
     accepted_blocks/rejected_blocks come straight from the miner instead
     of being inferred by counting "OPoI: uploading response" log lines,
     and total/per-device hashrate is exact instead of regex-parsed off a
@@ -1629,14 +1393,12 @@ def collect_keryx_stats():
     coming from whatever this agent's usual GPU stats collector is
     (nvidia-smi/NVML), so there's a single source of truth for GPU sensor
     readings instead of the miner's own numbers disagreeing with it.
-
     No log-tail fallback - every keryx-miner build in this fleet has the
     API now, so a failed request here is a real error, not "an older
     build without it."
     """
     api_host = os.environ.get("KERYX_API_HOST", "127.0.0.1")
     api_port = int(os.environ.get("KERYX_API_PORT", "3338"))
-
     # Try the plain path first, fall back to the versioned one if a future build drops the alias
     data = None
     last_err = None
@@ -1647,10 +1409,8 @@ def collect_keryx_stats():
             break
         except Exception as e:
             last_err = e
-
     if data is None:
         return {"status": "error", "error": f"keryx-miner API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}"}
-
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
     gpus = []
     for i, dev in enumerate(data.get("devices", []) or []):
@@ -1665,18 +1425,15 @@ def collect_keryx_stats():
             # temp/fan/power intentionally omitted - the GPU stats collector is the source of truth
         })
     gpus.sort(key=lambda g: g["index"])
-
     total_hr_hs     = data.get("total_hashrate_hs", 0)
     accepted_blocks = data.get("accepted_blocks", 0)
     rejected_blocks = data.get("rejected_blocks", 0)
     uptime_s        = data.get("uptime_s", 0)
-
     # Re-check --version only on first poll or after a restart (uptime_s dropped)
     last_uptime = _keryx_version_cache["last_uptime_s"]
     if last_uptime is None or uptime_s < last_uptime:
         _keryx_version_cache["version"] = _query_keryx_version(KERYX_BIN_PATH)
     _keryx_version_cache["last_uptime_s"] = uptime_s
-
     return {
         "status": "ok", "miner": "keryx",
         "miner_version":  _keryx_version_cache["version"],
@@ -1694,12 +1451,6 @@ def collect_keryx_stats():
         "total_accepted_shares": accepted_blocks,
         "total_rejected_shares": rejected_blocks,
     }
-
-
-# ════════════════════════════════════════════════════════
-#  NODE STATS — KERYXD (log-scraped, no HTTP/RPC polling)
-# ════════════════════════════════════════════════════════
-
 def collect_keryxd_stats():
     """
     keryxd (the Keryx node itself, not the miner) logs to stdout. On
@@ -1707,7 +1458,6 @@ def collect_keryxd_stats():
     (KERYXD_LOG_PATH below, defaulting to a file in %TEMP%) - same
     tee-to-file pattern as keryx-miner's log. Lines look like:
       2026-07-21 14:46:40.023-04:00 [INFO ] Accepted 14 blocks ...c949c254e6e351086c8c7aa9916f06ecaa645c8cea1cfaf020ee0e44f506a153 via relay
-
     Newer keryxd builds (KERYXD_LOG_STYLE=blocks) instead break the count
     down by how each block was accepted, e.g.:
       2026-08-22 00:41:02.115-04:00 [INFO ] Accepted 4 blocks ...591275976f18aeb3d5d9c3ddce13dc85908597b578c9855caa84b21cee5ccfeb, 2 via relay and 2 via submit block
@@ -1718,12 +1468,10 @@ def collect_keryxd_stats():
     block" sub-count is extracted/summed instead of the "Accepted N
     blocks" total; with it unset (or any other value), behavior is
     unchanged from before (sum the total).
-
     Each line reports a COUNT of blocks accepted in that batch (not
     always 1), so unlike keryx-miner's OPoI lines (one line = one
     accepted share), here we extract the number and sum it across all
     new lines seen since the last poll.
-
     The cumulative block count is piggybacked onto hashrate_hs/
     total_hashrate_hs (no separate accepted_shares field) so the
     dashboard's existing fmtRateHs() display path - which already
@@ -1733,25 +1481,18 @@ def collect_keryxd_stats():
     default_log_path = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "keryxd.log")
     log_path = os.environ.get("KERYXD_LOG_PATH", default_log_path)
     log_style = os.environ.get("KERYXD_LOG_STYLE", "").strip().lower()
-
     accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
     submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
     count_re = submit_block_re if log_style == "blocks" else accepted_re
-
     share_state = _log_event_state.setdefault(log_path, {"offset": 0, "accepted_shares": 0})
     new_text = _read_new_log_bytes(log_path, share_state)
-
     if new_text is None:
         return {"status": "error", "error": f"could not read log file '{log_path}'"}
-
     if share_state.get("reset"):
         share_state["accepted_shares"] = 0
-
     for match in count_re.finditer(new_text):
         share_state["accepted_shares"] += int(match.group(1))
-
     accepted_shares = share_state["accepted_shares"]
-
     return {
         "status": "ok", "miner": "keryxd",
         "miner_version": "",
@@ -1763,25 +1504,16 @@ def collect_keryxd_stats():
         "gpus": [],
         "total_hashrate_hs": accepted_shares,
     }
-
-
-# ════════════════════════════════════════════════════════
-#  CUSTOM / UNKNOWN-API MINER (generic log scraper)
-# ════════════════════════════════════════════════════════
-
 # Generic hashrate pattern: number + optional SI prefix (k/M/G/T/P) + some spelling of "h/s",
 # e.g. "45.6 MH/s", "45.6MH/s", "15.10 Mhash/s". Case-insensitive.
 _CUSTOM_HASHRATE_RE = re.compile(
     r"([\d]+(?:\.\d+)?)\s*([kKmMgGtTpP]?)h(?:ash(?:es)?)?\s*/\s*s", re.IGNORECASE
 )
-
 # Generic accepted/rejected pattern: a number shortly after "accepted"/"rejected".
 # Uses [^\d\n] (not [^\d]) so the match can't cross a line break onto an unrelated number.
 _CUSTOM_ACCEPTED_RE = re.compile(r"accepted[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_REJECTED_RE = re.compile(r"rejected[^\d\n]{0,10}(\d+)", re.IGNORECASE)
-
 _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12, "p": 1e15}
-
 def collect_custom_log_miner_stats():
     """
     Best-effort telemetry for a custom miner with no known stats API,
@@ -1791,7 +1523,6 @@ def collect_custom_log_miner_stats():
     CUSTOM_MINER_LOG_PATH via PowerShell's Tee-Object, same as keryxd's
     log on this fleet - _decode_log_bytes() above already handles that
     encoding.
-
     Unlike collect_keryxd_stats(), this does NOT track an incremental
     read offset across polls. It re-reads the last CUSTOM_LOG_TAIL_BYTES
     of the file every poll and takes the LAST matching hashrate/
@@ -1807,7 +1538,6 @@ def collect_custom_log_miner_stats():
     dashboard if they matter; hashrate is the more reliably-parsed of
     the three since almost every miner's log includes an "H/s" line
     somewhere in a recognizable form.
-
     Env vars:
       CUSTOM_MINER_LOG_PATH - defaults to C:\\Temp\\gpu-miner.log,
         matching start.bat's default log location.
@@ -1817,27 +1547,22 @@ def collect_custom_log_miner_stats():
     """
     log_path = CUSTOM_MINER_LOG_PATH
     tail_bytes = int(os.environ.get("CUSTOM_LOG_TAIL_BYTES", "65536"))
-
     text = _tail_file(log_path, max_bytes=tail_bytes)
     if text is None:
         return {"status": "error", "error": f"could not read log file '{log_path}'"}
-
     hashrate_hs = 0.0
     hr_matches = list(_CUSTOM_HASHRATE_RE.finditer(text))
     if hr_matches:
         value, unit = hr_matches[-1].groups()
         hashrate_hs = float(value) * _CUSTOM_HASHRATE_UNIT_MULTIPLIER.get(unit.lower(), 1)
-
     accepted_shares = 0
     acc_matches = list(_CUSTOM_ACCEPTED_RE.finditer(text))
     if acc_matches:
         accepted_shares = int(acc_matches[-1].group(1))
-
     rejected_shares = 0
     rej_matches = list(_CUSTOM_REJECTED_RE.finditer(text))
     if rej_matches:
         rejected_shares = int(rej_matches[-1].group(1))
-
     return {
         "status": "ok", "miner": CUSTOM_MINER_DISPLAY_NAME,
         "miner_version": "",
@@ -1853,19 +1578,16 @@ def collect_custom_log_miner_stats():
         "total_accepted_shares": accepted_shares,
         "total_rejected_shares": rejected_shares,
     }
-
-
 def collect_full_stats():
     """Collect all system and miner statistics"""
     gpu_present = has_nvidia_gpu()
     gpu_list = collect_gpu_stats() if gpu_present else []
-
     stats = {
         "rig": RIG_NAME,
         "timestamp": int(time.time()),
         # cpu_temp disabled by default - needs ACPI WMI thermal zone support or LibreHardwareMonitor
         # running as Administrator; once available, swap to: "cpu_temp": collect_cpu_temp(),
-        "cpu_temp": 0,  # collect_cpu_temp(),
+        "cpu_temp": 0,
         "cpu_usage": collect_cpu_usage(),
         "load": collect_load(),
         "memory": collect_memory(),
@@ -1877,13 +1599,10 @@ def collect_full_stats():
         "platform": platform.system(),
         "platform_version": platform.version(),
     }
-    
     detected_miners = detect_running_miners()
     stats["detected_miners"] = detected_miners
-
     miner_stats = collect_miner_stats_based_on_processes()
     stats.update(miner_stats)
-    
     try:
         cpu_service_result = subprocess.run(
             'sc query CPU_Miner_Service',
@@ -1906,7 +1625,6 @@ def collect_full_stats():
             "state": "unknown",
             "uptime_seconds": 0
         }
-    
     try:
         gpu_service_result = subprocess.run(
             'sc query GPU_Miner_Service',
@@ -1929,11 +1647,8 @@ def collect_full_stats():
             "state": "unknown",
             "uptime_seconds": 0
         }    
-
     stats["docker"] = collect_docker_containers()
-
     return stats
-
 if __name__ == "__main__":
     stats = collect_full_stats()
     print(json.dumps(stats, indent=2))

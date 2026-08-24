@@ -5,9 +5,7 @@ shopt -s inherit_errexit
 echo "========================================"
 echo "MANUAL MINER STOP SCRIPT"
 echo "========================================"
-# HARDCODED CONFIGURATION
 echo "[init] Loading configuration..."
-# Hardcoded paths
 MINER_CONF="/etc/rigcontrol/miner.conf"
 API_CONF="/etc/rigcontrol/api.conf"
 CFG_FILE="/etc/rigcontrol/rig-gpu.conf"
@@ -32,7 +30,6 @@ fi
     echo "Missing miner.conf: $MINER_CONF"
     exit 1
 }
-# Source libraries (only needed ones for stop)
 for f in \
     "$SCRIPT_DIR/lib/00-get_rig_conf.sh" \
     "$SCRIPT_DIR/lib/02-load_configs.sh" \
@@ -51,7 +48,6 @@ echo "Miner Name:      $MINER_NAME"
 echo "Screen Session:  $SERVICE_TYPE"
 echo "Reset GPU on stop: $RESET_OC"
 echo "========================================"
-# PID-BASED KILL FUNCTION
 kill_by_pid() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
@@ -71,7 +67,6 @@ kill_by_pid() {
         rm -f "$pid_file"
     fi
 }
-# STOP MINER FUNCTION
 stop_miner() {
     echo "[$(date)] Stopping $SERVICE_TYPE miner..."
     if screen -list | grep -q "$SERVICE_TYPE"; then

@@ -2,15 +2,12 @@ sudo tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'
 #!/bin/bash
 # gpu_apply_ocs.sh <algo_name> / <custom miner name>
 # Generated from the dashboard's Overclock module - edit there, not by hand.
-
 ALGO="${1:-}"
 if [[ -z "$ALGO" ]]; then
     echo "Usage: $0 <algo_name>"
     exit 1
 fi
-
 ALGO_LOWER=$(echo "$ALGO" | tr '[:upper:]' '[:lower:]')
-
 case "$ALGO_LOWER" in
     keryxhash|keryx-miner|keryx-minerx)
         CORE=2100
@@ -42,7 +39,6 @@ if [[ "$FAN_MODE" == "percent" ]]; then
     CMD+=(--setfan "$FAN_VALUE")
 fi
 "${CMD[@]}"
-
 if [[ "$FAN_MODE" == "curve" ]]; then
     :
 fi

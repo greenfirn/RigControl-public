@@ -7799,14 +7799,12 @@ function handleFsServiceSwitch(newServiceRaw) {
     const newService = rawNewService === "cpu" ? "cpu" : rawNewService === "aux" ? "aux" : "gpu";
     const oldService = getCurrentFsServiceType();
     if (newService === oldService) return;
-
     // Stash whatever's live into its own slot, but only if a miner is actually configured.
     const oldValues = collectFsFieldValuesWithExtras();
     oldValues.SERVICE_TYPE = oldService;
     fsDualModeSlots[oldService] = fsSlotHasRealContent(oldValues)
         ? { stash: snapshotFsLiveStash(), values: oldValues }
         : null;
-
     const targetSlot = fsDualModeSlots[newService];
     if (targetSlot) {
         restoreFsLiveStash(targetSlot.stash);
@@ -7817,15 +7815,12 @@ function handleFsServiceSwitch(newServiceRaw) {
     } else {
         resetFsFieldInputsForNewSlot();
     }
-
     const serviceTypeEl = document.getElementById("fs-field-service-type");
     if (serviceTypeEl) serviceTypeEl.value = newService;
     fsCurrentServiceType = newService;
     fsSyncServiceTabsUI();
-
     // GPU/CPU/AUX combine into one multi-block raw output once more than one has real data.
     fsDualModeActive = fsHasOtherRealSlot(newService);
-
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
         // Live preview only shows the active tab; full combine happens at Save/Send.

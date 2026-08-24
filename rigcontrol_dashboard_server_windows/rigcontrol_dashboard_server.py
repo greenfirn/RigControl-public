@@ -672,7 +672,6 @@ import subprocess
 import psutil
 MOSQUITTO_EXE = r"C:\Program Files\mosquitto\mosquitto.exe"
 MOSQUITTO_CONF = r"C:\Program Files\mosquitto\mosquitto.conf"
-# SHARED THREAD-LOCAL SQLITE CONNECTION REGISTRY
 class _ThreadLocalSQLiteConnections:
     def __init__(self, db_path, ensure_schema_fn, label=None):
         self.db_path = db_path
@@ -1571,7 +1570,6 @@ class NotificationService:
                 log("Secondary SMS enabled but no phone number configured")
         return results
 notification_service = NotificationService()
-# NOTIFICATION WORKER POOL
 NOTIFICATION_WORKER_COUNT = 3
 _notification_queue: "queue.Queue" = queue.Queue()
 _notification_worker_threads: List[threading.Thread] = []

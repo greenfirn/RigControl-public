@@ -7,7 +7,6 @@ SHUTDOWN_REQUESTED=0
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
 : "${ALWAYS_LOGS:=true}"
-# SIGNAL HANDLER
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -44,7 +43,6 @@ fi
     echo "Missing miner.conf: $MINER_CONF"
     exit 1
 }
-# Source libraries
 for f in \
     "$SCRIPT_DIR/lib/00-get_rig_conf.sh" \
     "$SCRIPT_DIR/lib/01-miner_install.sh" \
@@ -106,7 +104,6 @@ fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
 echo "[api]   API_HOST=$API_HOST"
 echo "[api]   API_PORT=$API_PORT"
-# MINER-SPECIFIC API COMMAND GENERATION
 add_api_flags() {
     local miner_name="$1"
     local api_host="$2"
@@ -160,7 +157,6 @@ add_api_flags() {
             ;;
     esac
 }
-# FINAL PLACEHOLDER SUBSTITUTION
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
@@ -183,7 +179,6 @@ case "$OC_FILE" in
     *rig-cpu*) SERVICE_TYPE="cpu" ;;
     *rig-aux*) SERVICE_TYPE="aux" ;;
 esac
-# API HEALTH CHECK FUNCTION
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
         return 0
@@ -226,7 +221,6 @@ kill_by_pid() {
         rm -f "$pid_file"
     fi
 }
-# MINER CONTROL FUNCTIONS
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
@@ -346,7 +340,6 @@ stop_miner() {
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# START MINER
 echo "$(date): Starting miner (no container checks)..."
 start_miner
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
@@ -357,7 +350,6 @@ stop_miner
 echo "$(date): Miner launcher stopped gracefully"
 EOF
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write GPU service --
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
 Description=GPU Miner Launcher
@@ -380,7 +372,6 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write CPU service --
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
 Description=CPU Miner Launcher
@@ -401,7 +392,6 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write AUX service --
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
 Description=AUX Miner Launcher
@@ -428,7 +418,6 @@ sudo systemctl restart docker_events_aux.service
 sudo systemctl enable docker_events_cpu.service
 sudo systemctl enable docker_events_gpu.service
 sudo systemctl enable docker_events_aux.service
-# follow logs
 sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_gpu.service -f
 sudo journalctl -u docker_events_aux.service -f

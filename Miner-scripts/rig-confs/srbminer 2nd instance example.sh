@@ -26,7 +26,6 @@ EOF
 sudo systemctl enable docker_events_gpu
 sudo systemctl restart docker_events_gpu
 sudo systemctl is-active docker_events_gpu
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
 {

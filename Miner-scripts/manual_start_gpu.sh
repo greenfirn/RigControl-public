@@ -5,9 +5,7 @@ shopt -s inherit_errexit
 echo "========================================"
 echo "MANUAL MINER START SCRIPT"
 echo "========================================"
-# HARDCODED CONFIGURATION
 echo "[init] Loading configuration..."
-# Hardcoded paths
 MINER_CONF="/etc/rigcontrol/miner.conf"
 API_CONF="/etc/rigcontrol/api.conf"
 CFG_FILE="/etc/rigcontrol/rig-gpu.conf"
@@ -31,7 +29,6 @@ fi
     echo "Missing miner.conf: $MINER_CONF"
     exit 1
 }
-# Source libraries
 for f in \
     "$SCRIPT_DIR/lib/00-get_rig_conf.sh" \
     "$SCRIPT_DIR/lib/01-miner_install.sh" \
@@ -52,7 +49,6 @@ RESET_OC="${RESET_OC,,}"
 : "${RESET_OC:=false}"
 echo "[oc] APPLY_OC: $APPLY_OC"
 echo "[oc] RESET_OC: $RESET_OC"
-# API SETTINGS - from hardcoded API_CONF
 API_LOOKUP_NAME="$MINER_NAME"
 if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
     API_LOOKUP_NAME="$CUSTOM_MINER"
@@ -101,7 +97,6 @@ fi
 echo "[api] Final API settings for $API_LOOKUP_NAME:"
 echo "[api]   API_HOST=$API_HOST"
 echo "[api]   API_PORT=$API_PORT"
-# MINER-SPECIFIC API COMMAND GENERATION
 add_api_flags() {
     local miner_name="$1"
     local api_host="$2"
@@ -150,7 +145,6 @@ add_api_flags() {
             ;;
     esac
 }
-# FINAL PLACEHOLDER SUBSTITUTION
 if [[ -n "$AUTOFILL_CPU" ]]; then
     ARGS="${ARGS//%CPU_THREADS%/$AUTOFILL_CPU}"
 else
@@ -181,7 +175,6 @@ echo "Reset GPU on Stop: $RESET_OC"
 echo "========================================"
 START_CMD=$(get_start_cmd "$MINER_NAME")
 echo "[debug] START_CMD: $START_CMD"
-# API HEALTH CHECK FUNCTION
 check_api_health() {
     if [[ "$API_PORT" -eq 0 ]]; then
         return 0
@@ -192,7 +185,6 @@ check_api_health() {
         return 1
     fi
 }
-# START MINER FUNCTION
 start_miner() {
     if screen -list | grep -q "$SERVICE_TYPE"; then
         echo "[$(date)] Screen session exists for $SERVICE_TYPE - checking if miner is alive..."
@@ -282,7 +274,6 @@ start_miner() {
         return 1
     fi
 }
-# MAIN START LOGIC
 echo "Starting miner..."
 start_miner
 EOF

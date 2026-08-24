@@ -56,7 +56,6 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-# PODMAN EVENT SOURCE
 echo "$(date): Confirming Podman config..."
 if [ "$TARGET_NAME" = "podman" ]; then
     echo "$(date): Using Podman events monitor"
@@ -205,7 +204,6 @@ is_miner_alive() {
     [[ -n "$pid" ]] || return 1
     ps -p "$pid" > /dev/null 2>&1
 }
-# PID-BASED KILL - Backup for crashed miners
 kill_by_pid() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
@@ -233,7 +231,6 @@ kill_by_pid() {
     fi
     return 0
 }
-# PODMAN-SPECIFIC FUNCTIONS
 is_docker_running() {
     docker ps > /dev/null 2>&1
     return $?
@@ -307,7 +304,6 @@ process_podman_event() {
             ;;
     esac
 }
-# MINER CONTROL FUNCTIONS
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if is_miner_alive; then
@@ -433,7 +429,6 @@ stop_miner() {
     echo "$(date): Final sleep 2 seconds..."
     sleep 2
 }
-# INITIAL PODMAN CHECK
 echo "$(date): Performing initial Podman check..."
 echo "$(date): Waiting for Podman container to be ready..."
 max_wait=60
@@ -459,7 +454,6 @@ else
     echo "$(date): Podman container not ready after $max_wait seconds → stop_miner"
     stop_miner || true
 fi
-# PODMAN EVENT MONITORING LOOP
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
@@ -512,7 +506,6 @@ stop_miner || true
 echo "$(date): Podman event monitor stopped gracefully"
 EOF
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-# -- write CPU service --
 sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events CPU Miner Monitor
@@ -536,7 +529,6 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-# -- write GPU service --
 sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events GPU Miner Monitor
@@ -590,7 +582,6 @@ sudo systemctl restart docker_events_aux.service
 sudo systemctl enable docker_events_cpu.service
 sudo systemctl enable docker_events_gpu.service
 sudo systemctl enable docker_events_aux.service
-# follow logs
 sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_gpu.service -f
 sudo journalctl -u docker_events_aux.service -f

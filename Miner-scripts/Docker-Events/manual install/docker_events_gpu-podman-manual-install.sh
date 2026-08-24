@@ -1,7 +1,5 @@
-# stop old services
 sudo systemctl stop docker_events_gpu.service
 sudo systemctl stop docker_events_cpu.service
-# disable so it doesnt run on boot
 sudo systemctl disable docker_events_gpu.service
 sudo systemctl disable docker_events_cpu.service
 sudo mkdir -v /usr/local/bin
@@ -84,7 +82,6 @@ kill_by_pid() {
     fi
     return 0
 }
-# PODMAN-SPECIFIC FUNCTIONS
 is_docker_running() {
     docker ps > /dev/null 2>&1
     return $?
@@ -247,7 +244,6 @@ diag_heartbeat_loop() {
         sleep 5
     done
 }
-# MINER CONTROL FUNCTIONS
 start_miner() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     local LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
@@ -331,7 +327,6 @@ if [[ "$DIAGNOSTIC" == "true" ]]; then
     DIAG_HEARTBEAT_PID=$!
     echo "$(date): [DIAG] Diagnostic state tracker enabled (PID: $DIAG_HEARTBEAT_PID)"
 fi
-# INITIAL PODMAN CHECK
 echo "$(date): Performing initial Podman check..."
 echo "$(date): Waiting for Podman container to be ready..."
 max_wait=60
@@ -357,7 +352,6 @@ else
     echo "$(date): Podman container not ready after $max_wait seconds → stop_miner"
     stop_miner || true
 fi
-# PODMAN EVENT MONITORING LOOP
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
@@ -436,12 +430,8 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable docker_events_gpu.service
-# Start/Stop Service
 sudo systemctl start docker_events_gpu.service
 sudo systemctl stop docker_events_gpu.service
-# check status
 sudo systemctl status docker_events_gpu.service
-# follow logs
 sudo journalctl -u docker_events_gpu.service -f
-# disable so it doesnt start on boot
 sudo systemctl disable docker_events_gpu.service

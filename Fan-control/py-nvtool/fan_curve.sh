@@ -1,21 +1,16 @@
 # --- write fan_curve.py --- NVML-based fan curve daemon (no Xorg/Coolbits needed)
-
 sudo tee /usr/local/bin/fan_curve.py > /dev/null << 'EOF'
 #!/usr/bin/env python3
 """
 fan_curve.py — NVML-based fan curve daemon. Resets fans to automatic control on exit.
 """
-
 import argparse
 import os
 import signal
 import socket
 import sys
 import time
-
 import nvtool as nv
-
-
 # Default temp(C) -> fan(%) curve. Edit to taste, or override with --curve.
 DEFAULT_CURVE = [
     (30, 30),
@@ -25,15 +20,10 @@ DEFAULT_CURVE = [
     (75, 75),
     (83, 100),
 ]
-
 _shutdown_requested = False
-
-
 def _handle_signal(signum, frame):
     global _shutdown_requested
     _shutdown_requested = True
-
-
 def sd_notify(message):
     """Send a message to systemd via NOTIFY_SOCKET; no-op if not running under systemd."""
     addr = os.environ.get("NOTIFY_SOCKET")
@@ -51,8 +41,6 @@ def sd_notify(message):
     except OSError:
         # Don't let a notify-socket hiccup take down fan control.
         pass
-
-
 def parse_curve(spec):
     """Parse 'temp:pct,temp:pct,...' into a sorted list of (temp, pct) tuples."""
     points = []
@@ -63,8 +51,6 @@ def parse_curve(spec):
     if len(points) < 2:
         raise ValueError("Curve needs at least two points")
     return points
-
-
 def temp_to_pct(temp, curve):
     """Linear interpolation between curve points. Clamps below/above the ends."""
     if temp <= curve[0][0]:
@@ -78,15 +64,11 @@ def temp_to_pct(temp, curve):
             frac = (temp - t0) / (t1 - t0)
             return p0 + frac * (p1 - p0)
     return curve[-1][1]
-
-
 def get_gpu_indices(index_arg):
     if index_arg is not None and index_arg >= 0:
         return [index_arg]
     count = nv.nvmlDeviceGetCount()
     return list(range(count))
-
-
 def reset_to_auto(handles):
     for idx, handle in handles.items():
         try:
@@ -96,8 +78,6 @@ def reset_to_auto(handles):
             print(f"[FAN] GPU {idx}: reset {num_fans} fan(s) to AUTO")
         except nv.NVMLError as error:
             print(f"[FAN] GPU {idx}: WARN could not reset to auto ({error})")
-
-
 def main():
     parser = argparse.ArgumentParser(description="NVML fan curve daemon")
     parser.add_argument("--index", type=int, default=-1,
@@ -118,39 +98,30 @@ def main():
                          help="How long a drop must hold before the fan is "
                               "actually lowered (default: 15)")
     args = parser.parse_args()
-
     curve = parse_curve(args.curve) if args.curve else DEFAULT_CURVE
-
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
-
     try:
         nv.nvmlInit()
     except nv.NVMLError as error:
         print(f"[FAN] FATAL: nvmlInit failed: {error}")
         sys.exit(1)
-
     handles = {}
     last_pct = {}
     peak_temp = {}
     hold_since = {}
-
     try:
         indices = get_gpu_indices(args.index)
         if not indices:
             print("[FAN] FATAL: no GPUs found.")
             sys.exit(1)
-
         for idx in indices:
             handles[idx] = nv.nvmlDeviceGetHandleByIndex(idx)
             name = nv.nvmlDeviceGetName(handles[idx])
             print(f"[FAN] Controlling GPU {idx}: {name}")
-
         print(f"[FAN] Curve: {curve}")
         print(f"[FAN] Interval={args.interval}s Hysteresis={args.hysteresis}%")
-
         sd_notify("READY=1\nSTATUS=Controlling {} GPU(s)".format(len(handles)))
-
         while not _shutdown_requested:
             for idx, handle in handles.items():
                 try:
@@ -158,10 +129,8 @@ def main():
                 except nv.NVMLError as error:
                     print(f"[FAN] GPU {idx}: WARN temp read failed ({error}), skipping this tick")
                     continue
-
                 target_pct = round(temp_to_pct(temp, curve))
                 prev_pct = last_pct.get(idx)
-
                 # --- cooldown hold: debounce downward moves against temp spikes ---
                 peak = peak_temp.get(idx, temp)
                 if temp >= peak:
@@ -184,7 +153,6 @@ def main():
                     else:
                         hold_since[idx] = None
                 # --- end cooldown hold ---
-
                 if prev_pct is None or abs(target_pct - prev_pct) >= args.hysteresis:
                     try:
                         num_fans = nv.nvmlDeviceGetNumFans(handle)
@@ -195,27 +163,19 @@ def main():
                         last_pct[idx] = target_pct
                     except nv.NVMLError as error:
                         print(f"[FAN] GPU {idx}: WARN fan-set failed ({error})")
-
             sd_notify("WATCHDOG=1")
-
             # Sleep in small chunks so SIGTERM/SIGINT is handled promptly
             slept = 0.0
             while slept < args.interval and not _shutdown_requested:
                 time.sleep(min(0.5, args.interval - slept))
                 slept += 0.5
-
         print("[FAN] Shutdown requested, resetting fans to AUTO...")
         sd_notify("STOPPING=1")
-
     finally:
         reset_to_auto(handles)
         nv.nvmlShutdown()
         print("[FAN] Clean exit.")
-
-
 if __name__ == "__main__":
     main()
-
 EOF
-
 sudo chmod +x /usr/local/bin/fan_curve.py

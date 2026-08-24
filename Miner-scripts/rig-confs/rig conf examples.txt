@@ -2,7 +2,6 @@
 # -- rig conf examples...                                                                                   --
 # -- algo, pool, wallet, password get added to miner args from conf                                         --
 # -- worker name is left to manualy add with wallet or where ever the pool wants it                         --
-
 # -- %WORKER_NAME%           rigs hostname in ARGS, WALLET/template, PASS, POOL/url                         --
 # -- %WARTHOG_TARGET%        auto set WARTHOG_TARGET in ARGS (24/32 thread CPU)                             --
 # -- %CPU_THREADS%           cpu total threads -1 (and affinity when xmrig) in ARGS see '03-cpu_threads.sh' --
@@ -13,14 +12,11 @@
 # -- top-level "miner": "custom" + "miner_alt", miner_config.install_url                                   --
 # custom miner binary name
 # -- miner_config.miner (only present when top-level "miner" is "custom")                                  --
-
 # -- json files keep as plain 'tee' (no sudo) so they can be easily overwritten in home folder using ssh    --
 # -- if write error, change owner back to user: sudo chown $USER:$USER *.json                               --
 #=============================================================================================================
-
 # -- to update miner version write miner.conf and restart service (miner.conf is a separate version-pins   --
 # -- file, not a rig-cpu/rig-gpu/rig-aux config, so it stays in the old KEY "value" .conf format)           --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'
 XMRIG_VERSION "6.25.0"
@@ -34,13 +30,9 @@ GMINER_VERSION "3.44"
 TEAMREDMINER_VERSION "0.10.21"
 TREXMINER_VERSION "0.26.8"
 EOF
-
 sudo systemctl restart docker_events_gpu
-
 #========================================================================================================
-
 # -- xmrig write Nosana rig-cpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
 {
@@ -62,11 +54,8 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
   ]
 }
 EOF
-
 #========================================================================================================
-
 # -- xmrig write octa rig-cpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
 {
@@ -89,11 +78,8 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
   ]
 }
 EOF
-
 #========================================================================================================
-
 # -- xmrig write clore rig-cpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
 {
@@ -116,11 +102,8 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
   ]
 }
 EOF
-
 #========================================================================================================
-
 # -- trex write clore rig-gpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
@@ -143,11 +126,8 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 EOF
 sudo systemctl restart docker_events_gpu
 sudo systemctl is-active docker_events_gpu
-
 #========================================================================================================
-
 # -- srbminer write clore rig-cpu.json --
-
 sudo systemctl stop docker_events_cpu
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
@@ -177,11 +157,8 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
 EOF
 sudo systemctl restart docker_events_cpu
 sudo systemctl is-active docker_events_cpu
-
 #========================================================================================================
-
 # -- rigel write octa rig-gpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
@@ -208,11 +185,8 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
   ]
 }
 EOF
-
 #========================================================================================================
-
 # -- bzminer write clore rig-gpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
@@ -235,11 +209,8 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
   ]
 }
 EOF
-
 #========================================================================================================
-
 # -- bzminer write octa rig-gpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
@@ -262,11 +233,8 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
   ]
 }
 EOF
-
 #========================================================================================================
-
 # -- teamredminer write octa rig-gpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
@@ -290,11 +258,8 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 EOF
 sudo systemctl restart docker_events_gpu
 sudo systemctl is-active docker_events_gpu
-
 #========================================================================================================
-
 # -- teamredminer-octaspace/xmrig-cuda:1 write octa rig-gpu.json --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
@@ -318,12 +283,9 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 EOF
 sudo systemctl restart docker_events_gpu
 sudo systemctl is-active docker_events_gpu
-
 #========================================================================================================
-
 # -- keryx-miner (custom, download via miner_alt/install_url) write rig-gpu.json --
 # -- see also: rig-confs/keryx-custom-rig-gpu.sh (identical standalone example)                            --
-
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {

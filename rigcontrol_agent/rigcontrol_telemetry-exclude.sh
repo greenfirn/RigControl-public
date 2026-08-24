@@ -1,5 +1,4 @@
 sudo tee /usr/local/bin/rigcontrol_telemetry.py > /dev/null <<'EOF'
-# ========== TELEMETRY ===================================
 import os
 import subprocess
 import datetime
@@ -799,6 +798,7 @@ def docker_containers_running():
     return rc == 0 and bool(out.strip())
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
+_custom_miner_last_pid = {}
 def consume_miners_changed_flag():
     """Returns True if detect_running_miners() has observed the running-miner
     set change since this was last called, then clears the flag (one-shot).
@@ -810,7 +810,14 @@ def consume_miners_changed_flag():
     _miners_set_changed_flag = False
     return changed
 def detect_running_miners():
-    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call."""
+    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
+    Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of that
+    set-membership flag: a miner that crashes and restarts (or gets reinstalled to a new
+    version) keeps the same "custom_log_<slot>" key the whole time, so the set never changes
+    and consume_miners_changed_flag() alone would never notice. Comparing PIDs catches that
+    case directly from ps output and forces _named_miner_version() to re-query --version right
+    away (see the force=True call below) instead of relying on the API's self-reported uptime
+    ever rolling back - which never happens if the API was never reachable in the first place."""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
@@ -836,6 +843,11 @@ def detect_running_miners():
                         break
                 if _matched_slot:
                     found[f"custom_log_{_matched_slot}"] = True
+                    _pid_fields = line.split(None, 2)
+                    _pid = _pid_fields[1] if len(_pid_fields) > 1 else None
+                    if _pid and _custom_miner_last_pid.get(_matched_slot) != _pid:
+                        _custom_miner_last_pid[_matched_slot] = _pid
+                        _named_miner_version(custom_names[_matched_slot], force=True)
                     continue
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
                     if proc_name in line_lower:
@@ -1790,13 +1802,13 @@ def _sanitize_miner_key(name):
     """Converts a miner name into a valid rigcontrol-agent.conf variable prefix, e.g. "keryx-miner" -> "KERYX_MINER"."""
     return re.sub(r"[^A-Za-z0-9]+", "_", (name or "").strip()).strip("_").upper()
 def _named_miner_bin(name):
-    """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back to CUSTOM_MINER_BASE_DIR/<name>/current/<name>."""
+    """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back to CUSTOM_MINER_BASE_DIR/custom/<name>/current/<name> - matches 01-miner_install.sh's install_custom_miner(), which always installs under a "custom/" subdirectory (miner_dir="$BASE_DIR/custom/$bin_name/current"). This fallback previously omitted "custom/", so it silently pointed at a different, never-installed/never-updated path instead of the real binary - version queries against a custom miner with no <NAME>_BIN override would keep reporting whatever (if anything) happened to already exist at that wrong location."""
     if not name:
         return ""
     bin_path = os.environ.get(f"{_sanitize_miner_key(name)}_BIN", "").strip()
     if bin_path:
         return bin_path
-    return f"{CUSTOM_MINER_BASE_DIR}/{name}/current/{name}"
+    return f"{CUSTOM_MINER_BASE_DIR}/custom/{name}/current/{name}"
 _named_miner_version_cache = {}
 def _named_miner_version(name, force=False):
     """Caches and returns `<name> --version`'s first line, re-querying only when forced (e.g. on a detected restart)."""
@@ -1972,7 +1984,6 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
     counts since the last poll, offset-tracked via _read_new_log_bytes -
     same as before, this total still feeds hashrate_hs/total_hashrate_hs.
-
     Newer keryxd builds additionally break that count down by how each
     block was accepted, e.g.:
       2026-08-22 00:41:02.115-04:00 [INFO ] Accepted 4 blocks ...591275976f18aeb3d5d9c3ddce13dc85908597b578c9855caa84b21cee5ccfeb, 2 via relay and 2 via submit block
@@ -2107,6 +2118,7 @@ def collect_full_stats(visible_groups=None):
         print("\n" + "=" * 60)
         print("CURRENT MINER HASHRATES:")
         print("=" * 60)
+        print(f"Detected miner processes: {detected_miners or '(none)'}")
         for key, miner_data in stats.items():
             if key.startswith("miner_") and isinstance(miner_data, dict):
                 if miner_data.get("status") == "ok":
@@ -2114,7 +2126,13 @@ def collect_full_stats(visible_groups=None):
                     for algo in miner_data.get("algorithms", []):
                         hr = algo.get("hashrate_hs", 0)
                         if hr and hr > 0:
-                            print(f"{miner_name.upper()}: {hr:,.0f} H/s - {algo.get('algorithm', 'Unknown')}")
+                            print(f"{miner_name.upper()}: {hr:,.0f} H/s - {algo.get('algorithm', 'Unknown')} (miner_version={miner_data.get('miner_version', 'unknown')!r})")
+                else:
+                    # Non-"ok" collector results (offline/error/unexpected_format) were previously
+                    # swallowed silently here - only successful entries ever printed, so a failing
+                    # custom miner (e.g. API unreachable, bad JSON shape) left an empty-looking
+                    # "CURRENT MINER HASHRATES" block with zero clue why. Surface the reason instead.
+                    print(f"{key[6:].upper()}: status={miner_data.get('status')} - {miner_data.get('error', miner_data.get('reason', ''))}")
         print("=" * 60)
     else:
         stats["detected_miners"] = []

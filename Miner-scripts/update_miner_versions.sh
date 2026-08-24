@@ -5,7 +5,6 @@ sudo tee /usr/local/bin/update_miner_versions.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
-# CONFIG
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 # GitHub API requires a User-Agent header or it 4xx's the request.
 UA="rigcloud-version-updater"
@@ -103,7 +102,6 @@ should_strip_v() {
     done
     return 1
 }
-# GITHUB LOOKUP
 get_latest_tag() {
     local repo="$1"
     local response
@@ -139,7 +137,6 @@ get_current_version() {
     done < "$MINER_CONF"
     echo ""
 }
-# MAIN
 echo "========================================"
 echo "MINER VERSION UPDATE (from GitHub releases)"
 echo "========================================"
