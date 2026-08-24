@@ -4008,14 +4008,9 @@ function render() {
         nameEl.classList.toggle("rig-name-watchdog-active", watchdogActive && !watchdogStandingDown);
         nameEl.classList.toggle("rig-name-watchdog-standby", watchdogStandingDown);
         let nameTitle = "";
-        if (watchdogStandingDown) {
-            nameTitle = "Watchdog running but standing down (docker active or mining stopped)";
-        } else if (watchdogActive) {
-            nameTitle = "Watchdog active";
-        }
         const gpuInfoTooltip = DataHelper.getGpuInfoTooltip(gpus);
         if (gpuInfoTooltip) {
-            nameTitle = nameTitle ? `${nameTitle}\n\n${gpuInfoTooltip}` : gpuInfoTooltip;
+            nameTitle = gpuInfoTooltip;
         }
         if (nameTitle) {
             nameEl.title = nameTitle;
