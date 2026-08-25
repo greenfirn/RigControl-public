@@ -25,13 +25,6 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "apply_oc": "true",
       "restart": "true"
     }
-  ],
-  "apply_to_workers": [
-    "5950x-1-5070ti",
-    "5950x-5-5070ti",
-    "5950x-6-5070ti",
-    "5950x-8-5070ti",
-    "5950x-4-4070tis"
   ]
 }
 EOF
