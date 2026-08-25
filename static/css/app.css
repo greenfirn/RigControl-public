@@ -3374,19 +3374,24 @@ h1 {
 }
 #oc-modal .oc-list-toolbar {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+#oc-modal .oc-toolbar-row {
+    display: flex;
     align-items: flex-end;
     gap: 10px;
-    flex: 0 0 auto;
     flex-wrap: wrap;
 }
-#oc-modal .oc-name-group {
-    flex: 1 1 0;
+#oc-modal .oc-toolbar-row-top .oc-name-group {
+    flex: 3 3 0;
     min-width: 98px;
 }
-#oc-modal .oc-list-toolbar .fs-search {
-    flex: 1 1 0;
-    width: auto;
-    min-width: 98px;
+#oc-modal .oc-toolbar-row-top .fs-apply-to-group {
+    flex: 2 2 0;
+    min-width: 120px;
+    margin-left: 0;
 }
 #oc-modal .oc-algo-apply-group {
     flex: 1 1 0;
@@ -3395,12 +3400,34 @@ h1 {
 #oc-modal .oc-algo-apply-select {
     width: 100%;
 }
-#oc-modal .oc-list-toolbar .cmd-btn-row {
+#oc-modal .oc-toolbar-row-top .cmd-btn-row {
     display: flex;
     align-items: center;
     gap: 10px;
     flex: 0 0 auto;
     width: auto;
+    margin-left: auto;
+}
+#oc-modal .oc-toolbar-row-bottom .oc-search-row {
+    width: 100%;
+}
+#oc-modal .oc-search-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 220px;
+    min-width: 180px;
+}
+#oc-modal .oc-search-row #oc-algo-filter {
+    flex: 0 1 165px;
+    width: 165px;
+    max-width: 165px;
+    min-width: 110px;
+}
+#oc-modal .oc-list-toolbar .fs-search {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 80px;
     margin-left: auto;
 }
 #oc-modal .fs-search {
@@ -3423,7 +3450,7 @@ h1 {
 }
 #oc-modal .fs-item-grid {
     display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
+    grid-template-columns: 1.6fr 1fr 1fr 1fr;
     gap: 10px;
     align-items: center;
     flex: 1 1 auto;

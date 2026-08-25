@@ -1865,38 +1865,57 @@ nvidia-smi
                     ></textarea>
                 </div>
                 <div class="oc-list-toolbar">
-                    <input
-                        type="text"
-                        id="oc-search"
-                        class="fs-search"
-                        placeholder="Search..."
-                        autocomplete="off"
-                    />
-                    <div class="field-group oc-name-group">
-                        <label for="oc-name">Overclock Name</label>
-                        <input
-                            type="text"
-                            id="oc-name"
-                            class="fs-field-input"
-                            placeholder="Overclock name"
-                            autocomplete="off"
-                        />
+                    <div class="oc-toolbar-row oc-toolbar-row-top">
+                        <div class="field-group oc-name-group">
+                            <label for="oc-name">Overclock Name</label>
+                            <input
+                                type="text"
+                                id="oc-name"
+                                class="fs-field-input"
+                                placeholder="Overclock name"
+                                autocomplete="off"
+                            />
+                        </div>
+                        <div class="field-group fs-apply-to-group" id="oc-apply-to-wrap">
+                            <label>Apply to</label>
+                            <button type="button" class="fs-apply-to-toggle" id="btn-oc-apply-to-toggle" title="Choose which worker(s) this overclock profile sends to when sent/saved. Defaults to whatever's checked in the main worker list.">Workers</button>
+                            <div class="fs-apply-to-list hidden" id="oc-apply-to-list">
+                                <div class="fs-apply-to-item fs-apply-to-special" id="oc-apply-to-workers-option" title="Use whatever is checked in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="oc-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
+                                <div class="fs-apply-to-sep"></div>
+                                <div class="fs-apply-to-workers" id="oc-apply-to-workers"></div>
+                            </div>
+                        </div>
+                        <div class="field-group oc-algo-apply-group">
+                            <label for="oc-algo-apply-select">Apply Algo</label>
+                            <select id="oc-algo-apply-select" class="cmd-select oc-algo-apply-select" title="Choosing an algo appends &quot;sudo /usr/local/bin/gpu_apply_ocs.sh &lt;algo&gt;&quot; to the bottom of Raw Content, so sending this profile also applies the OC settings for that algo immediately">
+                                <option value="">-save only-</option>
+                            </select>
+                        </div>
+                        <div class="cmd-btn-row">
+                            <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
+                                <input type="checkbox" id="confirm-oc" checked>
+                                <span class="checkbox-text">Confirm</span>
+                            </label>
+                            <button class="cmd-btn send-it" id="btn-send-it-oc" title="Send this overclock profile to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
+                            <button class="cmd-btn" id="btn-save-oc">Save</button>
+                            <button class="cmd-btn danger" id="btn-delete-oc">Delete</button>
+                            <button class="cmd-btn" id="btn-clear-oc">Clear</button>
+                        </div>
                     </div>
-                    <div class="field-group oc-algo-apply-group">
-                        <label for="oc-algo-apply-select">Apply Algo</label>
-                        <select id="oc-algo-apply-select" class="cmd-select oc-algo-apply-select" title="Choosing an algo appends &quot;sudo /usr/local/bin/gpu_apply_ocs.sh &lt;algo&gt;&quot; to the bottom of Raw Content, so sending this profile also applies the OC settings for that algo immediately">
-                            <option value="">-save only-</option>
-                        </select>
-                    </div>
-                    <div class="cmd-btn-row">
-                        <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
-                            <input type="checkbox" id="confirm-oc" checked>
-                            <span class="checkbox-text">Confirm</span>
-                        </label>
-                        <button class="cmd-btn send-it" id="btn-send-it-oc" title="Send this overclock profile to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
-                        <button class="cmd-btn" id="btn-save-oc">Save</button>
-                        <button class="cmd-btn danger" id="btn-delete-oc">Delete</button>
-                        <button class="cmd-btn" id="btn-clear-oc">Clear</button>
+                    <div class="oc-toolbar-row oc-toolbar-row-bottom">
+                        <div class="oc-search-row">
+                            <select id="oc-algo-filter" class="cmd-select" title="Filter the list to a single Apply Algo">
+                                <option value="">All algos</option>
+                            </select>
+                            <input
+                                type="text"
+                                id="oc-search"
+                                class="fs-search"
+                                placeholder="Search..."
+                                autocomplete="off"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div class="fs-list-panel">
@@ -1904,6 +1923,7 @@ nvidia-smi
                         <input type="checkbox" class="rig-select-checkbox" id="oc-select-all-checkbox" title="Select / unselect all visible overclock profiles">
                         <div class="fs-item-grid">
                             <span class="fs-item-col fs-item-col-name">Overclock Name</span>
+                            <span class="fs-item-col fs-item-col-applyto" title="Which worker(s) this overclock profile applies to when sent/saved">Apply To</span>
                             <span class="fs-item-col" title="Algo appended as 'sudo /usr/local/bin/gpu_apply_ocs.sh &lt;algo&gt;' at the bottom of this profile's Raw Content">Apply Algo</span>
                             <span class="fs-item-col">Algo(s)</span>
                         </div>

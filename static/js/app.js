@@ -8741,6 +8741,102 @@ function collectOverclockEntries() {
         { key: "RAW_COMMAND", gpu: 0, value: cmd }
     ];
 }
+let ocApplyToRigs = new Set();
+function isOcApplyToDropdownOpen() {
+    const list = document.getElementById("oc-apply-to-list");
+    return !!list && !list.classList.contains("hidden");
+}
+function openOcApplyToDropdown() {
+    populateOcApplyToWorkerList();
+    document.getElementById("oc-apply-to-list")?.classList.remove("hidden");
+}
+function closeOcApplyToDropdown() {
+    document.getElementById("oc-apply-to-list")?.classList.add("hidden");
+}
+function toggleOcApplyToDropdown() {
+    if (isOcApplyToDropdownOpen()) {
+        closeOcApplyToDropdown();
+    } else {
+        openOcApplyToDropdown();
+    }
+}
+function updateOcApplyToToggleLabel() {
+    const btn = document.getElementById("btn-oc-apply-to-toggle");
+    if (!btn) return;
+    if (ocApplyToRigs.size === 0) {
+        btn.textContent = "Workers";
+    } else if (ocApplyToRigs.size === 1) {
+        btn.textContent = Array.from(ocApplyToRigs)[0];
+    } else {
+        btn.textContent = `${ocApplyToRigs.size} workers`;
+    }
+}
+function updateOcApplyToWorkersOptionCheckedState() {
+    const opt = document.getElementById("oc-apply-to-workers-option");
+    if (opt) opt.classList.toggle("fs-apply-to-active", ocApplyToRigs.size === 0);
+}
+function populateOcApplyToWorkerList() {
+    const container = document.getElementById("oc-apply-to-workers");
+    if (!container) return;
+    container.innerHTML = "";
+    const rigNames = Object.keys(rigsState || {})
+        .filter(name => name !== "rigs")
+        .sort();
+    rigNames.forEach((name) => {
+        const row = document.createElement("label");
+        row.className = "fs-apply-to-worker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = ocApplyToRigs.has(name);
+        cb.addEventListener("change", () => {
+            if (cb.checked) {
+                ocApplyToRigs.add(name);
+            } else {
+                ocApplyToRigs.delete(name);
+            }
+            updateOcApplyToToggleLabel();
+            updateOcApplyToWorkersOptionCheckedState();
+            syncOcRawAfterApplyToChange();
+        });
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(span);
+        container.appendChild(row);
+    });
+    updateOcApplyToWorkersOptionCheckedState();
+}
+function setOcApplyToRigs(names) {
+    const rigNames = new Set(Object.keys(rigsState || {}).filter(name => name !== "rigs"));
+    ocApplyToRigs = new Set((Array.isArray(names) ? names : []).filter(name => rigNames.has(name)));
+    updateOcApplyToToggleLabel();
+    if (isOcApplyToDropdownOpen()) populateOcApplyToWorkerList();
+}
+function clearOcApplyToSelection() {
+    ocApplyToRigs.clear();
+    updateOcApplyToToggleLabel();
+    populateOcApplyToWorkerList();
+    syncOcRawAfterApplyToChange();
+}
+// Overclock raw content is a plain shell script (heredoc), not JSON like flightsheets, so "apply to"
+// has nowhere structured to live - it's persisted as a leading "# APPLY_TO=..." comment line placed
+// BEFORE the "sudo tee ... <<'EOF'" line, so it never ends up inside the installed gpu_apply_ocs.sh
+// file on the rig and is a no-op if it's ever sent as-is (bash ignores comment lines).
+function getOcApplyToFromScript(scriptText) {
+    const m = (scriptText || "").match(/^# APPLY_TO=(.*)$/m);
+    if (!m) return [];
+    return m[1].split(",").map(s => s.trim()).filter(Boolean);
+}
+function syncOcRawAfterApplyToChange() {
+    const rawEl = document.getElementById("oc-raw");
+    if (!rawEl) return;
+    let text = rawEl.value.replace(/^# APPLY_TO=.*\n?/m, "");
+    if (ocApplyToRigs.size > 0) {
+        text = `# APPLY_TO=${Array.from(ocApplyToRigs).join(",")}\n${text}`;
+    }
+    rawEl.value = text;
+    autoResizeOcRaw();
+}
 async function loadOverclocks() {
     const res = await fetch(`${API}/api/overclocks`);
     if (!res.ok) {
@@ -8762,16 +8858,20 @@ function renderOverclocks() {
         row.className = "fs-item";
         const algoSummary = getOcScriptAlgoSummary(oc.Value || "");
         const applyAlgo = getOcApplyInvokeAlgoFromScript(oc.Value || "");
+        const applyToWorkers = getOcApplyToFromScript(oc.Value || "");
+        const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
         row.innerHTML = `
             <input type="checkbox" class="rig-select-checkbox oc-select-checkbox" title="Select overclock profile">
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(oc.OverclockId)}</span>
+                <span class="fs-item-col fs-item-col-applyto" title="${escapeHtml(applyToDisplay)}">${escapeHtml(applyToDisplay)}</span>
                 <span class="fs-item-col">${escapeHtml(applyAlgo || "--")}</span>
                 <span class="fs-item-col">${escapeHtml(algoSummary)}</span>
             </div>
         `;
         row.dataset.id = oc.OverclockId;
         row.dataset.value = oc.Value || "";
+        row.dataset.applyAlgo = applyAlgo || "";
         if (oc.OverclockId === selectedOverclockId) {
             row.classList.add("selected");
         }
@@ -8792,6 +8892,7 @@ function renderOverclocks() {
                 .forEach(e => e.classList.remove("selected"));
             row.classList.add("selected");
             selectedOverclockId = oc.OverclockId;
+            setOcApplyToRigs(getOcApplyToFromScript(oc.Value || ""));
             document.getElementById("oc-name").value = oc.OverclockId;
             document.getElementById("oc-raw").value = oc.Value || "";
             loadOcRowsFromScript(oc.Value || "");
@@ -8799,6 +8900,7 @@ function renderOverclocks() {
         });
         list.appendChild(row);
     }
+    populateOcApplyAlgoFilter();
     filterOverclockList();
     syncOcSelectAllCheckbox();
     autoSizeOcListColumns();
@@ -8808,26 +8910,31 @@ function autoSizeOcListColumns() {
     if (!header) return;
     const rowGrids = document.querySelectorAll("#oc-list .fs-item .fs-item-grid");
     const headerNameEl = header.children[0];
-    const headerApplyAlgoEl = header.children[1];
-    const headerAlgoEl = header.children[2];
+    const headerApplyToEl = header.children[1];
+    const headerApplyAlgoEl = header.children[2];
+    const headerAlgoEl = header.children[3];
     const headerFont = headerNameEl ? fsListColumnFont(headerNameEl) : null;
     const sampleRowNameEl = rowGrids.length > 0 ? rowGrids[0].children[0] : null;
     const rowFont = sampleRowNameEl ? fsListColumnFont(sampleRowNameEl) : headerFont;
     const titleNamePx = headerNameEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerNameEl, headerFont)) : 0;
+    const titleApplyToPx = headerApplyToEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerApplyToEl, headerFont)) : 0;
     const titleApplyAlgoPx = headerApplyAlgoEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerApplyAlgoEl, headerFont)) : 0;
     const titleAlgoPx = headerAlgoEl && headerFont ? Math.ceil(fsListHeaderTextWidth(headerAlgoEl, headerFont)) : 0;
     let nameWidth = titleNamePx;
+    let applyToWidth = titleApplyToPx;
     let applyAlgoWidth = titleApplyAlgoPx;
     if (rowFont) {
         rowGrids.forEach((grid) => {
             if (grid.children[0]) nameWidth = Math.max(nameWidth, measureFsListTextWidth(grid.children[0].textContent, rowFont));
-            if (grid.children[1]) applyAlgoWidth = Math.max(applyAlgoWidth, measureFsListTextWidth(grid.children[1].textContent, rowFont));
+            if (grid.children[1]) applyToWidth = Math.max(applyToWidth, measureFsListTextWidth(grid.children[1].textContent, rowFont));
+            if (grid.children[2]) applyAlgoWidth = Math.max(applyAlgoWidth, measureFsListTextWidth(grid.children[2].textContent, rowFont));
         });
     }
     const namePx = Math.ceil(nameWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
+    const applyToPx = Math.min(FS_LIST_APPLYTO_MAX_PX, Math.ceil(applyToWidth) + FS_LIST_AUTOSIZE_PADDING_PX);
     const applyAlgoPx = Math.ceil(applyAlgoWidth) + FS_LIST_AUTOSIZE_PADDING_PX;
     const algoMinPx = titleAlgoPx + FS_LIST_AUTOSIZE_PADDING_PX;
-    const template = `${namePx}px ${applyAlgoPx}px minmax(${algoMinPx}px, 1fr)`;
+    const template = `${namePx}px ${applyToPx}px ${applyAlgoPx}px minmax(${algoMinPx}px, 1fr)`;
     header.style.gridTemplateColumns = template;
     rowGrids.forEach((grid) => {
         grid.style.gridTemplateColumns = template;
@@ -8859,11 +8966,35 @@ function toggleSelectAllOverclocks() {
     });
     syncOcSelectAllCheckbox();
 }
+function populateOcApplyAlgoFilter() {
+    const select = document.getElementById("oc-algo-filter");
+    if (!select) return;
+    const previousValue = select.value;
+    const algos = [...new Set(
+        Array.from(document.querySelectorAll("#oc-list .fs-item"))
+            .map((item) => item.dataset.applyAlgo || "")
+            .filter((a) => a !== "")
+    )].sort((a, b) => a.localeCompare(b));
+    select.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All algos";
+    select.appendChild(allOption);
+    for (const algo of algos) {
+        const option = document.createElement("option");
+        option.value = algo;
+        option.textContent = algo;
+        select.appendChild(option);
+    }
+    select.value = algos.includes(previousValue) ? previousValue : "";
+}
 function filterOverclockList() {
     const query = (document.getElementById("oc-search")?.value || "").trim().toLowerCase();
+    const algoFilter = document.getElementById("oc-algo-filter")?.value || "";
     document.querySelectorAll("#oc-list .fs-item").forEach(item => {
-        const match = !query || item.textContent.toLowerCase().includes(query);
-        item.style.display = match ? "" : "none";
+        const matchesQuery = !query || item.textContent.toLowerCase().includes(query);
+        const matchesAlgo = !algoFilter || item.dataset.applyAlgo === algoFilter;
+        item.style.display = (matchesQuery && matchesAlgo) ? "" : "none";
     });
     syncOcSelectAllCheckbox();
 }
@@ -9089,7 +9220,13 @@ function buildOcScriptFromRows() {
 }
 function rebuildOcRawFromRows() {
     const el = document.getElementById("oc-raw");
-    if (el) el.value = buildOcScriptFromRows();
+    if (el) {
+        let text = buildOcScriptFromRows();
+        if (ocApplyToRigs.size > 0) {
+            text = `# APPLY_TO=${Array.from(ocApplyToRigs).join(",")}\n${text}`;
+        }
+        el.value = text;
+    }
     autoResizeOcRaw();
     populateOcAlgoApplySelect();
 }
@@ -9196,6 +9333,7 @@ function sendItOc() {
         return;
     }
     document.getElementById("cmd-input").value = raw;
+    cmdModalRigOverride = ocApplyToRigs.size > 0 ? Array.from(ocApplyToRigs) : null;
     if (document.getElementById("confirm-oc")?.checked) {
         openCmdModal();
     } else {
@@ -12330,6 +12468,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
         document.getElementById("oc-name").value = '';
         selectedOverclockId = null;
+        ocApplyToRigs.clear();
+        updateOcApplyToToggleLabel();
         clearOcRows();
         addOcRow(null, { skipRebuild: true });
         rebuildOcRawFromRows();
@@ -12341,6 +12481,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("oc-select-all-checkbox")?.addEventListener("click", toggleSelectAllOverclocks);
     document.getElementById("oc-algo-apply-select")?.addEventListener("change", onOcAlgoApplySelectChange);
     document.getElementById("oc-search")?.addEventListener("input", filterOverclockList);
+    document.getElementById("oc-algo-filter")?.addEventListener("change", filterOverclockList);
+    document.getElementById("btn-oc-apply-to-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleOcApplyToDropdown();
+    });
+    document.getElementById("oc-apply-to-workers-option")?.addEventListener("click", () => {
+        ocApplyToRigs.clear();
+        updateOcApplyToToggleLabel();
+        closeOcApplyToDropdown();
+        syncOcRawAfterApplyToChange();
+    });
+    document.getElementById("oc-apply-to-clear-btn")?.addEventListener("click", () => {
+        clearOcApplyToSelection();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("oc-apply-to-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeOcApplyToDropdown();
+        }
+    });
     document.getElementById("btn-oc-add-row")?.addEventListener("click", () => addOcRow());
     initOcFanCurveExampleButton();
     document.getElementById("oc-raw")?.addEventListener("input", (e) => {
