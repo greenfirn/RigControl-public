@@ -1792,7 +1792,7 @@ DataHelper.getCpuColumnContent = (data) => {
     if (cpuShares.accepted > 0 || cpuShares.rejected > 0) {
         const sharesClass = DataHelper.getSharesClass(cpuShares);
         return {
-            html: `<span class="shares ${sharesClass}" title="CPU Shares: ${cpuShares.accepted} accepted, ${cpuShares.rejected} rejected">${cpuShares.accepted}/${cpuShares.rejected}</span>`,
+            html: `<span class="shares ${sharesClass}" title="CPU Shares: ${cpuShares.accepted} accepted, ${cpuShares.rejected} rejected">${fmtShareCount(cpuShares.accepted)}/${fmtShareCount(cpuShares.rejected)}</span>`,
             class: sharesClass
         };
     }
@@ -1808,7 +1808,7 @@ DataHelper.getGpuColumnContent = (data) => {
     if (gpuShares.accepted > 0 || gpuShares.rejected > 0) {
         const sharesClass = DataHelper.getSharesClass(gpuShares);
         return {
-            html: `<span class="shares ${sharesClass}" title="GPU Shares: ${gpuShares.accepted} accepted, ${gpuShares.rejected} rejected">${gpuShares.accepted}/${gpuShares.rejected}</span>`,
+            html: `<span class="shares ${sharesClass}" title="GPU Shares: ${gpuShares.accepted} accepted, ${gpuShares.rejected} rejected">${fmtShareCount(gpuShares.accepted)}/${fmtShareCount(gpuShares.rejected)}</span>`,
             class: sharesClass
         };
     }
@@ -1824,7 +1824,7 @@ DataHelper.getAuxColumnContent = (data) => {
     if (auxShares.accepted > 0 || auxShares.rejected > 0) {
         const sharesClass = DataHelper.getSharesClass(auxShares);
         return {
-            html: `<span class="shares ${sharesClass}" title="AUX Shares: ${auxShares.accepted} accepted, ${auxShares.rejected} rejected">${auxShares.accepted}/${auxShares.rejected}</span>`,
+            html: `<span class="shares ${sharesClass}" title="AUX Shares: ${auxShares.accepted} accepted, ${auxShares.rejected} rejected">${fmtShareCount(auxShares.accepted)}/${fmtShareCount(auxShares.rejected)}</span>`,
             class: sharesClass
         };
     }
