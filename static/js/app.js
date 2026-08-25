@@ -2135,6 +2135,36 @@ function setupResizableDialogWidthSaving(containerId, storageKey) {
     });
     observer.observe(dialog);
 }
+// Like restoreResizableDialogWidth/setupResizableDialogWidthSaving above, but for dialogs
+// resized via a .dialog-resize-handle-corner (both width and height), e.g. #raw-content-modal.
+function restoreResizableDialogSize(containerId, storageKey) {
+    const dialog = document.querySelector(`#${containerId} .cmd-dialog`);
+    if (!dialog) return;
+    try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+        if (saved && saved.width) dialog.style.width = saved.width;
+        if (saved && saved.height) dialog.style.height = saved.height;
+    } catch (err) {
+        console.error(`Failed to restore saved size for #${containerId}, ignoring it`, err);
+    }
+}
+function setupResizableDialogSizeSaving(containerId, storageKey) {
+    const container = document.getElementById(containerId);
+    const dialog = document.querySelector(`#${containerId} .cmd-dialog`);
+    if (!container || !dialog || typeof ResizeObserver === "undefined") return;
+    let saveTimer = null;
+    const observer = new ResizeObserver(() => {
+        if (container.classList.contains("hidden")) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            localStorage.setItem(storageKey, JSON.stringify({
+                width: dialog.style.width || `${dialog.offsetWidth}px`,
+                height: dialog.style.height || `${dialog.offsetHeight}px`,
+            }));
+        }, 300);
+    });
+    observer.observe(dialog);
+}
 function initDialogResizeHandles() {
     document.querySelectorAll(".dialog-resize-handle-right").forEach(handle => {
         handle.addEventListener("mousedown", (e) => {
@@ -2162,7 +2192,11 @@ function initDialogResizeHandles() {
     document.querySelectorAll(".dialog-resize-handle-corner").forEach(handle => {
         handle.addEventListener("mousedown", (e) => {
             e.preventDefault();
-            const dialog = handle.parentElement;
+            // closest(), not parentElement - #raw-content-modal's handle sits inside
+            // .raw-content-slot (overlaying the textarea's own corner) rather than being a
+            // direct child of .cmd-dialog like the other modals' corner handles, but it still
+            // needs to resize the whole dialog, not just the slot it visually sits in.
+            const dialog = handle.closest(".cmd-dialog");
             if (!dialog) return;
             const startX = e.clientX;
             const startY = e.clientY;
@@ -2187,6 +2221,42 @@ function initDialogResizeHandles() {
             document.addEventListener("mouseup", onMouseUp);
         });
     });
+}
+// Shared "Raw Content" popup used by Flightsheets/Overclocking/Watchdog - each module's raw
+// textarea lives at rest inside a hidden .raw-content-home wrapper in its own modal; clicking
+// the "> Raw Content <" trigger portals that exact textarea element (same id, same listeners,
+// same value) into #raw-content-slot and shows the popup. Closing portals it right back to
+// where it came from. Only one can be open at a time.
+let rawContentPortalRecord = null;
+function openRawContentModal(textareaId, title) {
+    const textarea = document.getElementById(textareaId);
+    const slot = document.getElementById("raw-content-slot");
+    const modal = document.getElementById("raw-content-modal");
+    if (!textarea || !slot || !modal) return;
+    rawContentPortalRecord = { el: textarea, parent: textarea.parentNode, nextSibling: textarea.nextSibling };
+    slot.appendChild(textarea);
+    const titleEl = document.getElementById("raw-content-title");
+    if (titleEl) titleEl.textContent = title || "Raw Content";
+    modal.classList.remove("hidden");
+    textarea.focus();
+}
+function closeRawContentModal() {
+    const modal = document.getElementById("raw-content-modal");
+    if (!modal) return;
+    if (rawContentPortalRecord && rawContentPortalRecord.parent) {
+        rawContentPortalRecord.parent.insertBefore(rawContentPortalRecord.el, rawContentPortalRecord.nextSibling);
+    }
+    rawContentPortalRecord = null;
+    modal.classList.add("hidden");
+}
+function initRawContentTriggers() {
+    document.querySelectorAll(".fs-raw-label-clickable").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            openRawContentModal(btn.dataset.rawTarget, btn.dataset.rawTitle);
+        });
+    });
+    document.getElementById("btn-raw-content-close-x")?.addEventListener("click", closeRawContentModal);
+    document.getElementById("btn-raw-content-close")?.addEventListener("click", closeRawContentModal);
 }
 function normalizeHexColor(value) {
     const v = (value || "").trim();
@@ -9771,6 +9841,103 @@ function renderWdAlgoSuggestions(inputEl) {
     });
     box.classList.remove("hidden");
 }
+// Watchdog "Apply to", like Overclocking, is persisted as a leading "# APPLY_TO=..." comment
+// line in wdconfig-raw. Unlike Overclocking's raw shell script, this raw text IS teed verbatim
+// into the actual /etc/.../rigcontrol_watchdog.conf on the rig - but _load_kv_conf() (and every
+// other watchdog conf parser) explicitly skips any line starting with "#", so the marker is a
+// safe no-op there. It round-trips through save/load and drives cmdModalRigOverride at send time.
+let wdApplyToRigs = new Set();
+function isWdApplyToDropdownOpen() {
+    const list = document.getElementById("wd-apply-to-list");
+    return !!list && !list.classList.contains("hidden");
+}
+function openWdApplyToDropdown() {
+    populateWdApplyToWorkerList();
+    document.getElementById("wd-apply-to-list")?.classList.remove("hidden");
+}
+function closeWdApplyToDropdown() {
+    document.getElementById("wd-apply-to-list")?.classList.add("hidden");
+}
+function toggleWdApplyToDropdown() {
+    if (isWdApplyToDropdownOpen()) {
+        closeWdApplyToDropdown();
+    } else {
+        openWdApplyToDropdown();
+    }
+}
+function updateWdApplyToToggleLabel() {
+    const btn = document.getElementById("btn-wd-apply-to-toggle");
+    if (!btn) return;
+    if (wdApplyToRigs.size === 0) {
+        btn.textContent = "Workers";
+    } else if (wdApplyToRigs.size === 1) {
+        btn.textContent = Array.from(wdApplyToRigs)[0];
+    } else {
+        btn.textContent = `${wdApplyToRigs.size} workers`;
+    }
+}
+function updateWdApplyToWorkersOptionCheckedState() {
+    const opt = document.getElementById("wd-apply-to-workers-option");
+    if (opt) opt.classList.toggle("fs-apply-to-active", wdApplyToRigs.size === 0);
+}
+function populateWdApplyToWorkerList() {
+    const container = document.getElementById("wd-apply-to-workers");
+    if (!container) return;
+    container.innerHTML = "";
+    const rigNames = Object.keys(rigsState || {})
+        .filter(name => name !== "rigs")
+        .sort();
+    rigNames.forEach((name) => {
+        const row = document.createElement("label");
+        row.className = "fs-apply-to-worker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = wdApplyToRigs.has(name);
+        cb.addEventListener("change", () => {
+            if (cb.checked) {
+                wdApplyToRigs.add(name);
+            } else {
+                wdApplyToRigs.delete(name);
+            }
+            updateWdApplyToToggleLabel();
+            updateWdApplyToWorkersOptionCheckedState();
+            syncWdRawAfterApplyToChange();
+        });
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(span);
+        container.appendChild(row);
+    });
+    updateWdApplyToWorkersOptionCheckedState();
+}
+function setWdApplyToRigs(names) {
+    const rigNames = new Set(Object.keys(rigsState || {}).filter(name => name !== "rigs"));
+    wdApplyToRigs = new Set((Array.isArray(names) ? names : []).filter(name => rigNames.has(name)));
+    updateWdApplyToToggleLabel();
+    if (isWdApplyToDropdownOpen()) populateWdApplyToWorkerList();
+}
+function clearWdApplyToSelection() {
+    wdApplyToRigs.clear();
+    updateWdApplyToToggleLabel();
+    populateWdApplyToWorkerList();
+    syncWdRawAfterApplyToChange();
+}
+function getWdApplyToFromScript(scriptText) {
+    const m = (scriptText || "").match(/^# APPLY_TO=(.*)$/m);
+    if (!m) return [];
+    return m[1].split(",").map(s => s.trim()).filter(Boolean);
+}
+function syncWdRawAfterApplyToChange() {
+    const rawEl = document.getElementById("wdconfig-raw");
+    if (!rawEl) return;
+    let text = rawEl.value.replace(/^# APPLY_TO=.*\n?/m, "");
+    if (wdApplyToRigs.size > 0) {
+        text = `# APPLY_TO=${Array.from(wdApplyToRigs).join(",")}\n${text}`;
+    }
+    rawEl.value = text;
+    autoResizeWdRaw();
+}
 function openWdConfigModal() {
     closeCmdModal();
     switchViewTab("watchdog");
@@ -10194,9 +10361,12 @@ function renderWatchdogProfiles() {
             : "-";
         const algoNames = [...raw.matchAll(/^\[(.+?)\]\s*$/gm)].map(m => m[1].trim()).filter(Boolean);
         const algoDisplay = algoNames.length ? algoNames.join(", ") : "-";
+        const applyToWorkers = getWdApplyToFromScript(raw);
+        const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
         row.innerHTML = `
             <div class="fs-item-grid">
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(p.WatchdogProfileId)}</span>
+                <span class="fs-item-col fs-item-col-applyto" title="${escapeHtml(applyToDisplay)}">${escapeHtml(applyToDisplay)}</span>
                 <span class="fs-item-col fs-item-col-slots" title="${escapeHtml(slotsDisplay)}">${escapeHtml(slotsDisplay)}</span>
                 <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog ${miningOn ? "enabled" : "disabled"}">${miningOn ? "✓" : "—"}</span>
                 <span class="fs-item-col fs-item-col-logs" title="Log Watcher ${logsOn ? "enabled" : "disabled"}">${logsOn ? "✓" : "—"}</span>
@@ -10205,6 +10375,9 @@ function renderWatchdogProfiles() {
         `;
         row.dataset.id = p.WatchdogProfileId;
         row.dataset.value = raw;
+        row.dataset.mining = miningOn ? "1" : "0";
+        row.dataset.logs = logsOn ? "1" : "0";
+        row.dataset.algo = algoNames.join(",");
         row.addEventListener("click", () => {
             document
                 .querySelectorAll("#wdconfig-list .fs-item.selected")
@@ -10215,7 +10388,29 @@ function renderWatchdogProfiles() {
         });
         list.appendChild(row);
     }
+    populateWdAlgoFilter();
     syncWdListColumnWidths();
+}
+function populateWdAlgoFilter() {
+    const select = document.getElementById("wdconfig-algo-filter");
+    if (!select) return;
+    const previousValue = select.value;
+    const algos = [...new Set(
+        Array.from(document.querySelectorAll("#wdconfig-list .fs-item"))
+            .flatMap((item) => (item.dataset.algo || "").split(",").filter(Boolean))
+    )].sort((a, b) => a.localeCompare(b));
+    select.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All algos";
+    select.appendChild(allOption);
+    for (const algo of algos) {
+        const option = document.createElement("option");
+        option.value = algo;
+        option.textContent = algo;
+        select.appendChild(option);
+    }
+    select.value = algos.includes(previousValue) ? previousValue : "";
 }
 // Header and list items are separate grid containers, so measure the widest content per column and publish it as a shared CSS var to keep rows aligned.
 function syncWdListColumnWidths() {
@@ -10236,7 +10431,7 @@ function syncWdListColumnWidths() {
         const letterSpacing = parseFloat(cs.letterSpacing) || 0;
         return ctx.measureText(text).width + Math.max(0, text.length - 1) * letterSpacing;
     }
-    const cols = ["name", "slots", "mining", "logs"];
+    const cols = ["name", "applyto", "slots", "mining", "logs"];
     const widths = {};
     for (const col of cols) {
         const headerEl = document.querySelector(`#wdconfig-modal .fs-list-header .fs-item-col-${col}`);
@@ -10250,6 +10445,9 @@ function syncWdListColumnWidths() {
             if (w > widths[col]) widths[col] = w;
         }
     });
+    // Apply To can grow unbounded (long worker lists) - cap it like flightsheet/overclock do,
+    // so one profile with many selected workers can't blow out the whole column layout.
+    widths.applyto = Math.min(widths.applyto, FS_LIST_APPLYTO_MAX_PX);
     const PADDING = 16;
     for (const col of cols) {
         panel.style.setProperty(`--wd-col-${col}`, `${Math.ceil(widths[col] + PADDING)}px`);
@@ -10269,6 +10467,7 @@ function loadSelectedWatchdogProfile() {
     }
     document.getElementById("wdconfig-name").value = p.WatchdogProfileId;
     document.getElementById("wdconfig-raw").value = p.Value || "";
+    setWdApplyToRigs(getWdApplyToFromScript(p.Value || ""));
     populateWdSettingsFromRaw(p.Value || "");
     resetWdTabBodyHeight();
     setWdConfigTab("raw");
@@ -10276,9 +10475,15 @@ function loadSelectedWatchdogProfile() {
 }
 function filterWatchdogProfileList() {
     const query = (document.getElementById("wdconfig-search")?.value || "").trim().toLowerCase();
+    const statusFilter = document.getElementById("wdconfig-status-filter")?.value || "";
+    const algoFilter = document.getElementById("wdconfig-algo-filter")?.value || "";
     document.querySelectorAll("#wdconfig-list .fs-item").forEach(item => {
-        const match = !query || item.textContent.toLowerCase().includes(query);
-        item.style.display = match ? "" : "none";
+        const matchesQuery = !query || item.textContent.toLowerCase().includes(query);
+        const matchesStatus = !statusFilter
+            || (statusFilter === "mining" ? item.dataset.mining === "1" : item.dataset.logs === "1");
+        const algoList = (item.dataset.algo || "").split(",").filter(Boolean);
+        const matchesAlgo = !algoFilter || algoList.includes(algoFilter);
+        item.style.display = (matchesQuery && matchesStatus && matchesAlgo) ? "" : "none";
     });
 }
 function collectWatchdogProfileEntries() {
@@ -10350,6 +10555,8 @@ function clearWdConfigFields() {
         .querySelectorAll("#wdconfig-list .fs-item.selected")
         .forEach(e => e.classList.remove("selected"));
     selectedWatchdogProfileId = null;
+    wdApplyToRigs.clear();
+    updateWdApplyToToggleLabel();
     const tbody = document.getElementById("wdconfig-rows");
     if (tbody) tbody.innerHTML = "";
     wdRowSettings.clear();
@@ -10477,7 +10684,10 @@ function buildWdConfigRawFromSettings() {
     return lines.join("\n").replace(/\n+$/, "\n");
 }
 function rebuildWdRawFromSettings() {
-    const raw = buildWdConfigRawFromSettings();
+    let raw = buildWdConfigRawFromSettings();
+    if (wdApplyToRigs.size > 0) {
+        raw = `# APPLY_TO=${Array.from(wdApplyToRigs).join(",")}\n${raw}`;
+    }
     const el = document.getElementById("wdconfig-raw");
     if (el) el.value = raw;
     autoResizeWdRaw();
@@ -10680,7 +10890,7 @@ function buildWdConfigCommand() {
     );
 }
 function sendItWd() {
-    if (selectedRigs.size === 0) {
+    if (selectedRigs.size === 0 && wdApplyToRigs.size === 0) {
         alert("No workers selected");
         return;
     }
@@ -10689,6 +10899,7 @@ function sendItWd() {
     closeWdConfigModal();
     const input = document.getElementById("cmd-input");
     if (input) input.value = command;
+    cmdModalRigOverride = wdApplyToRigs.size > 0 ? Array.from(wdApplyToRigs) : null;
     if (document.getElementById("confirm-wd")?.checked) {
         openCmdModal();
     } else {
@@ -12057,6 +12268,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         setupResizableDialogWidthSaving(containerId, storageKey);
     }
     initDialogResizeHandles();
+    initRawContentTriggers();
+    restoreResizableDialogSize("raw-content-modal", "rigcontrol_raw_content_modal_size");
+    setupResizableDialogSizeSaving("raw-content-modal", "rigcontrol_raw_content_modal_size");
     setupFsPoolsDialogSizeSaving();
     setupFsMcDialogSizeSaving();
     initColorSchemeControls();
@@ -12624,6 +12838,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-delete-wdconfig")?.addEventListener("click", deleteWatchdogProfile);
     document.getElementById("btn-clear-wdconfig")?.addEventListener("click", clearWdConfigFields);
     document.getElementById("wdconfig-search")?.addEventListener("input", filterWatchdogProfileList);
+    document.getElementById("wdconfig-status-filter")?.addEventListener("change", filterWatchdogProfileList);
+    document.getElementById("wdconfig-algo-filter")?.addEventListener("change", filterWatchdogProfileList);
+    document.getElementById("btn-wd-apply-to-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleWdApplyToDropdown();
+    });
+    document.getElementById("wd-apply-to-workers-option")?.addEventListener("click", () => {
+        wdApplyToRigs.clear();
+        updateWdApplyToToggleLabel();
+        closeWdApplyToDropdown();
+        syncWdRawAfterApplyToChange();
+    });
+    document.getElementById("wd-apply-to-clear-btn")?.addEventListener("click", () => {
+        clearWdApplyToSelection();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("wd-apply-to-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeWdApplyToDropdown();
+        }
+    });
     document.getElementById("btn-save-saved-cmd")?.addEventListener("click", saveSavedCommandFromDialog);
     document.getElementById("btn-delete-saved-cmd")?.addEventListener("click", deleteSavedCommandSelected);
     document.getElementById("saved-cmd-search")?.addEventListener("input", filterSavedCommandsList);

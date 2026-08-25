@@ -350,14 +350,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="wdconfig-raw-section">
-                    <label for="wdconfig-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
-                    <textarea
-                        id="wdconfig-raw"
-                        class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
-                        spellcheck="false"
-                    ></textarea>
-                </div>
                 <div class="wdconfig-loops-row" title="Mining Watchdog and Log Watcher run as two fully independent loops on the worker, each on its own enable state and cadence. Applies regardless of which tab is open.">
                     <div class="wdconfig-loops-group">
                         <label class="checkbox-label" title="When off, the mining health-check watchdog (hashrate/watts monitoring and its restart/notify actions) is skipped entirely on the worker.">
@@ -389,39 +381,74 @@
                     </div>
                 </div>
                 <div class="wdconfig-list-toolbar">
-                    <input
-                        type="text"
-                        id="wdconfig-search"
-                        class="fs-search"
-                        placeholder="Search..."
-                        autocomplete="off"
-                    />
-                    <div class="field-group wdconfig-name-group">
-                        <label for="wdconfig-name">Watchdog Profile Name</label>
-                        <input
-                            type="text"
-                            id="wdconfig-name"
-                            class="fs-field-input"
-                            placeholder="Watchdog profile name"
-                            autocomplete="off"
-                        />
+                    <div class="wdconfig-toolbar-row wdconfig-toolbar-row-top">
+                        <div class="field-group wdconfig-name-group">
+                            <label for="wdconfig-name">Watchdog Profile Name</label>
+                            <input
+                                type="text"
+                                id="wdconfig-name"
+                                class="fs-field-input"
+                                placeholder="Watchdog profile name"
+                                autocomplete="off"
+                            />
+                        </div>
+                        <div class="field-group fs-apply-to-group" id="wd-apply-to-wrap">
+                            <label>Apply to</label>
+                            <button type="button" class="fs-apply-to-toggle" id="btn-wd-apply-to-toggle" title="Choose which worker(s) this watchdog config sends to when sent. Defaults to whatever's checked in the main worker list.">Workers</button>
+                            <div class="fs-apply-to-list hidden" id="wd-apply-to-list">
+                                <div class="fs-apply-to-item fs-apply-to-special" id="wd-apply-to-workers-option" title="Use whatever is checked in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="wd-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
+                                <div class="fs-apply-to-sep"></div>
+                                <div class="fs-apply-to-workers" id="wd-apply-to-workers"></div>
+                            </div>
+                        </div>
+                        <div class="cmd-btn-row">
+                            <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
+                                <input type="checkbox" id="confirm-wd" checked>
+                                <span class="checkbox-text">Confirm</span>
+                            </label>
+                            <button class="cmd-btn send-it" id="btn-send-it-wd" title="Send this watchdog config to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
+                            <button class="cmd-btn" id="btn-save-wdconfig">Save</button>
+                            <button class="cmd-btn" id="btn-load-wdconfig">Load</button>
+                            <button class="cmd-btn danger" id="btn-delete-wdconfig">Delete</button>
+                            <button class="cmd-btn" id="btn-clear-wdconfig">Clear</button>
+                        </div>
                     </div>
-                    <div class="cmd-btn-row">
-                        <label class="checkbox-label send-confirm-label" title="Checked: copies the command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area on the main page.">
-                            <input type="checkbox" id="confirm-wd" checked>
-                            <span class="checkbox-text">Confirm</span>
-                        </label>
-                        <button class="cmd-btn send-it" id="btn-send-it-wd" title="Send this watchdog config to the selected workers - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
-                        <button class="cmd-btn" id="btn-save-wdconfig">Save</button>
-                        <button class="cmd-btn" id="btn-load-wdconfig">Load</button>
-                        <button class="cmd-btn danger" id="btn-delete-wdconfig">Delete</button>
-                        <button class="cmd-btn" id="btn-clear-wdconfig">Clear</button>
+                    <div class="wdconfig-toolbar-row wdconfig-toolbar-row-bottom">
+                        <div class="wdconfig-search-row">
+                            <select id="wdconfig-status-filter" class="cmd-select" title="Filter the list to profiles with Mining Watchdog or Log Watcher enabled">
+                                <option value="">All</option>
+                                <option value="mining">Mining ON</option>
+                                <option value="logs">Logs ON</option>
+                            </select>
+                            <select id="wdconfig-algo-filter" class="cmd-select" title="Filter the list to a single algo">
+                                <option value="">All algos</option>
+                            </select>
+                            <input
+                                type="text"
+                                id="wdconfig-search"
+                                class="fs-search"
+                                placeholder="Search..."
+                                autocomplete="off"
+                            />
+                        </div>
+                    </div>
+                </div>
+                <div class="wdconfig-raw-section">
+                    <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="wdconfig-raw" data-raw-title="Watchdog Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
+                    <div class="raw-content-home hidden">
+                        <textarea
+                            id="wdconfig-raw"
+                            class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                            spellcheck="false"
+                        ></textarea>
                     </div>
                 </div>
                 <div class="fs-list-panel">
                     <div class="fs-list-header">
                         <div class="fs-item-grid">
                             <span class="fs-item-col fs-item-col-name">Watchdog Profile Name</span>
+                            <span class="fs-item-col fs-item-col-applyto" title="Which worker(s) this watchdog config applies to when sent">Apply To</span>
                             <span class="fs-item-col fs-item-col-slots" title="Log Watcher slot(s) watched">Slots</span>
                             <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog enabled">Mining</span>
                             <span class="fs-item-col fs-item-col-logs" title="Log Watcher enabled">Logs</span>
@@ -430,6 +457,24 @@
                     </div>
                     <div id="wdconfig-list" class="fs-list">
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="raw-content-modal" class="cmd-modal hidden">
+        <div class="cmd-dialog raw-content-dialog">
+            <div class="cmd-header">
+                <span id="raw-content-title">Raw Content</span>
+                <button type="button" class="cmd-header-close" id="btn-raw-content-close-x" title="Close">&#10005;</button>
+            </div>
+            <div class="cmd-body">
+                <div id="raw-content-slot" class="raw-content-slot">
+                    <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
+                </div>
+            </div>
+            <div class="cmd-footer">
+                <div class="footer-buttons-right">
+                    <button class="cmd-btn" id="btn-raw-content-close">Close</button>
                 </div>
             </div>
         </div>
@@ -1739,15 +1784,6 @@ nvidia-smi
                             </label>
                         </div>
                     </div>
-                    <div class="fs-raw-label-row">
-                        <label for="fs-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
-                        <span class="fs-raw-hint">Paste batch file or JSON from a flightsheet profile exported from various platforms, or just a list of pools - it will attempt to auto-convert into the fields above.</span>
-                    </div>
-                    <textarea
-                        id="fs-raw"
-                        class="fs-raw-shrunk"
-                        spellcheck="false"
-                    ></textarea>
                 </div>
                 <div class="fs-list-toolbar">
                     <div class="fs-toolbar-row fs-toolbar-row-top">
@@ -1799,6 +1835,17 @@ nvidia-smi
                             />
                         </div>
                     </div>
+                </div>
+                <div class="fs-raw-label-row">
+                    <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="fs-raw" data-raw-title="Flightsheet Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
+                    <span class="fs-raw-hint">Paste batch file or JSON from a flightsheet profile exported from various platforms, or just a list of pools - it will attempt to auto-convert into the fields above.</span>
+                </div>
+                <div class="raw-content-home hidden">
+                    <textarea
+                        id="fs-raw"
+                        class="fs-raw-shrunk"
+                        spellcheck="false"
+                    ></textarea>
                 </div>
                 <div class="fs-list-panel">
                     <div class="fs-list-header">
@@ -1854,15 +1901,6 @@ nvidia-smi
                             </table>
                         </div>
                     </div>
-                    <div class="fs-raw-label-row">
-                        <label for="oc-raw" class="fs-raw-label" title="Full generated config text - edits here are parsed back into the fields above">&#x25BC; Raw Content &#x25BC;</label>
-                        <span class="fs-raw-hint">Note: a fan curve is global, not per-algorithm - apply once to make a change, single fan-curve.service for the whole rig.</span>
-                    </div>
-                    <textarea
-                        id="oc-raw"
-                        class="fs-raw-shrunk"
-                        spellcheck="false"
-                    ></textarea>
                 </div>
                 <div class="oc-list-toolbar">
                     <div class="oc-toolbar-row oc-toolbar-row-top">
@@ -1917,6 +1955,17 @@ nvidia-smi
                             />
                         </div>
                     </div>
+                </div>
+                <div class="fs-raw-label-row">
+                    <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="oc-raw" data-raw-title="Overclock Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
+                    <span class="fs-raw-hint">Note: a fan curve is global, not per-algorithm - apply once to make a change, single fan-curve.service for the whole rig.</span>
+                </div>
+                <div class="raw-content-home hidden">
+                    <textarea
+                        id="oc-raw"
+                        class="fs-raw-shrunk"
+                        spellcheck="false"
+                    ></textarea>
                 </div>
                 <div class="fs-list-panel">
                     <div class="oc-list-header">
