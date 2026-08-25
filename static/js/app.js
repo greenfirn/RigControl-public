@@ -1678,7 +1678,7 @@ const DataHelper = {
         else if (rejectionRate < 0.03) className = "shares-warning";
         else className = "shares-bad";
         return {
-            value: `${accepted}/${rejected}/${invalid}/${stale}`,
+            value: `${fmtShareCount(accepted)}/${fmtShareCount(rejected)}/${fmtShareCount(invalid)}/${fmtShareCount(stale)}`,
             class: className,
             rejectionRate: (rejectionRate * 100).toFixed(2) + '%'
         };
@@ -3154,13 +3154,28 @@ function stripBlankLines(text) {
         .filter((line) => line.trim() !== "")
         .join("\n");
 }
+function fmtShareCount(n) {
+    // Share/block counts can climb well past 1M on long-uptime rigs (keryx-style block
+    // counting especially) - past 6 digits, switch to a K/M/B/T short form (same convention
+    // as the hashrate formatters below) so the stat tile stays a fixed, glanceable width
+    // instead of pushing other panel content around. Exact counts are still available in the
+    // surrounding tooltip/title text wherever one exists.
+    if (typeof n !== "number" || !isFinite(n)) return n;
+    const abs = Math.abs(n);
+    if (abs < 1e6) return String(n);
+    const units = [[1e12, "T"], [1e9, "B"], [1e6, "M"]];
+    for (const [unitValue, suffix] of units) {
+        if (abs >= unitValue) return (n / unitValue).toFixed(2) + suffix;
+    }
+    return String(n);
+}
 function fmtShares(accepted, rejected) {
     if (accepted === undefined && rejected === undefined) return "--";
     if (accepted !== undefined && rejected !== undefined) {
-        return `${accepted}/${rejected}`;
+        return `${fmtShareCount(accepted)}/${fmtShareCount(rejected)}`;
     }
     if (accepted !== undefined) {
-        return accepted.toString();
+        return fmtShareCount(accepted);
     }
     return "--";
 }
@@ -3930,7 +3945,7 @@ function render() {
                               <div class="stat-label">SHARES</div>
                               <div class="stat-value shares ${sharesFormatted.class}"
                                    title="Accepted: ${minerInfo.totalAccepted} | Rejected: ${minerInfo.totalRejected} | Invalid: ${minerInfo.totalInvalid} | Stale: ${minerInfo.totalStale} (${sharesFormatted.rejectionRate} rejection)">
-                                   ${minerInfo.totalAccepted}/${minerInfo.totalRejected}
+                                   ${fmtShareCount(minerInfo.totalAccepted)}/${fmtShareCount(minerInfo.totalRejected)}
                               </div>
                          </div>
                          <div class="miner-stat-item pool">
