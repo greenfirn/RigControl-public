@@ -414,6 +414,16 @@
                             <button class="cmd-btn" id="btn-clear-wdconfig">Clear</button>
                         </div>
                     </div>
+                    <div class="wdconfig-raw-section">
+                        <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="wdconfig-raw" data-raw-title="Watchdog Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
+                        <div class="raw-content-home hidden">
+                            <textarea
+                                id="wdconfig-raw"
+                                class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                                spellcheck="false"
+                            ></textarea>
+                        </div>
+                    </div>
                     <div class="wdconfig-toolbar-row wdconfig-toolbar-row-bottom">
                         <div class="wdconfig-search-row">
                             <select id="wdconfig-status-filter" class="cmd-select" title="Filter the list to profiles with Mining Watchdog or Log Watcher enabled">
@@ -432,16 +442,6 @@
                                 autocomplete="off"
                             />
                         </div>
-                    </div>
-                </div>
-                <div class="wdconfig-raw-section">
-                    <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="wdconfig-raw" data-raw-title="Watchdog Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
-                    <div class="raw-content-home hidden">
-                        <textarea
-                            id="wdconfig-raw"
-                            class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
-                            spellcheck="false"
-                        ></textarea>
                     </div>
                 </div>
                 <div class="fs-list-panel">
@@ -1818,6 +1818,17 @@ nvidia-smi
                             <button class="cmd-btn" id="btn-clear-fs">Clear</button>
                         </div>
                     </div>
+                    <div class="fs-raw-label-row">
+                        <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="fs-raw" data-raw-title="Flightsheet Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
+                        <span class="fs-raw-hint">Paste batch file or JSON from a flightsheet profile exported from various platforms, or just a list of pools - it will attempt to auto-convert into the fields above.</span>
+                    </div>
+                    <div class="raw-content-home hidden">
+                        <textarea
+                            id="fs-raw"
+                            class="fs-raw-shrunk"
+                            spellcheck="false"
+                        ></textarea>
+                    </div>
                     <div class="fs-toolbar-row fs-toolbar-row-bottom">
                         <div class="fs-search-row">
                             <select id="fs-algo-filter" class="cmd-select" title="Filter the list to a single ALGO">
@@ -1835,17 +1846,6 @@ nvidia-smi
                             />
                         </div>
                     </div>
-                </div>
-                <div class="fs-raw-label-row">
-                    <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="fs-raw" data-raw-title="Flightsheet Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
-                    <span class="fs-raw-hint">Paste batch file or JSON from a flightsheet profile exported from various platforms, or just a list of pools - it will attempt to auto-convert into the fields above.</span>
-                </div>
-                <div class="raw-content-home hidden">
-                    <textarea
-                        id="fs-raw"
-                        class="fs-raw-shrunk"
-                        spellcheck="false"
-                    ></textarea>
                 </div>
                 <div class="fs-list-panel">
                     <div class="fs-list-header">
@@ -1941,6 +1941,17 @@ nvidia-smi
                             <button class="cmd-btn" id="btn-clear-oc">Clear</button>
                         </div>
                     </div>
+                    <div class="fs-raw-label-row">
+                        <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="oc-raw" data-raw-title="Overclock Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
+                        <span class="fs-raw-hint">Note: a fan curve is global, not per-algorithm - apply once to make a change, single fan-curve.service for the whole rig.</span>
+                    </div>
+                    <div class="raw-content-home hidden">
+                        <textarea
+                            id="oc-raw"
+                            class="fs-raw-shrunk"
+                            spellcheck="false"
+                        ></textarea>
+                    </div>
                     <div class="oc-toolbar-row oc-toolbar-row-bottom">
                         <div class="oc-search-row">
                             <select id="oc-algo-filter" class="cmd-select" title="Filter the list to a single Apply Algo">
@@ -1955,17 +1966,6 @@ nvidia-smi
                             />
                         </div>
                     </div>
-                </div>
-                <div class="fs-raw-label-row">
-                    <button type="button" class="fs-raw-label fs-raw-label-clickable" data-raw-target="oc-raw" data-raw-title="Overclock Raw Content" title="Full generated config text - edits here are parsed back into the fields above">&gt; Raw Content &lt;</button>
-                    <span class="fs-raw-hint">Note: a fan curve is global, not per-algorithm - apply once to make a change, single fan-curve.service for the whole rig.</span>
-                </div>
-                <div class="raw-content-home hidden">
-                    <textarea
-                        id="oc-raw"
-                        class="fs-raw-shrunk"
-                        spellcheck="false"
-                    ></textarea>
                 </div>
                 <div class="fs-list-panel">
                     <div class="oc-list-header">

@@ -2449,7 +2449,9 @@ h1 {
     border: none;
     padding: 0;
     cursor: pointer;
-    font: inherit;
+    font-family: inherit;
+    font-size: var(--font-size-label);
+    font-weight: 500;
 }
 .fs-raw-label-clickable:hover {
     color: var(--text-accent);
