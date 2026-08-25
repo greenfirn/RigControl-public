@@ -1494,12 +1494,19 @@ def collect_keryx_stats():
             last_err = e
     if data is None:
         return {"status": "error", "error": f"keryx-miner API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}"}
+    # keryx-miner-supr 0.11.10 changed its device key from "id" to "name" (still holding the same
+    # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
+    # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
+    # /stats response pasted from a live 0.11.10 rig. dev.get("id", dev.get("name", "")) and the
+    # accepted_blocks/rejected_blocks fallback below handle both the old and new shape, so this
+    # keeps working across the schema change either direction without needing to pin a version.
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
     gpus = []
     for i, dev in enumerate(data.get("devices", []) or []):
-        m = device_re.search(dev.get("id", "") or "")
+        dev_id = dev.get("id") or dev.get("name") or ""
+        m = device_re.search(dev_id)
         idx  = int(m.group(1)) if m else i
-        name = m.group(2).strip() if m else (dev.get("id") or "")
+        name = m.group(2).strip() if m else dev_id
         gpus.append({
             "gpu_id":      idx,
             "index":       idx,
@@ -1508,19 +1515,31 @@ def collect_keryx_stats():
             # temp/fan/power intentionally omitted - the GPU stats collector is the source of truth
         })
     gpus.sort(key=lambda g: g["index"])
-    total_hr_hs     = data.get("total_hashrate_hs", 0)
-    accepted_blocks = data.get("accepted_blocks", 0)
-    rejected_blocks = data.get("rejected_blocks", 0)
-    uptime_s        = data.get("uptime_s", 0)
+    total_hr_hs = data.get("total_hashrate_hs", 0)
+    if "accepted_blocks" in data or "rejected_blocks" in data:
+        accepted_blocks = data.get("accepted_blocks", 0)
+        rejected_blocks = data.get("rejected_blocks", 0)
+    else:
+        shares = data.get("shares") or {}
+        accepted_blocks = shares.get("accepted", 0)
+        rejected_blocks = shares.get("rejected", 0)
+    uptime_s = data.get("uptime_s", 0)
     # display_name/bin_path were already resolved above (needed earlier for the per-name
-    # API_HOST/API_PORT lookup) - reused here to query --version against the right binary.
-    # Re-check --version only on first poll or after a restart (uptime_s dropped)
-    last_uptime = _keryx_version_cache["last_uptime_s"]
-    if last_uptime is None or uptime_s < last_uptime:
-        _keryx_version_cache["version"] = _query_keryx_version(bin_path)
+    # API_HOST/API_PORT lookup) - reused here only as a fallback path. Newer keryx-miner-supr builds
+    # (confirmed on 0.11.10) report their own "version" field directly in the /stats response, which
+    # is always fresh (no caching needed - it's already the live poll result) and sidesteps the whole
+    # class of "stale cached --version subprocess result" bugs this fleet hit earlier with the
+    # bin-path-based approach. Only fall back to shelling out to --version when an older build's
+    # response doesn't include "version" at all.
+    if data.get("version"):
+        _keryx_version_cache["version"] = f"{display_name} {data['version']}"
+    else:
+        last_uptime = _keryx_version_cache["last_uptime_s"]
+        if last_uptime is None or uptime_s < last_uptime:
+            _keryx_version_cache["version"] = _query_keryx_version(bin_path)
     _keryx_version_cache["last_uptime_s"] = uptime_s
     return {
-        "status": "ok", "miner": display_name,
+        "status": "ok", "miner": data.get("miner") or display_name,
         "miner_version":  _keryx_version_cache["version"],
         "uptime_s":       uptime_s,
         "synced":         data.get("synced"),
