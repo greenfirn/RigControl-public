@@ -160,6 +160,14 @@ def _status_log_restore(items: List[Dict[str, Any]], missing_only: bool = False)
     return inserted
 def _templates_file_path():
     return STATIC_DIR / "config" / "templates.json"
+def _agentconf_cache_file_path():
+    """The dashboard's own local record of what each rig's rigcontrol-agent.conf last looked
+    like - NOT the live file (that only ever lives on the rig itself, fetched on demand by the
+    Settings modal's Agent Conf tab). This is a rolling snapshot, one entry per rig name, saved
+    whenever a rig's conf is loaded or written to from the dashboard, purely so it has
+    something to include in DB Backups - a rig going offline for good shouldn't mean losing
+    the last known-good agent conf you configured for it."""
+    return BASE_DIR / "rigcontrol_agentconf_cache.json"
 class _JsonFileStub:
     def __init__(self, path):
         self._path = path
@@ -344,6 +352,27 @@ BACKUP_TARGETS = [
         "restore_fn": lambda items, missing_only=False: _json_file_restore(_templates_file_path(), items, missing_only),
         "wipe_fn": lambda: _json_file_wipe(_templates_file_path()),
         "dynamo_table": "RigControlTemplates",
+        "key_schema": [
+            {"AttributeName": "FileId", "KeyType": "HASH"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "FileId", "AttributeType": "S"},
+        ],
+    },
+    {
+        # Last-known-good rigcontrol-agent.conf per rig, saved locally whenever the Settings
+        # modal's Agent Conf tab loads or applies one (see /api/agent-conf/save) - not the live
+        # file itself, which only ever lives on the rig. Same whole-file-as-one-blob pattern as
+        # server_config/templates above, just with a per-rig dict as that blob's content instead
+        # of a single flat config.
+        "id": "agentconf",
+        "label": "Agent Conf",
+        "file_name": "rigcontrol_agentconf_cache.json",
+        "local_db": lambda: _JsonFileStub(_agentconf_cache_file_path()),
+        "scan_fn": lambda: _json_file_scan(_agentconf_cache_file_path()),
+        "restore_fn": lambda items, missing_only=False: _json_file_restore(_agentconf_cache_file_path(), items, missing_only),
+        "wipe_fn": lambda: _json_file_wipe(_agentconf_cache_file_path()),
+        "dynamo_table": "RigControlAgentConf",
         "key_schema": [
             {"AttributeName": "FileId", "KeyType": "HASH"},
         ],
@@ -3761,6 +3790,37 @@ async def import_access_keys(file: UploadFile = File(...)):
     except Exception as e:
         log(f"[Backups] Error saving uploaded accessKeys.csv: {e}")
         raise HTTPException(500, f"Failed to save accessKeys.csv: {e}")
+@router.post("/api/agent-conf/save")
+async def save_agent_conf_snapshot(payload: dict):
+    """Called by the Settings modal's Agent Conf tab whenever it successfully loads or writes
+    a rig's rigcontrol-agent.conf, so the dashboard keeps a local last-known-good copy for that
+    rig - purely for DB Backups (see the "agentconf" BACKUP_TARGETS entry); has no effect on
+    the live rig or on what the Agent Conf tab shows next time (that still always re-fetches
+    from the rig itself)."""
+    rig = (payload.get("rig") or "").strip()
+    content = payload.get("content")
+    if not rig:
+        raise HTTPException(400, "rig is required")
+    if content is None:
+        raise HTTPException(400, "content is required")
+    path = _agentconf_cache_file_path()
+    data = {}
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            log(f"[AgentConf] Error reading existing cache, starting fresh: {e}")
+            data = {}
+    data[rig] = {"content": content, "saved_at": int(time.time())}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        log(f"[AgentConf] Error saving cache for {rig}: {e}")
+        raise HTTPException(500, f"Failed to save agent conf snapshot: {e}")
+    return {"ok": True, "rig": rig}
 @router.get("/sw.js")
 async def dashboard_service_worker():
     js = (

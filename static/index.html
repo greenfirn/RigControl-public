@@ -69,6 +69,7 @@
         <div class="cmd-dialog unlock-dialog">
             <div class="cmd-header">
                 <span>🔒 Remote Unlock</span>
+                <button type="button" class="cmd-header-close" id="btn-unlock-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body unlock-body">
                 <p class="unlock-explainer">
@@ -110,6 +111,7 @@
             <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
             <div class="cmd-header">
                 <span>Manage Pools</span>
+                <button type="button" class="cmd-header-close" id="btn-fs-pools-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body fs-pools-body">
                 <p class="unlock-explainer" id="fs-pools-explainer">
@@ -138,6 +140,7 @@
         <div class="cmd-dialog">
             <div class="cmd-header">
                 <span>Save to Wallets</span>
+                <button type="button" class="cmd-header-close" id="btn-fs-wallet-save-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body">
                 <p class="unlock-explainer" id="fs-wallet-save-explainer">
@@ -435,6 +438,7 @@
         <div class="cmd-dialog qa-dialog">
             <div class="cmd-header">
                 <span>Set Quick Actions</span>
+                <button type="button" class="cmd-header-close" id="btn-qa-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body qa-body">
                 <div class="cmd-row">
@@ -475,6 +479,7 @@
         <div class="cmd-dialog">
             <div class="cmd-header">
                 <span>Themes</span>
+                <button type="button" class="cmd-header-close" id="btn-color-scheme-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body color-scheme-4col">
                 <div class="color-scheme-tabs" id="color-scheme-tabs">
@@ -1202,6 +1207,7 @@
         <div class="cmd-dialog color-scheme-json-dialog">
             <div class="cmd-header">
                 <span>Paste Theme JSON</span>
+                <button type="button" class="cmd-header-close" id="btn-color-scheme-json-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body">
                 <textarea id="color-scheme-json-paste" rows="12" spellcheck="false"
@@ -2036,6 +2042,12 @@ nvidia-smi
                 </span>
             </div>
             <div class="cmd-body">
+            <div class="settings-main-tabs" id="settings-main-tabs">
+                <button type="button" class="settings-main-tab-btn active" id="settings-main-tab-btn-general" data-tab-panel="general">General</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Agent Conf</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-advanced" data-tab-panel="advanced">Advanced Server Settings</button>
+            </div>
+            <div class="settings-main-tab-panel" data-tab-panel="general">
             <div class="refresh-left-pane">
               <div class="settings-col">
                 <div class="settings-section">
@@ -2231,6 +2243,40 @@ nvidia-smi
                     <button class="cmd-btn secondary" id="btn-apply-stats-settings" title="Apply to selected workers">Apply Stats</button>
                 </div>
             </div>
+            </div>
+            <div class="settings-main-tab-panel hidden" data-tab-panel="agentconf">
+                <div class="wdconfig-mining-pause-note">
+                    Edits the selected worker's own <code>/etc/rigcontrol/rigcontrol-agent.conf</code> directly (KEY=value lines - broker settings, per-miner &lt;NAME&gt;_API_HOST / &lt;NAME&gt;_API_PORT / &lt;NAME&gt;_BIN / &lt;NAME&gt;_LOG_PATH overrides, etc). Select exactly one worker, then Reload, edit, and Send it.
+                </div>
+                <div class="wdconfig-raw-section">
+                    <label for="agentconf-raw" class="fs-raw-label">rigcontrol-agent.conf</label>
+                    <textarea
+                        id="agentconf-raw"
+                        class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                        spellcheck="false"
+                        placeholder="Select exactly one worker, then click Reload from Worker."
+                    ></textarea>
+                </div>
+                <div class="cmd-footer">
+                    <div class="quick-actions-row">
+                        <button class="cmd-btn secondary" id="btn-agentconf-reload" title="Re-fetch the current file from the selected worker">⟳ Reload from Worker</button>
+                        <span id="agentconf-status" class="wdconfig-status"></span>
+                    </div>
+                    <div class="footer-buttons-right">
+                        <label class="checkbox-label" title="Restart the rigcontrol-agent service on the worker after writing, so the new settings take effect immediately instead of waiting on the agent's own live-reload (which only covers a subset of settings).">
+                            <input type="checkbox" id="agentconf-restart-after-apply" checked>
+                            <span class="checkbox-text">Restart agent after apply</span>
+                        </label>
+                        <label class="checkbox-label send-confirm-label" title="Checked: copies the write command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area above.">
+                            <input type="checkbox" id="confirm-agentconf" checked>
+                            <span class="checkbox-text">Confirm</span>
+                        </label>
+                        <button class="cmd-btn send-it" id="btn-agentconf-apply" title="Write this content to the selected worker's rigcontrol-agent.conf">Send it !</button>
+                        <button class="cmd-btn secondary" id="btn-agentconf-clear" title="Replace the text below with a blank, commented example rigcontrol-agent.conf - useful for a rig that doesn't have one yet">Clear</button>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-main-tab-panel hidden" data-tab-panel="advanced">
             <div class="settings-section refresh-advanced-settings-full">
                 <div class="section-header">Advanced Server Settings</div>
                 <div class="settings-row-horizontal settings-row-narrow">
@@ -2265,13 +2311,16 @@ nvidia-smi
                         <div class="input-help">Misses before offline</div>
                     </div>
                 </div>
-                <div class="settings-row-horizontal quick-actions-row">
-                    <button class="cmd-btn secondary" id="btn-save-advanced-server-settings" title="Save advanced server timing settings">Save Advanced Settings</button>
-                    <span id="advanced-settings-status" class="stats-status"></span>
+            </div>
+            <div class="cmd-footer">
+                <span id="advanced-settings-status" class="stats-status"></span>
+                <div class="footer-buttons-right">
+                    <button class="cmd-btn secondary" id="btn-save-advanced-server-settings" title="Save advanced server timing settings">Save</button>
                 </div>
             </div>
             </div>
         </div>
+    </div>
     </div>
 </body>
 </html>

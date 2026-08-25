@@ -60,6 +60,11 @@ const TEMPLATES_CONFIG = {
         conf_dir: "/etc/rigcontrol",
         conf_path: "/etc/rigcontrol/rigcontrol-watchdog.conf",
     },
+    agentconf: {
+        conf_dir: "/etc/rigcontrol",
+        conf_path: "/etc/rigcontrol/rigcontrol-agent.conf",
+        restart_command: "sudo systemctl restart rigcontrol-agent.service",
+    },
 };
 (async function loadTemplatesConfig() {
     try {
@@ -885,6 +890,45 @@ const WD_ACTION_RAW_KEYS = [
     ["wdconfig-action-custom-script", "ACTION_CUSTOM_SCRIPT"],
 ];
 let pendingWdConfigFetchRig = null;
+let pendingAgentConfFetchRig = null;
+// Real-world example starting point for a rig that doesn't have a rigcontrol-agent.conf yet -
+// loaded by the "Clear" button on the Agent Conf tab. Mirrors an actual production conf, with
+// BROKER_PASS left blank (never ship a real password in a template) and broker host/miner slots
+// as illustrative examples to edit before sending.
+const AGENT_CONF_DEFAULT_TEMPLATE =
+    "BROKER_HOST=10.10.0.10\n" +
+    "BROKER_PORT=1883\n" +
+    "BROKER_USER=admin\n" +
+    "BROKER_PASS=\n" +
+    "# comma separated list of gpu stats safe images\n" +
+    "OVERRIDE_LIST=\"miner/miner:latest\"\n" +
+    "STATS_DB_ENABLED=true\n" +
+    "# How many days of local telemetry history to keep before old rows are pruned\n" +
+    "STATS_DB_MAX_HISTORY_DAYS=7\n" +
+    "STATS_DB_INTERVAL_SECONDS=90\n" +
+    "# Minimum seconds between telemetry pulls, prevents overlapping collection calls\n" +
+    "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
+    "#CPU_SERVICE_NAME=docker_events_cpu.service\n" +
+    "#GPU_SERVICE_NAME=docker_events_gpu.service\n" +
+    "#AUX_SERVICE_NAME=keryxd.service\n" +
+    "#WATCHDOG_SERVICE_NAME=rigcontrol_watchdog.service\n" +
+    "#CUSTOM_MINER_BIN_GPU=/opt/miners/my-custom-miner/current/my-custom-miner\n" +
+    "#CUSTOM_MINER_BIN_CPU=/opt/miners/my-custom-miner/current/my-custom-miner\n" +
+    "#CUSTOM_MINER_BIN_AUX=/opt/miners/my-custom-miner/current/my-custom-miner\n" +
+    "# Per-custom-miner overrides, keyed by the miner's own name (from CUSTOM_MINER\n" +
+    "# in rig-gpu/cpu/aux.conf or .json, sanitized to A-Z0-9_) - <NAME>_BIN for the\n" +
+    "# binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API,\n" +
+    "# or <NAME>_LOG_PATH for log scraping (<NAME>_LOG_STYLE=blocks for\n" +
+    "# keryxd-style \"Accepted N blocks\" counting instead of generic hashrate scraping)\n" +
+    "#KERYX_MINER_BIN=/opt/miners/keryx-miner/current/keryx-miner\n" +
+    "KERYX_MINER_API_HOST=127.0.0.1\n" +
+    "KERYX_MINER_API_PORT=3338\n" +
+    "#KERYX_MINER_SUPR_BIN=/opt/miners/custom/keryx-miner-supr/current/keryx-miner-supr\n" +
+    "KERYX_MINER_SUPR_API_HOST=127.0.0.1\n" +
+    "KERYX_MINER_SUPR_API_PORT=3338\n" +
+    "#KERYXD_BIN=/opt/miners/keryx-node/keryxd\n" +
+    "#KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log\n" +
+    "#KERYXD_LOG_STYLE=blocks\n";
 let pendingLogsFetchRig = null;
 let lastSyncedLogsRig = null;
 let logsAutoRefreshTimer = null;
@@ -2264,6 +2308,9 @@ function initColorSchemeControls() {
     document.getElementById("btn-close-color-scheme-json")?.addEventListener("click", () => {
         document.getElementById("color-scheme-json-modal")?.classList.add("hidden");
     });
+    document.getElementById("btn-color-scheme-json-close-x")?.addEventListener("click", () => {
+        document.getElementById("color-scheme-json-modal")?.classList.add("hidden");
+    });
     document.getElementById("btn-import-color-scheme-json")?.addEventListener("click", () => {
         if (applyPastedColorSchemeJson()) {
             document.getElementById("color-scheme-json-modal")?.classList.add("hidden");
@@ -3434,6 +3481,21 @@ function handleCommandResponse(response) {
             if (statusEl) statusEl.textContent = `Loaded current config from ${r.rig}`;
         } else {
             if (statusEl) statusEl.textContent = `No existing config found on ${r.rig} (using defaults)`;
+        }
+        return;
+    }
+    if (pendingAgentConfFetchRig && r.rig === pendingAgentConfFetchRig) {
+        pendingAgentConfFetchRig = null;
+        const statusEl = document.getElementById("agentconf-status");
+        if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
+            const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
+            const rawEl = document.getElementById("agentconf-raw");
+            if (rawEl) rawEl.value = raw;
+            resizeAgentConfRaw();
+            if (statusEl) statusEl.textContent = `Loaded current agent conf from ${r.rig}`;
+            saveAgentConfSnapshot(r.rig, raw);
+        } else {
+            if (statusEl) statusEl.textContent = `No existing rigcontrol-agent.conf found on ${r.rig} (click Clear for a blank example)`;
         }
         return;
     }
@@ -4934,6 +4996,7 @@ function initRefreshTimer() {
 function setupRefreshTimerEventListeners() {
     document.getElementById("btn-color-scheme")?.addEventListener("click", openColorSchemeModal);
     document.getElementById("btn-close-color-scheme")?.addEventListener("click", closeColorSchemeModal);
+    document.getElementById("btn-color-scheme-close-x")?.addEventListener("click", closeColorSchemeModal);
     document.getElementById("btn-refresh-now")?.addEventListener("click", triggerManualRefresh);
     document.getElementById("btn-refresh-save")?.addEventListener("click", saveRefreshSettings);
     document.getElementById("btn-save-advanced-server-settings")?.addEventListener("click", saveAdvancedServerSettings);
@@ -5097,6 +5160,28 @@ function switchWdconfigMainTab(tabName) {
         panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
     });
 }
+function initSettingsMainTabs() {
+    const tabBar = document.getElementById("settings-main-tabs");
+    if (!tabBar || tabBar.dataset.wired) return;
+    tabBar.dataset.wired = "1";
+    tabBar.querySelectorAll(".settings-main-tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            switchSettingsMainTab(btn.dataset.tabPanel);
+        });
+    });
+}
+function switchSettingsMainTab(tabName) {
+    document.querySelectorAll("#settings-main-tabs .settings-main-tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tabPanel === tabName);
+    });
+    document.querySelectorAll("#refresh-modal .settings-main-tab-panel").forEach((panel) => {
+        panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
+    });
+    if (tabName === "agentconf") {
+        lastSyncedAgentConfRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
+        autoLoadAgentConfForSelectedRig();
+    }
+}
 function initColorSchemeTabs() {
     const tabBar = document.getElementById("color-scheme-tabs");
     if (!tabBar || tabBar.dataset.wired) return;
@@ -5157,6 +5242,7 @@ function openRefreshModal() {
     updateStatusDisplay();
     updateStatsSettingsTargetCount();
     switchViewTab("settings");
+    switchSettingsMainTab("general");
 }
 function updateStatsSettingsTargetCount() {
     const count = selectedRigs.size;
@@ -10484,6 +10570,106 @@ function autoLoadWdConfigForSelectedRig() {
         if (statusEl) statusEl.textContent = `Failed to load current config from ${rig}`;
     });
 }
+const AGENTCONF_RAW_HEIGHT_KEY = "rigcontrol_agentconf_raw_height";
+function restoreAgentConfRawHeight() {
+    // Restores a manually-dragged height (native textarea resize handle, not the auto-fit
+    // below) so it survives a page reload - same localStorage-per-element pattern as
+    // CMD_INPUT_HEIGHT_KEY/CMD_OUTPUT_HEIGHT_KEY use for the Send Cmd modal's resizable boxes.
+    // Only matters until the next real content load/edit, since resizeAgentConfRaw() below
+    // will auto-fit over top of it then - that's fine, a saved height from a DIFFERENT rig's
+    // (likely different-length) conf shouldn't outlive an actual new load anyway.
+    const el = document.getElementById("agentconf-raw");
+    const saved = localStorage.getItem(AGENTCONF_RAW_HEIGHT_KEY);
+    if (el && saved) el.style.height = saved;
+}
+function saveAgentConfRawHeight() {
+    const el = document.getElementById("agentconf-raw");
+    if (el && el.style.height) localStorage.setItem(AGENTCONF_RAW_HEIGHT_KEY, el.style.height);
+}
+function resizeAgentConfRaw() {
+    // Grows the textarea to fit its content instead of it having its own inner scrollbar -
+    // #refresh-modal .cmd-body is already the scrollable container for the whole modal, so a
+    // tall conf file scrolls the modal/page instead. Reset to "auto" first so shrinking (e.g.
+    // Clear replacing a long real conf with the shorter template) actually shrinks the box
+    // back down instead of scrollHeight staying pinned to the old, larger content.
+    const el = document.getElementById("agentconf-raw");
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+}
+function loadDefaultAgentConf() {
+    const rawEl = document.getElementById("agentconf-raw");
+    if (rawEl) rawEl.value = AGENT_CONF_DEFAULT_TEMPLATE;
+    resizeAgentConfRaw();
+    const statusEl = document.getElementById("agentconf-status");
+    if (statusEl) statusEl.textContent = "Loaded blank example template (not read from any worker)";
+}
+function autoLoadAgentConfForSelectedRig() {
+    pendingAgentConfFetchRig = null;
+    const statusEl = document.getElementById("agentconf-status");
+    if (selectedRigs.size !== 1) {
+        if (statusEl) statusEl.textContent = "Select exactly one worker to load/edit its agent conf";
+        return;
+    }
+    const [rig] = selectedRigs;
+    pendingAgentConfFetchRig = rig;
+    if (statusEl) statusEl.textContent = `Loading current agent conf from ${rig}…`;
+    sendCommandToSelectedRigs(`cat ${TEMPLATES_CONFIG.agentconf.conf_path}`).catch(err => {
+        console.error("Failed to request current agent conf", err);
+        if (pendingAgentConfFetchRig === rig) pendingAgentConfFetchRig = null;
+        if (statusEl) statusEl.textContent = `Failed to load current agent conf from ${rig}`;
+    });
+}
+function buildAgentConfCommand() {
+    const rawEl = document.getElementById("agentconf-raw");
+    const fileContent = rawEl ? rawEl.value : "";
+    const heredocTag = "RIGCONTROL_AGENT_CONF_EOF";
+    let command =
+        `sudo mkdir -p ${TEMPLATES_CONFIG.agentconf.conf_dir}\n` +
+        `sudo tee ${TEMPLATES_CONFIG.agentconf.conf_path} > /dev/null <<'${heredocTag}'\n` +
+        fileContent +
+        (fileContent.endsWith("\n") ? "" : "\n") +
+        `${heredocTag}`;
+    if (document.getElementById("agentconf-restart-after-apply")?.checked) {
+        command += `\n${TEMPLATES_CONFIG.agentconf.restart_command}`;
+    }
+    return command;
+}
+function sendItAgentConf() {
+    if (selectedRigs.size !== 1) {
+        alert("Select exactly one worker to write its agent conf");
+        return;
+    }
+    const [rig] = selectedRigs;
+    const command = buildAgentConfCommand();
+    // Snapshot what we're ABOUT to send now, rather than waiting for a reply - the Confirm
+    // path hands off to the free-form Send Cmd modal, which has no structured success
+    // callback back to this tab, so there's no reliable "it actually landed" moment to hook.
+    // Optimistic, but this is a local backup convenience, not a correctness-critical value.
+    saveAgentConfSnapshot(rig, document.getElementById("agentconf-raw")?.value ?? "");
+    const input = document.getElementById("cmd-input");
+    if (document.getElementById("confirm-agentconf")?.checked) {
+        if (input) input.value = command;
+        openCmdModal();
+    } else {
+        sendCommandToSelectedRigs(command).catch(err => {
+            console.error("Failed to send agent conf", err);
+            alert("Failed to send agent conf");
+        });
+    }
+}
+function saveAgentConfSnapshot(rig, content) {
+    if (!rig) return;
+    fetch(`${API}/api/agent-conf/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rig, content }),
+    }).catch(err => {
+        // Best-effort local backup convenience - a failure here shouldn't interrupt the
+        // actual load/apply flow the user is doing, just log it.
+        console.warn("Failed to save agent conf snapshot for DB Backups:", err);
+    });
+}
 function populateStatusLogRigSelect() {
     const sel = document.getElementById("statuslog-rig-select");
     if (!sel) return;
@@ -11614,6 +11800,7 @@ let lastSyncedStatuslogRig = null;
 // changed" apart from "the displayed rig changed for some other reason".
 let lastObservedStatuslogSelectionRig = null;
 let lastSyncedWdConfigRig = null;
+let lastSyncedAgentConfRig = null;
 function syncOpenModulesToSelection() {
     const count = selectedRigs.size;
     const countLabel = count === 1 ? "worker" : "workers";
@@ -11645,6 +11832,22 @@ function syncOpenModulesToSelection() {
             }
         } else {
             lastSyncedWdConfigRig = null;
+        }
+    }
+    const settingsModal = document.getElementById("refresh-modal");
+    const agentConfPanel = settingsModal?.querySelector('.settings-main-tab-panel[data-tab-panel="agentconf"]');
+    if (settingsModal && !settingsModal.classList.contains("hidden") &&
+        agentConfPanel && !agentConfPanel.classList.contains("hidden")) {
+        if (count === 1) {
+            const [onlyAc] = selectedRigs;
+            if (onlyAc !== lastSyncedAgentConfRig) {
+                lastSyncedAgentConfRig = onlyAc;
+                autoLoadAgentConfForSelectedRig();
+            }
+        } else {
+            lastSyncedAgentConfRig = null;
+            const statusEl = document.getElementById("agentconf-status");
+            if (statusEl) statusEl.textContent = "Select exactly one worker to load/edit its agent conf";
         }
     }
     const statsModal = document.getElementById("stats-modal");
@@ -11783,6 +11986,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-unlock-request-code")?.addEventListener("click", requestUnlockCode);
     document.getElementById("btn-unlock-submit-code")?.addEventListener("click", submitUnlockCode);
     document.getElementById("btn-unlock-close")?.addEventListener("click", closeUnlockModal);
+    document.getElementById("btn-unlock-close-x")?.addEventListener("click", closeUnlockModal);
     document.getElementById("unlock-code-input")?.addEventListener("keydown", (e) => {
         if (e.key === "Enter") submitUnlockCode();
     });
@@ -11798,6 +12002,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-quick-c")?.addEventListener("click", (e) => handleQuickActionClick("c", e));
     document.getElementById("btn-qa-apply")?.addEventListener("click", applyQuickActionsModal);
     document.getElementById("btn-qa-cancel")?.addEventListener("click", closeQuickActionsModal);
+    document.getElementById("btn-qa-close-x")?.addEventListener("click", closeQuickActionsModal);
     document.getElementById("btn-cmd-send")?.addEventListener("click", submitCmd);
     document.getElementById("btn-cmd-clear-send")?.addEventListener("click", clearOutputAndSend);
     document.getElementById('btn-cmd-clear').addEventListener('click', function() {
@@ -12033,9 +12238,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-manage-pools")?.addEventListener("click", openManagePoolsDialog);
     document.getElementById("btn-fs-pools-save")?.addEventListener("click", saveManagePoolsDialog);
     document.getElementById("btn-fs-pools-cancel")?.addEventListener("click", closeManagePoolsDialog);
+    document.getElementById("btn-fs-pools-close-x")?.addEventListener("click", closeManagePoolsDialog);
     document.getElementById("btn-save-fs-wallet")?.addEventListener("click", openFsWalletSaveDialog);
     document.getElementById("btn-fs-wallet-save-confirm")?.addEventListener("click", confirmFsWalletSave);
     document.getElementById("btn-fs-wallet-save-cancel")?.addEventListener("click", closeFsWalletSaveDialog);
+    document.getElementById("btn-fs-wallet-save-close-x")?.addEventListener("click", closeFsWalletSaveDialog);
     document.getElementById("btn-fs-copy-json")?.addEventListener("click", copyFsCombinedJsonToClipboard);
     document.getElementById("fs-field-args")?.addEventListener("input", () => {
         fsBzminerOcJsonUserConfig = "";
@@ -12271,6 +12478,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         autoResizeWdRaw();
     });
     initWdconfigMainTabs();
+    initSettingsMainTabs();
+    document.getElementById("btn-agentconf-reload")?.addEventListener("click", autoLoadAgentConfForSelectedRig);
+    document.getElementById("btn-agentconf-clear")?.addEventListener("click", loadDefaultAgentConf);
+    document.getElementById("btn-agentconf-apply")?.addEventListener("click", sendItAgentConf);
+    document.getElementById("agentconf-raw")?.addEventListener("input", resizeAgentConfRaw);
+    document.getElementById("agentconf-raw")?.addEventListener("mouseup", saveAgentConfRawHeight);
+    restoreAgentConfRawHeight();
+    initSendConfirmCheckbox("confirm-agentconf", "agentconf");
     document.getElementById("btn-save-wallet")?.addEventListener("click", saveWalletFromDialog);
     document.getElementById("btn-delete-wallet")?.addEventListener("click", deleteWallet);
     document.getElementById("btn-clear-wallet")?.addEventListener("click", newWallet);

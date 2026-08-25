@@ -13,7 +13,9 @@
         "",
         "overclocking.fan_curve_service_template has NO %placeholder% tokens of its own - it gets substituted whole into apply_script_footer's %FAN_CURVE_BLOCK%, and its \"$FAN_VALUE\" is a literal bash variable reference (not a %-token), relying on the surrounding script already having set FAN_VALUE=\"%Fan Value%\" earlier in apply_script_algo_block.",
         "",
-        "watchdog.conf_dir / watchdog.conf_path are plain values (not templates with placeholders) - the directory watchdog config gets mkdir'd into, and the full path the watchdog conf file gets written to/read from on each worker."
+        "watchdog.conf_dir / watchdog.conf_path are plain values (not templates with placeholders) - the directory watchdog config gets mkdir'd into, and the full path the watchdog conf file gets written to/read from on each worker.",
+        "",
+        "agentconf.conf_dir / agentconf.conf_path / agentconf.restart_command are the same kind of plain values, for the Settings modal's Agent Conf tab - the directory/path rigcontrol-agent.conf gets mkdir'd/written/read at on each worker, and the command run afterward when 'Restart agent after apply' is checked."
     ],
     "flightsheet": {
         "cpu_template": "tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_cpu",
@@ -29,5 +31,10 @@
     "watchdog": {
         "conf_dir": "/etc/rigcontrol",
         "conf_path": "/etc/rigcontrol/rigcontrol-watchdog.conf"
+    },
+    "agentconf": {
+        "conf_dir": "/etc/rigcontrol",
+        "conf_path": "/etc/rigcontrol/rigcontrol-agent.conf",
+        "restart_command": "sudo systemctl restart rigcontrol-agent.service"
     }
 }

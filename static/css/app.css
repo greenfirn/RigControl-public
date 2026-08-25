@@ -172,6 +172,10 @@
     --button-refresh-now-border: #4fc3f7;
     --button-refresh-now-text: #4fc3f7;
     --button-refresh-now-hover-bg: #203040;
+    --button-agentconf-reload-bg: #1c1c1c;
+    --button-agentconf-reload-border: #66bb6a;
+    --button-agentconf-reload-text: #66bb6a;
+    --button-agentconf-reload-hover-bg: #203020;
     --button-ping-now-bg: #1c1c1c;
     --button-ping-now-border: #4fc3f7;
     --button-ping-now-text: #4fc3f7;
@@ -1113,7 +1117,11 @@ h1 {
     align-items: center;
     justify-content: center;
     background: transparent;
-    border: 1px solid transparent;
+    /* Visible by default (not just on hover) so the button reads as a clickable box even
+       before you're pointing at it - some header X's were rendering as bare glyphs with no
+       surrounding box until this was made non-transparent. Individual modals with their own
+       themed close-button colors (e.g. #btn-close-cmd-modal below) still override this. */
+    border: 1px solid var(--border-modal);
     color: var(--text-secondary);
     font-size: 12px;
     line-height: 1;
@@ -1586,15 +1594,23 @@ h1 {
     background: var(--button-hover-bg);
     border-color: var(--button-hover-border);
 }
+/* Grows to fit its content (the Agent Conf tab's textarea especially) instead of capping at
+   96vh with its own internal scrollbar - #refresh-modal.cmd-modal below becomes the scrollable
+   region instead, so a tall modal scrolls like part of the page rather than nesting a second
+   scrollbar inside it. */
+#refresh-modal.cmd-modal {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding: 24px 0;
+    box-sizing: border-box;
+}
 #refresh-modal .cmd-dialog {
     width: fit-content;
     max-width: 95vw;
     min-width: 460px;
-    height: auto !important;
-    max-height: 96vh !important;
+    height: auto;
     margin: 0 auto;
     position: relative;
-    overflow: hidden;
 }
 #refresh-modal .cmd-body {
     display: flex;
@@ -1602,8 +1618,6 @@ h1 {
     align-items: stretch;
     gap: 24px;
     padding: 14px 16px;
-    overflow-y: auto;
-    max-height: calc(96vh - 110px);
 }
 .refresh-left-pane {
     flex: 0 0 auto;
@@ -2650,6 +2664,61 @@ h1 {
 #btn-test-notification:hover {
     background: var(--button-test-alert-hover-bg);
 }
+#refresh-modal .quick-actions-row .cmd-btn,
+#refresh-modal .footer-buttons-right .cmd-btn {
+    width: auto;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+#btn-agentconf-reload {
+    border-color: var(--button-agentconf-reload-border);
+    color: var(--button-agentconf-reload-text);
+    background: var(--button-agentconf-reload-bg);
+}
+#btn-agentconf-reload:hover {
+    background: var(--button-agentconf-reload-hover-bg);
+}
+#btn-agentconf-clear {
+    border-color: var(--button-clear-border);
+    color: var(--button-clear-text);
+    background: var(--button-clear-bg);
+    opacity: 0.85;
+}
+#btn-agentconf-clear:hover {
+    background: var(--button-clear-hover-bg);
+    border-color: var(--button-clear-hover-border);
+}
+#refresh-modal .wdconfig-raw-section {
+    flex: 0 0 auto;
+}
+#refresh-modal #agentconf-raw {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    background: var(--editor-bg);
+    border: 1px solid var(--editor-border);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-family: monospace;
+    font-size: var(--font-size-input-compact);
+    line-height: 1.4;
+    margin: 0;
+    /* Grows to fit its content instead of scrolling internally (see resizeAgentConfRaw() in
+       app.js) - #refresh-modal.cmd-modal is the scrollable region for the whole modal, so a
+       tall conf file scrolls like part of the page instead of the textarea getting its own
+       separate nested scrollbar. Still resize:vertical (not none) so the user can also
+       drag it shorter/taller by hand - the next keystroke/load/clear will auto-fit again, but
+       until then a manual resize sticks, e.g. to shrink a long file back down without editing
+       it first. */
+    resize: vertical;
+    /* auto, not hidden - if the user manually drags it shorter than the content, this lets
+       them scroll to see the rest instead of it just getting silently clipped. Auto-grown
+       height (the normal case) always matches scrollHeight exactly, so no scrollbar appears
+       then either way. */
+    overflow: auto;
+    min-height: calc(1.4em + 12px);
+}
 #refresh-modal .interval-input.invalid,
 #refresh-modal .phone-input.invalid {
     border-color: var(--text-danger);
@@ -2670,17 +2739,17 @@ h1 {
     cursor: not-allowed;
     background: var(--input-disabled-bg);
 }
-#refresh-modal .cmd-body::-webkit-scrollbar {
+#refresh-modal.cmd-modal::-webkit-scrollbar {
     width: 8px;
 }
-#refresh-modal .cmd-body::-webkit-scrollbar-track {
+#refresh-modal.cmd-modal::-webkit-scrollbar-track {
     background: var(--list-scrollbar-track);
 }
-#refresh-modal .cmd-body::-webkit-scrollbar-thumb {
+#refresh-modal.cmd-modal::-webkit-scrollbar-thumb {
     background: var(--list-scrollbar-thumb);
     border-radius: 3px;
 }
-#refresh-modal .cmd-body {
+#refresh-modal.cmd-modal {
     scrollbar-width: thin;
     scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
 }
@@ -3218,14 +3287,16 @@ h1 {
 }
 #fs-modal .cmd-btn.send-it,
 #oc-modal .cmd-btn.send-it,
-#wdconfig-modal .cmd-btn.send-it {
+#wdconfig-modal .cmd-btn.send-it,
+#refresh-modal .cmd-btn.send-it {
     border-color: var(--button-send-it-border);
     color: var(--text-send-it);
     background: var(--button-send-it-bg);
 }
 #fs-modal .cmd-btn.send-it:hover,
 #oc-modal .cmd-btn.send-it:hover,
-#wdconfig-modal .cmd-btn.send-it:hover {
+#wdconfig-modal .cmd-btn.send-it:hover,
+#refresh-modal .cmd-btn.send-it:hover {
     background: var(--button-send-it-hover-bg);
 }
 #fs-modal #btn-delete-fs {
@@ -4531,6 +4602,52 @@ h1 {
     box-sizing: border-box;
 }
 .wdconfig-main-tab-panel.hidden {
+    display: none;
+}
+/* Settings modal's own main tab bar (General / Agent Conf / Advanced Server Settings) -
+   same visual design as .wdconfig-main-tab-* above, kept as separate classes rather than
+   reused directly so each modal's tab markup stays self-descriptive. */
+.settings-main-tabs {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border-modal);
+    padding-bottom: 10px;
+}
+.settings-main-tab-btn {
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-label);
+    background: var(--tab-bg);
+    border: 1px solid var(--tab-border);
+    color: var(--tab-text, var(--text-secondary));
+    border-radius: 4px;
+    cursor: pointer;
+}
+.settings-main-tab-btn:hover {
+    background: var(--tab-hover-bg);
+    color: var(--text-white);
+}
+.settings-main-tab-btn.active {
+    background: var(--tab-active-bg);
+    border-color: var(--tab-active-border);
+    color: var(--tab-active-text);
+}
+.settings-main-tab-btn.active:hover {
+    background: var(--tab-active-hover-bg);
+}
+.settings-main-tab-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 12px;
+}
+.settings-main-tab-panel.hidden {
     display: none;
 }
 .wdconfig-mining-pause-note {
@@ -5943,12 +6060,17 @@ body.layout-left .rig-header {
 }
 .fs-miner-config-close {
     background: transparent;
-    border: none;
+    border: 1px solid var(--border-modal);
+    border-radius: 3px;
     color: var(--text-secondary);
     font-size: 1.3rem;
     line-height: 1;
     cursor: pointer;
-    padding: 2px 6px;
+    padding: 0px 6px;
+    /* .cmd-header is justify-content: flex-start (shared by every modal header, most of which
+       only have a title in it) - margin-left: auto pushes just this button to the far right
+       of the header without changing that shared layout for anything else. */
+    margin-left: auto;
 }
 .fs-miner-config-close:hover {
     color: var(--text-primary);
