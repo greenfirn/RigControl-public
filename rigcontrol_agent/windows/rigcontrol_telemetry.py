@@ -760,6 +760,86 @@ def collect_memory():
         "free_mb": mem.available // (1024 * 1024),
         "percent": mem.percent
     }
+# ===== Shared result-shape helpers =====
+# Every collect_*_stats() function below returns through these three builders instead of hand-rolling
+# its own dict, so every miner - regardless of how different its own raw API/log format is - reports
+# back through the SAME top-level keys, the SAME per-algorithm key set, and the SAME per-GPU key set.
+# Before this, each collector had grown its own slightly different subset of keys (some had "pool",
+# some didn't; some had "gpus", most didn't; "stale_shares" vs "invalid_shares" named differently or
+# missing entirely) since they were written one at a time against each miner's own API shape. That's
+# fine for parsing (every collector still reads whatever fields its OWN miner's API actually has - the
+# raw parsing logic per miner is unchanged here), but it left the OUTPUT shape inconsistent, which
+# pushes complexity onto every downstream consumer (frontend, watchdog, anything else keyed by
+# stats["miner_<x>"]) to special-case each miner instead of relying on one shape.
+def _build_algo_entry(algorithm, hashrate_hs=None, accepted_shares=None, rejected_shares=None,
+                       stale_shares=None, invalid_shares=None, cpu_hashrate_hs=None,
+                       gpu_hashrate_hs=None, mining_type=None, pool=None, pool_url=None,
+                       pool_latency_ms=None, difficulty=None, workers=None, thread_hashrates=None,
+                       **extra):
+    """Canonical per-algorithm entry - every key below is present on every miner's algorithms[]
+    entries now, left as None/default when that particular miner's API doesn't report it, instead of
+    the key being absent entirely (which previously made "does this miner report a pool?" a
+    per-miner question the caller had to already know the answer to). **extra still allows a
+    genuinely miner-specific per-algorithm field (e.g. rigel's pool_hashrate_hs) to be attached
+    without adding a None-filled version of it to every other miner's entries too."""
+    entry = {
+        "algorithm":        algorithm,
+        "hashrate_hs":      hashrate_hs,
+        "cpu_hashrate_hs":  cpu_hashrate_hs,
+        "gpu_hashrate_hs":  gpu_hashrate_hs,
+        "mining_type":      mining_type,
+        "accepted_shares":  accepted_shares,
+        "rejected_shares":  rejected_shares,
+        "stale_shares":     stale_shares,
+        "invalid_shares":   invalid_shares,
+        "pool":             pool,
+        "pool_url":         pool_url,
+        "pool_latency_ms":  pool_latency_ms,
+        "difficulty":       difficulty,
+        "workers":          workers,
+        "thread_hashrates": thread_hashrates,
+    }
+    entry.update(extra)
+    return entry
+def _build_gpu_entry(index, name=None, hashrate_hs=None, accepted_shares=None, rejected_shares=None):
+    """Canonical per-GPU entry, matching keryx's/T-Rex's shape. Miners whose API only reports
+    thread/worker-indexed hashrate (no real per-device identity - wildrig, srbminer's GPU threads,
+    xmrig) still get one entry per known device index here with a generic "GPU N" name rather than
+    being left out of "gpus" entirely, so every miner's result has the SAME "gpus" list shape even
+    though the underlying data richness genuinely differs per miner."""
+    return {
+        "gpu_id":          index,
+        "index":           index,
+        "name":            name if name else f"GPU {index}",
+        "hashrate_hs":     hashrate_hs if hashrate_hs is not None else 0,
+        "accepted_shares": accepted_shares,
+        "rejected_shares": rejected_shares,
+    }
+def _build_miner_result(status, miner, miner_version=None, uptime_s=None, algorithms=None, gpus=None,
+                         error=None, **extra):
+    """Canonical top-level shape for every collect_*_stats() return value. total_hashrate_hs/
+    total_accepted_shares/total_rejected_shares are always derived here by summing algorithms[]
+    rather than being computed separately by each collector, so they can never drift out of sync with
+    the per-algorithm numbers actually being returned alongside them. **extra lets a specific miner
+    still attach genuinely miner-specific fields (e.g. bzminer's cuda_driver_version, T-Rex's
+    watchdog block) without forcing every OTHER miner to also carry a None-filled version of it -
+    only the common, meaningful-for-most-miners fields are mandatory above."""
+    algorithms = algorithms or []
+    result = {
+        "status":                status,
+        "miner":                 miner,
+        "miner_version":         miner_version or "",
+        "uptime_s":              uptime_s if uptime_s is not None else 0,
+        "algorithms":            algorithms,
+        "gpus":                  gpus if gpus is not None else [],
+        "total_hashrate_hs":     sum((a.get("hashrate_hs") or 0) for a in algorithms),
+        "total_accepted_shares": sum((a.get("accepted_shares") or 0) for a in algorithms),
+        "total_rejected_shares": sum((a.get("rejected_shares") or 0) for a in algorithms),
+    }
+    if error is not None:
+        result["error"] = error
+    result.update(extra)
+    return result
 def collect_bzminer_stats():
     API_URL = "http://127.0.0.1:4014/status"
     try:
@@ -767,13 +847,18 @@ def collect_bzminer_stats():
         with urllib.request.urlopen(req, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "bzminer", error=str(e))
     method = data.get("method", "")
     if method != "fullstatus":
-        return {"status": "unexpected_format", "data": data}
+        return _build_miner_result("unexpected_format", "bzminer", error="unexpected API response shape", data=data)
     pools = data.get("pools") or []
     devices = data.get("devices") or []
     algorithms = []
+    # Per-device hashrate for the "gpus" list, summed per device across whichever pool it's currently
+    # mining on - bzminer's own device objects don't include a device name in the fields this
+    # collector reads, so gpu entries below use the generic "GPU N" label rather than guessing at an
+    # unverified key name for it.
+    device_hashrates = [0] * len(devices)
     for pool in pools:
         pool_id = pool.get("id", -1)
         pool_algo = pool.get("algorithm", "unknown")
@@ -785,34 +870,33 @@ def collect_bzminer_stats():
                 host_part = url_parts[1].split(":")[0]
                 pool_url = host_part.split(".")[-2] if "." in host_part else host_part
         total_hashrate = 0
-        for device in devices:
+        for dev_i, device in enumerate(devices):
             device_pools = device.get("pool", [])
             device_hr = device.get("hashrate", [])
             if isinstance(device_pools, list) and isinstance(device_hr, list):
                 for i, p_id in enumerate(device_pools):
                     if p_id == pool_id and i < len(device_hr):
                         total_hashrate += device_hr[i]
+                        device_hashrates[dev_i] += device_hr[i]
         if total_hashrate > 0 or pool.get("status", 0) > 0:
-            algo_data = {
-                "algorithm": pool_algo,
-                "pool": pool_url,
-                "hashrate_hs": total_hashrate if total_hashrate > 0 else None,
-                "accepted_shares": pool.get("valid_solutions"),
-                "rejected_shares": pool.get("rejected_solutions"),
-                "stale_shares": pool.get("stale_solutions"),
-                "workers": None
-            }
-            algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "bzminer",
-        "miner_version": data.get("bzminer_version"),
-        "rig_name": data.get("rig_name"),
-        "uptime_s": data.get("uptime_s"),
-        "total_devices": len(devices),
-        "cuda_driver_version": data.get("cuda_driver_version"),
-        "algorithms": algorithms
-    }
+            algorithms.append(_build_algo_entry(
+                pool_algo,
+                hashrate_hs=total_hashrate if total_hashrate > 0 else None,
+                accepted_shares=pool.get("valid_solutions"),
+                rejected_shares=pool.get("rejected_solutions"),
+                stale_shares=pool.get("stale_solutions"),
+                pool=pool_url,
+            ))
+    gpus = [_build_gpu_entry(i, hashrate_hs=hr) for i, hr in enumerate(device_hashrates)]
+    return _build_miner_result(
+        "ok", "bzminer",
+        miner_version=data.get("bzminer_version"),
+        uptime_s=data.get("uptime_s"),
+        algorithms=algorithms,
+        gpus=gpus,
+        rig_name=data.get("rig_name"),
+        cuda_driver_version=data.get("cuda_driver_version"),
+    )
 def collect_rigel_stats():
     host = os.environ.get("RIGEL_API_HOST", "127.0.0.1")
     port = int(os.environ.get("RIGEL_API_PORT", "5000"))
@@ -822,7 +906,7 @@ def collect_rigel_stats():
         with urllib.request.urlopen(req, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "rigel", error=str(e))
     hr = data.get("hashrate", {})
     pool_hr = data.get("pool_hashrate", {})
     sol = data.get("solution_stat", {})
@@ -838,23 +922,21 @@ def collect_rigel_stats():
     for algo in all_algos:
         algo_sol = sol.get(algo, {}) if isinstance(sol, dict) else {}
         hashrate_hs = hr.get(algo) if isinstance(hr, dict) else None
-        algo_data = {
-            "algorithm": algo,
-            "hashrate_hs": hashrate_hs,
-            "pool_hashrate_hs": pool_hr.get(algo) if isinstance(pool_hr, dict) else None,
-            "accepted_shares": algo_sol.get("accepted") if isinstance(algo_sol, dict) else None,
-            "rejected_shares": algo_sol.get("rejected") if isinstance(algo_sol, dict) else None,
-            "pool": pool_data.get("url", "").split("://")[-1].split(":")[0] if algo == list(all_algos)[0] else None
-        }
-        algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "rigel",
-        "miner_version": data.get("version"),
-        "cuda_driver": data.get("cuda_driver"),
-        "uptime_s": data.get("uptime"),
-        "algorithms": algorithms
-    }
+        algorithms.append(_build_algo_entry(
+            algo,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=algo_sol.get("accepted") if isinstance(algo_sol, dict) else None,
+            rejected_shares=algo_sol.get("rejected") if isinstance(algo_sol, dict) else None,
+            pool=pool_data.get("url", "").split("://")[-1].split(":")[0] if algo == list(all_algos)[0] else None,
+            pool_hashrate_hs=pool_hr.get(algo) if isinstance(pool_hr, dict) else None,
+        ))
+    return _build_miner_result(
+        "ok", "rigel",
+        miner_version=data.get("version"),
+        uptime_s=data.get("uptime"),
+        algorithms=algorithms,
+        cuda_driver=data.get("cuda_driver"),
+    )
 def collect_srbminer_stats():
     host = os.environ.get("SRB_API_HOST", "127.0.0.1")
     main_port = int(os.environ.get("SRB_API_PORT", "21550"))
@@ -879,10 +961,7 @@ def collect_srbminer_stats():
     except Exception:
         pass
     if main_status == "offline" and cpu_status == "offline":
-        return {
-            "status": "offline",
-            "error": "Both main and CPU ports unavailable"
-        }
+        return _build_miner_result("offline", "srbminer", error="Both main and CPU ports unavailable")
     algorithms = []
     if main_status == "ok":
         main_algos = main_data.get("algorithms", [])
@@ -895,19 +974,16 @@ def collect_srbminer_stats():
             gpu_hs = gpu_block.get("total")
             if gpu_hs and gpu_hs > 0:
                 shares = algo_data.get("shares", {})
-                algo_info = {
-                    "algorithm": name,
-                    "cpu_hashrate_hs": 0,
-                    "gpu_hashrate_hs": gpu_hs,
-                    "hashrate_hs": gpu_hs,
-                    "accepted_shares": shares.get("accepted"),
-                    "rejected_shares": shares.get("rejected"),
-                    "cpu_workers": 0,
-                    "gpu_workers": main_data.get("total_gpu_workers"),
-                    "thread_hashrates": None,
-                    "mining_type": "GPU"
-                }
-                algorithms.append(algo_info)
+                algorithms.append(_build_algo_entry(
+                    name,
+                    hashrate_hs=gpu_hs,
+                    cpu_hashrate_hs=0,
+                    gpu_hashrate_hs=gpu_hs,
+                    mining_type="GPU",
+                    accepted_shares=shares.get("accepted"),
+                    rejected_shares=shares.get("rejected"),
+                    workers=main_data.get("total_gpu_workers"),
+                ))
     if main_status == "ok":
         main_algos = main_data.get("algorithms", [])
         for algo_data in main_algos:
@@ -924,19 +1000,17 @@ def collect_srbminer_stats():
                         if key.startswith("thread") and isinstance(value, (int, float)):
                             thread_hashrates[key] = value
                 shares = algo_data.get("shares", {})
-                algo_info = {
-                    "algorithm": name,
-                    "cpu_hashrate_hs": cpu_hs,
-                    "gpu_hashrate_hs": 0,
-                    "hashrate_hs": cpu_hs,
-                    "accepted_shares": shares.get("accepted"),
-                    "rejected_shares": shares.get("rejected"),
-                    "cpu_workers": main_data.get("total_cpu_workers"),
-                    "gpu_workers": 0,
-                    "thread_hashrates": thread_hashrates if thread_hashrates else None,
-                    "mining_type": "CPU"
-                }
-                algorithms.append(algo_info)
+                algorithms.append(_build_algo_entry(
+                    name,
+                    hashrate_hs=cpu_hs,
+                    cpu_hashrate_hs=cpu_hs,
+                    gpu_hashrate_hs=0,
+                    mining_type="CPU",
+                    accepted_shares=shares.get("accepted"),
+                    rejected_shares=shares.get("rejected"),
+                    workers=main_data.get("total_cpu_workers"),
+                    thread_hashrates=thread_hashrates if thread_hashrates else None,
+                ))
     if cpu_status == "ok":
         cpu_algos = cpu_data.get("algorithms", [])
         for algo_data in cpu_algos:
@@ -953,31 +1027,28 @@ def collect_srbminer_stats():
                         if key.startswith("thread") and isinstance(value, (int, float)):
                             thread_hashrates[key] = value
                 shares = algo_data.get("shares", {})
-                algo_info = {
-                    "algorithm": name,
-                    "cpu_hashrate_hs": cpu_hs,
-                    "gpu_hashrate_hs": 0,
-                    "hashrate_hs": cpu_hs,
-                    "accepted_shares": shares.get("accepted"),
-                    "rejected_shares": shares.get("rejected"),
-                    "cpu_workers": cpu_data.get("total_cpu_workers"),
-                    "gpu_workers": 0,
-                    "thread_hashrates": thread_hashrates if thread_hashrates else None,
-                    "mining_type": "CPU",
-                    "source_port": "21551"
-                }
-                algorithms.append(algo_info)
+                algorithms.append(_build_algo_entry(
+                    name,
+                    hashrate_hs=cpu_hs,
+                    cpu_hashrate_hs=cpu_hs,
+                    gpu_hashrate_hs=0,
+                    mining_type="CPU",
+                    accepted_shares=shares.get("accepted"),
+                    rejected_shares=shares.get("rejected"),
+                    workers=cpu_data.get("total_cpu_workers"),
+                    thread_hashrates=thread_hashrates if thread_hashrates else None,
+                    source_port="21551",
+                ))
     overall_status = "ok" if algorithms else "offline"
     source_data = main_data if main_status == "ok" else cpu_data
-    return {
-        "status": overall_status,
-        "miner": "srbminer",
-        "miner_version": source_data.get("miner_version"),
-        "cpu_port_active": cpu_status == "ok",
-        "gpu_port_active": main_status == "ok",
-        "uptime_s": source_data.get("mining_time") or source_data.get("uptime") or source_data.get("uptime_s"),
-        "algorithms": algorithms
-    }
+    return _build_miner_result(
+        overall_status, "srbminer",
+        miner_version=source_data.get("miner_version"),
+        uptime_s=source_data.get("mining_time") or source_data.get("uptime") or source_data.get("uptime_s"),
+        algorithms=algorithms,
+        cpu_port_active=cpu_status == "ok",
+        gpu_port_active=main_status == "ok",
+    )
 def collect_wildrig_stats():
     host = os.environ.get("WILDRIG_API_HOST", "127.0.0.1")
     port = int(os.environ.get("WILDRIG_API_PORT", "4000"))
@@ -986,7 +1057,7 @@ def collect_wildrig_stats():
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "wildrig", error=str(e))
     algo = data.get("algo")
     algorithms = []
     if algo:
@@ -1004,21 +1075,19 @@ def collect_wildrig_stats():
         rej = results.get("shares_rejected")
         accepted = acc[0] if isinstance(acc, list) and acc else None
         rejected = rej[0] if isinstance(rej, list) and rej else None
-        algo_data = {
-            "algorithm": algo,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": accepted,
-            "rejected_shares": rejected,
-            "thread_hashrates": thread_hashrates if thread_hashrates else None
-        }
-        algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "wildrig",
-        "miner_version": data.get("version"),
-        "uptime_s": data.get("uptime"),
-        "algorithms": algorithms
-    }
+        algorithms.append(_build_algo_entry(
+            algo,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=accepted,
+            rejected_shares=rejected,
+            thread_hashrates=thread_hashrates if thread_hashrates else None,
+        ))
+    return _build_miner_result(
+        "ok", "wildrig",
+        miner_version=data.get("version"),
+        uptime_s=data.get("uptime"),
+        algorithms=algorithms,
+    )
 def collect_lolminer_stats():
     host = os.environ.get("LOLMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("LOLMINER_API_PORT", "8020"))
@@ -1027,7 +1096,7 @@ def collect_lolminer_stats():
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "lolminer", error=str(e))
     algos = data.get("Algorithms", [])
     algorithms = []
     for algo_data in algos:
@@ -1043,22 +1112,20 @@ def collect_lolminer_stats():
             for i, perf in enumerate(worker_perf):
                 if isinstance(perf, (int, float)):
                     thread_hashrates[f"worker_{i}"] = perf * factor
-        algo_info = {
-            "algorithm": algo_name,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": algo_data.get("Total_Accepted"),
-            "rejected_shares": algo_data.get("Total_Rejected"),
-            "pool": algo_data.get("Pool"),
-            "thread_hashrates": thread_hashrates if thread_hashrates else None
-        }
-        algorithms.append(algo_info)
-    return {
-        "status": "ok",
-        "miner": "lolminer",
-        "miner_version": data.get("Software"),
-        "uptime_s": data.get("Session", {}).get("Uptime"),
-        "algorithms": algorithms
-    }
+        algorithms.append(_build_algo_entry(
+            algo_name,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=algo_data.get("Total_Accepted"),
+            rejected_shares=algo_data.get("Total_Rejected"),
+            pool=algo_data.get("Pool"),
+            thread_hashrates=thread_hashrates if thread_hashrates else None,
+        ))
+    return _build_miner_result(
+        "ok", "lolminer",
+        miner_version=data.get("Software"),
+        uptime_s=data.get("Session", {}).get("Uptime"),
+        algorithms=algorithms,
+    )
 def collect_onezerominer_stats():
     host = os.environ.get("ONEZEROMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("ONEZEROMINER_API_PORT", "3001"))
@@ -1067,7 +1134,7 @@ def collect_onezerominer_stats():
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "onezerominer", error=str(e))
     algos = data.get("algos", [])
     algorithms = []
     for algo_data in algos:
@@ -1081,22 +1148,20 @@ def collect_onezerominer_stats():
             for i, hr_value in enumerate(device_hr):
                 if isinstance(hr_value, (int, float)):
                     thread_hashrates[f"device_{i}"] = hr_value
-        algo_info = {
-            "algorithm": name,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": algo_data.get("total_accepted_shares"),
-            "rejected_shares": algo_data.get("total_rejected_shares"),
-            "pool": algo_data.get("pool"),
-            "thread_hashrates": thread_hashrates if thread_hashrates else None
-        }
-        algorithms.append(algo_info)
-    return {
-        "status": "ok",
-        "miner": "onezerominer",
-        "miner_version": data.get("version"),
-        "uptime_s": data.get("uptime_seconds"),
-        "algorithms": algorithms
-    }
+        algorithms.append(_build_algo_entry(
+            name,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=algo_data.get("total_accepted_shares"),
+            rejected_shares=algo_data.get("total_rejected_shares"),
+            pool=algo_data.get("pool"),
+            thread_hashrates=thread_hashrates if thread_hashrates else None,
+        ))
+    return _build_miner_result(
+        "ok", "onezerominer",
+        miner_version=data.get("version"),
+        uptime_s=data.get("uptime_seconds"),
+        algorithms=algorithms,
+    )
 def collect_gminer_stats():
     host = os.environ.get("GMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("GMINER_API_PORT", "10050"))
@@ -1105,9 +1170,10 @@ def collect_gminer_stats():
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "gminer", error=str(e))
     algo = data.get("algorithm")
     algorithms = []
+    gpus = []
     if algo:
         total_hs = 0
         devices = data.get("devices", [])
@@ -1118,23 +1184,25 @@ def collect_gminer_stats():
                 if isinstance(speed, (int, float)):
                     total_hs += speed
                     thread_hashrates[f"gpu_{i}"] = speed
+                # gminer's own device object may include a real name field, but this collector has
+                # never read one (only "speed") - GPU N here rather than guessing an unverified key.
+                gpus.append(_build_gpu_entry(i, hashrate_hs=speed))
         hashrate_hs = total_hs if total_hs > 0 else None
-        algo_data = {
-            "algorithm": algo,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": data.get("total_accepted_shares"),
-            "rejected_shares": data.get("total_rejected_shares"),
-            "pool": data.get("pool"),
-            "thread_hashrates": thread_hashrates if thread_hashrates else None
-        }
-        algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "gminer",
-        "miner_version": data.get("miner"),
-        "uptime_s": data.get("uptime"),
-        "algorithms": algorithms
-    }
+        algorithms.append(_build_algo_entry(
+            algo,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=data.get("total_accepted_shares"),
+            rejected_shares=data.get("total_rejected_shares"),
+            pool=data.get("pool"),
+            thread_hashrates=thread_hashrates if thread_hashrates else None,
+        ))
+    return _build_miner_result(
+        "ok", "gminer",
+        miner_version=data.get("miner"),
+        uptime_s=data.get("uptime"),
+        algorithms=algorithms,
+        gpus=gpus,
+    )
 def collect_xmrig_stats():
     host = os.environ.get("XMRIG_HTTP_HOST", "127.0.0.1")
     port = int(os.environ.get("XMRIG_HTTP_PORT", "18080"))
@@ -1144,7 +1212,7 @@ def collect_xmrig_stats():
         with urllib.request.urlopen(req, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "xmrig", error=str(e))
     algo = data.get("algo")
     algorithms = []
     if algo:
@@ -1160,26 +1228,24 @@ def collect_xmrig_stats():
         pool_url = connection.get("url", "").split("://")[-1].split(":")[0] if connection else None
         cpu_info = data.get("cpu", {})
         threads = cpu_info.get("threads", 0)
-        algo_data = {
-            "algorithm": algo,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": shares_good,
-            "rejected_shares": rejected_shares,
-            "pool": pool_url,
+        algorithms.append(_build_algo_entry(
+            algo,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=shares_good,
+            rejected_shares=rejected_shares,
+            pool=pool_url,
             # Real pool ping - not results.avg_time_ms (avg time between shares, not a latency)
-            "pool_latency_ms": connection.get("ping", 0) if connection else 0,
-            "cpu_threads": threads,
+            pool_latency_ms=connection.get("ping", 0) if connection else 0,
             # Explicit CPU/GPU tag, same field SRBMiner/BZMiner set
-            "mining_type": "CPU" if threads > 0 else "GPU"
-        }
-        algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "xmrig",
-        "miner_version": data.get("version"),
-        "uptime_s": data.get("uptime"),
-        "algorithms": algorithms
-    }
+            mining_type="CPU" if threads > 0 else "GPU",
+            cpu_threads=threads,
+        ))
+    return _build_miner_result(
+        "ok", "xmrig",
+        miner_version=data.get("version"),
+        uptime_s=data.get("uptime"),
+        algorithms=algorithms,
+    )
 def collect_trex_stats():
     """Collect T-Rex miner stats"""
     host = os.environ.get("TREX_API_HOST", "127.0.0.1")
@@ -1189,36 +1255,44 @@ def collect_trex_stats():
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "trex", error=str(e))
     algo = data.get("algorithm")
     algorithms = []
+    gpu_entries = []
     if algo:
         hashrate = data.get("hashrate", 0)
         # T-Rex reports in H/s
         hashrate_hs = float(hashrate)
-        gpus = data.get("gpus", [])
+        raw_gpus = data.get("gpus", [])
         thread_hashrates = {}
-        if isinstance(gpus, list):
-            for i, gpu in enumerate(gpus):
+        if isinstance(raw_gpus, list):
+            for i, gpu in enumerate(raw_gpus):
                 gpu_hashrate = gpu.get("hashrate", 0)
                 if gpu_hashrate:
                     thread_hashrates[f"gpu_{i}"] = gpu_hashrate
-        algo_data = {
-            "algorithm": algo,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": data.get("accepted_count"),
-            "rejected_shares": data.get("rejected_count"),
-            "pool": data.get("url", "").split("://")[-1].split(":")[0] if data.get("url") else None,
-            "thread_hashrates": thread_hashrates if thread_hashrates else None
-        }
-        algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "trex",
-        "miner_version": data.get("version"),
-        "uptime_s": data.get("uptime"),
-        "algorithms": algorithms
-    }
+                # T-Rex's own /summary gpus[] carries a real per-device name/id (name/gpu_id) that
+                # this collector didn't previously surface into a "gpus" list at all - matches the
+                # richer shape the Linux agent's collect_trex_stats() already builds.
+                gpu_entries.append(_build_gpu_entry(
+                    gpu.get("gpu_id", i),
+                    name=gpu.get("name"),
+                    hashrate_hs=gpu_hashrate,
+                ))
+        algorithms.append(_build_algo_entry(
+            algo,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=data.get("accepted_count"),
+            rejected_shares=data.get("rejected_count"),
+            pool=data.get("url", "").split("://")[-1].split(":")[0] if data.get("url") else None,
+            thread_hashrates=thread_hashrates if thread_hashrates else None,
+        ))
+    return _build_miner_result(
+        "ok", "trex",
+        miner_version=data.get("version"),
+        uptime_s=data.get("uptime"),
+        algorithms=algorithms,
+        gpus=gpu_entries,
+    )
 def collect_nbminer_stats():
     """Collect NBminer stats"""
     host = os.environ.get("NBMINER_API_HOST", "127.0.0.1")
@@ -1228,9 +1302,10 @@ def collect_nbminer_stats():
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        return {"status": "offline", "error": str(e)}
+        return _build_miner_result("offline", "nbminer", error=str(e))
     algo = data.get("miner", {}).get("algorithm")
     algorithms = []
+    gpu_entries = []
     if algo:
         hashrate = data.get("miner", {}).get("total_hashrate_raw", 0)
         # NBminer reports in H/s
@@ -1242,22 +1317,28 @@ def collect_nbminer_stats():
                 device_hashrate = device.get("hashrate_raw", 0)
                 if device_hashrate:
                     thread_hashrates[f"gpu_{i}"] = device_hashrate
-        algo_data = {
-            "algorithm": algo,
-            "hashrate_hs": hashrate_hs,
-            "accepted_shares": data.get("stratum", {}).get("accepted_shares"),
-            "rejected_shares": data.get("stratum", {}).get("rejected_shares"),
-            "pool": data.get("stratum", {}).get("url", "").split("://")[-1].split(":")[0] if data.get("stratum", {}).get("url") else None,
-            "thread_hashrates": thread_hashrates if thread_hashrates else None
-        }
-        algorithms.append(algo_data)
-    return {
-        "status": "ok",
-        "miner": "nbminer",
-        "miner_version": data.get("miner", {}).get("version"),
-        "uptime_s": data.get("miner", {}).get("runtime"),
-        "algorithms": algorithms
-    }
+                # NBminer's own devices[] carries a real per-device "id"/"name" that this collector
+                # didn't previously surface into a "gpus" list at all.
+                gpu_entries.append(_build_gpu_entry(
+                    device.get("id", i),
+                    name=device.get("name"),
+                    hashrate_hs=device_hashrate,
+                ))
+        algorithms.append(_build_algo_entry(
+            algo,
+            hashrate_hs=hashrate_hs,
+            accepted_shares=data.get("stratum", {}).get("accepted_shares"),
+            rejected_shares=data.get("stratum", {}).get("rejected_shares"),
+            pool=data.get("stratum", {}).get("url", "").split("://")[-1].split(":")[0] if data.get("stratum", {}).get("url") else None,
+            thread_hashrates=thread_hashrates if thread_hashrates else None,
+        ))
+    return _build_miner_result(
+        "ok", "nbminer",
+        miner_version=data.get("miner", {}).get("version"),
+        uptime_s=data.get("miner", {}).get("runtime"),
+        algorithms=algorithms,
+        gpus=gpu_entries,
+    )
 def _decode_log_bytes(data):
     """
     Decode miner log bytes to text, tolerating both UTF-8/ASCII and
@@ -1493,7 +1574,8 @@ def collect_keryx_stats():
         except Exception as e:
             last_err = e
     if data is None:
-        return {"status": "error", "error": f"keryx-miner API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}"}
+        return _build_miner_result("error", CUSTOM_MINER_DISPLAY_NAME,
+                                    error=f"keryx-miner API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}")
     # keryx-miner-supr 0.11.10 changed its device key from "id" to "name" (still holding the same
     # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
     # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
@@ -1501,20 +1583,15 @@ def collect_keryx_stats():
     # accepted_blocks/rejected_blocks fallback below handle both the old and new shape, so this
     # keeps working across the schema change either direction without needing to pin a version.
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
-    gpus = []
-    for i, dev in enumerate(data.get("devices", []) or []):
+    raw_devices = data.get("devices", []) or []
+    parsed_devices = []
+    for i, dev in enumerate(raw_devices):
         dev_id = dev.get("id") or dev.get("name") or ""
         m = device_re.search(dev_id)
         idx  = int(m.group(1)) if m else i
         name = m.group(2).strip() if m else dev_id
-        gpus.append({
-            "gpu_id":      idx,
-            "index":       idx,
-            "name":        name,
-            "hashrate_hs": dev.get("hashrate_hs", 0),
-            # temp/fan/power intentionally omitted - the GPU stats collector is the source of truth
-        })
-    gpus.sort(key=lambda g: g["index"])
+        parsed_devices.append((idx, name, dev.get("hashrate_hs", 0)))
+    parsed_devices.sort(key=lambda d: d[0])
     total_hr_hs = data.get("total_hashrate_hs", 0)
     if "accepted_blocks" in data or "rejected_blocks" in data:
         accepted_blocks = data.get("accepted_blocks", 0)
@@ -1538,23 +1615,35 @@ def collect_keryx_stats():
         if last_uptime is None or uptime_s < last_uptime:
             _keryx_version_cache["version"] = _query_keryx_version(bin_path)
     _keryx_version_cache["last_uptime_s"] = uptime_s
-    return {
-        "status": "ok", "miner": data.get("miner") or display_name,
-        "miner_version":  _keryx_version_cache["version"],
-        "uptime_s":       uptime_s,
-        "synced":         data.get("synced"),
-        "mining_address": data.get("mining_address", ""),
-        "algorithms": [{
-            "algorithm":       "keryxhash",
-            "hashrate_hs":     total_hr_hs,
-            "accepted_shares": accepted_blocks,
-            "rejected_shares": rejected_blocks,
-        }],
-        "gpus": gpus,
-        "total_hashrate_hs":     total_hr_hs,
-        "total_accepted_shares": accepted_blocks,
-        "total_rejected_shares": rejected_blocks,
-    }
+    # keryx-miner-supr's API only ever reports accepted/rejected in AGGREGATE (either the old
+    # top-level accepted_blocks/rejected_blocks or the new nested "shares" object) - never broken
+    # down per device - so there's no way to honestly attribute them to a specific GPU on a
+    # multi-GPU rig. On a single-GPU rig there's no ambiguity though: the one GPU IS the whole
+    # aggregate, so attribute the totals to it directly rather than leaving accepted_shares/
+    # rejected_shares blank on that GPU's entry just because the API itself doesn't break it out.
+    single_gpu = len(parsed_devices) == 1
+    gpus = [
+        _build_gpu_entry(
+            idx, name=name, hashrate_hs=hr,
+            accepted_shares=accepted_blocks if single_gpu else None,
+            rejected_shares=rejected_blocks if single_gpu else None,
+        )
+        for idx, name, hr in parsed_devices
+    ]
+    return _build_miner_result(
+        "ok", data.get("miner") or display_name,
+        miner_version=_keryx_version_cache["version"],
+        uptime_s=uptime_s,
+        algorithms=[_build_algo_entry(
+            "keryxhash",
+            hashrate_hs=total_hr_hs,
+            accepted_shares=accepted_blocks,
+            rejected_shares=rejected_blocks,
+        )],
+        gpus=gpus,
+        synced=data.get("synced"),
+        mining_address=data.get("mining_address", ""),
+    )
 def collect_keryxd_stats():
     """
     keryxd (the Keryx node itself, not the miner) logs to stdout. On
@@ -1591,23 +1680,16 @@ def collect_keryxd_stats():
     share_state = _log_event_state.setdefault(log_path, {"offset": 0, "accepted_shares": 0})
     new_text = _read_new_log_bytes(log_path, share_state)
     if new_text is None:
-        return {"status": "error", "error": f"could not read log file '{log_path}'"}
+        return _build_miner_result("error", "keryxd", error=f"could not read log file '{log_path}'")
     if share_state.get("reset"):
         share_state["accepted_shares"] = 0
     for match in count_re.finditer(new_text):
         share_state["accepted_shares"] += int(match.group(1))
     accepted_shares = share_state["accepted_shares"]
-    return {
-        "status": "ok", "miner": "keryxd",
-        "miner_version": "",
-        "uptime_s": 0,
-        "algorithms": [{
-            "algorithm":   "keryxd-node",
-            "hashrate_hs": accepted_shares,
-        }],
-        "gpus": [],
-        "total_hashrate_hs": accepted_shares,
-    }
+    return _build_miner_result(
+        "ok", "keryxd",
+        algorithms=[_build_algo_entry("keryxd-node", hashrate_hs=accepted_shares)],
+    )
 # Generic hashrate pattern: number + optional SI prefix (k/M/G/T/P) + some spelling of "h/s",
 # e.g. "45.6 MH/s", "45.6MH/s", "15.10 Mhash/s". Case-insensitive.
 _CUSTOM_HASHRATE_RE = re.compile(
@@ -1657,7 +1739,7 @@ def collect_custom_log_miner_stats():
     tail_bytes = int(os.environ.get("CUSTOM_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
     if text is None:
-        return {"status": "error", "error": f"could not read log file '{log_path}'"}
+        return _build_miner_result("error", CUSTOM_MINER_DISPLAY_NAME, error=f"could not read log file '{log_path}'")
     hashrate_hs = 0.0
     hr_matches = list(_CUSTOM_HASHRATE_RE.finditer(text))
     if hr_matches:
@@ -1671,21 +1753,15 @@ def collect_custom_log_miner_stats():
     rej_matches = list(_CUSTOM_REJECTED_RE.finditer(text))
     if rej_matches:
         rejected_shares = int(rej_matches[-1].group(1))
-    return {
-        "status": "ok", "miner": CUSTOM_MINER_DISPLAY_NAME,
-        "miner_version": "",
-        "uptime_s": 0,
-        "algorithms": [{
-            "algorithm":       "unknown",
-            "hashrate_hs":     hashrate_hs,
-            "accepted_shares": accepted_shares,
-            "rejected_shares": rejected_shares,
-        }],
-        "gpus": [],
-        "total_hashrate_hs":     hashrate_hs,
-        "total_accepted_shares": accepted_shares,
-        "total_rejected_shares": rejected_shares,
-    }
+    return _build_miner_result(
+        "ok", CUSTOM_MINER_DISPLAY_NAME,
+        algorithms=[_build_algo_entry(
+            "unknown",
+            hashrate_hs=hashrate_hs,
+            accepted_shares=accepted_shares,
+            rejected_shares=rejected_shares,
+        )],
+    )
 def collect_full_stats():
     """Collect all system and miner statistics"""
     gpu_present = has_nvidia_gpu()

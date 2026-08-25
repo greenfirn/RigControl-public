@@ -8,6 +8,10 @@ sudo rm -v keryx-miner-v0.4.9-PoM-linux-amd64.zip
 # WorkingDirectory / ExecStart below must be full absolute paths if using a different install location
 # --mining-address / --keryxd-address must be set to your wallet address and node IP
 # uncomment ExecStartPre/ExecStopPost below to use the gpu oc apply/reset scripts
+# output is tee'd to /run/rigcontrol/gpu_miner.log (GPU slot) so the dashboard's plain gpu.log
+# tab and the watchdog's Log Watcher terms work, same as journalctl -u keryx-miner.service does -
+# if this rig instead runs keryx-miner as CPU or AUX, swap gpu_miner.log for cpu_miner.log/aux_miner.log
+# below to match GPU_SERVICE_NAME/CPU_SERVICE_NAME/AUX_SERVICE_NAME in rigcontrol-agent.conf
 sudo tee /etc/systemd/system/keryx-miner.service > /dev/null << 'EOF'
 [Unit]
 Description=Keryx Miner
@@ -19,7 +23,17 @@ User=root
 WorkingDirectory=/opt/miners/keryx-miner
 #ExecStartPre=/usr/local/bin/gpu_apply_ocs.sh
 #ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
-ExecStart=/opt/miners/keryx-miner/keryx-miner --mining-address keryx:************* --keryxd-address your-node-ip-address:22110
+ExecStartPre=/bin/mkdir -p /run/rigcontrol
+ExecStartPre=/bin/rm -f /run/rigcontrol/gpu_miner.log
+ExecStart=/bin/bash -c '\
+    ( while true; do \
+        sleep 60; \
+        sz=$(stat -c%%s /run/rigcontrol/gpu_miner.log 2>/dev/null || echo 0); \
+        if [ "$sz" -gt 10485760 ]; then \
+            tail -c 10485760 /run/rigcontrol/gpu_miner.log > /run/rigcontrol/gpu_miner.log.tmp 2>/dev/null && cat /run/rigcontrol/gpu_miner.log.tmp > /run/rigcontrol/gpu_miner.log && rm -f /run/rigcontrol/gpu_miner.log.tmp; \
+        fi; \
+    done ) & \
+    /opt/miners/keryx-miner/keryx-miner --mining-address keryx:************* --keryxd-address your-node-ip-address:22110 2>&1 | tee -a /run/rigcontrol/gpu_miner.log'
 Restart=on-failure
 RestartSec=5
 #LimitNOFILE=65536
