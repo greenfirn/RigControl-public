@@ -1,22 +1,27 @@
-#=============================================================================================================
+##############################################################################################################
 # -- rig conf examples...                                                                                   --
-# -- algo, pool, wallet, password get added to miner args from conf                                         --
-# -- worker name is left to manualy add with wallet or where ever the pool wants it                         --
-# -- %WORKER_NAME%           rigs hostname in ARGS, WALLET/template, PASS, POOL/url                         --
-# -- %WARTHOG_TARGET%        auto set WARTHOG_TARGET in ARGS (24/32 thread CPU)                             --
-# -- %CPU_THREADS%           cpu total threads -1 (and affinity when xmrig) in ARGS see '03-cpu_threads.sh' --
+# -- algo, pool, wallet, password get added to miner args from the json below                               --
+# -- worker name is left to manually add with wallet or wherever the pool wants it                          --
+# --                                                                                                        --
+# -- Template tokens (substituted when the config is written):                                              --
+# -- %WORKER_NAME%       rigs hostname in ARGS, WALLET/template, PASS, POOL/url                             --
+# -- %URL%               substitutes the first pool_urls[] entry into miner_config.url, and any             --
+# --                     %URL% token elsewhere (e.g. a custom miner's user_config)                          --
+# -- %WARTHOG_TARGET%    auto set WARTHOG_TARGET in ARGS (24/32 thread CPU)                                 --
+# -- %CPU_THREADS%       cpu total threads -1 (and affinity when xmrig) in ARGS, see '03-cpu_threads.sh'    --
+# --                                                                                                        --
 # -- slot ("cpu"/"gpu"/"aux") is implied by filename (rig-cpu.json / rig-gpu.json / rig-aux.json)           --
 # -- no SCREEN_NAME/SERVICE_TYPE field needed in the json - the file itself is the slot                     --
 # -- multiple failover pools: top-level "pool_urls": [...] array, bare host:port, no scheme prefix          --
-# custom miner download url
-# -- top-level "miner": "custom" + "miner_alt", miner_config.install_url                                   --
-# custom miner binary name
-# -- miner_config.miner (only present when top-level "miner" is "custom")                                  --
-# -- json files keep as plain 'tee' (no sudo) so they can be easily overwritten in home folder using ssh    --
+# --                                                                                                        --
+# -- custom miner download url: top-level "miner": "custom" + "miner_alt", miner_config.install_url         --
+# -- custom miner binary name:  miner_config.miner (only present when top-level "miner" is "custom")        --
+# --                                                                                                        --
+# -- json files kept as plain 'tee' (no sudo) so they can be easily overwritten in home folder via ssh      --
 # -- if write error, change owner back to user: sudo chown $USER:$USER *.json                               --
-#=============================================================================================================
-# -- to update miner version write miner.conf and restart service (miner.conf is a separate version-pins   --
-# -- file, not a rig-cpu/rig-gpu/rig-aux config, so it stays in the old KEY "value" .conf format)           --
+##############################################################################################################
+# -- to update miner version, write miner.conf and restart service (miner.conf is a separate                --
+# -- version-pins file, not a rig-cpu/rig-gpu/rig-aux config, so it stays in the old KEY "value" format)    --
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'
 XMRIG_VERSION "6.25.0"
@@ -43,8 +48,11 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
       "target_name": "podman",
       "reset_oc": "false",
       "apply_oc": "false",
+      "pool_urls": [
+        "pool.supportxmr.com:9000"
+      ],
       "miner_config": {
-        "url": "pool.supportxmr.com:9000",
+        "url": "%URL%",
         "algo": "rx/0",
         "pass": "%WORKER_NAME%",
         "template": "wallet-address",
@@ -67,8 +75,11 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
       "target_name": "octa_idle_job",
       "reset_oc": "false",
       "apply_oc": "false",
+      "pool_urls": [
+        "pool.supportxmr.com:9000"
+      ],
       "miner_config": {
-        "url": "pool.supportxmr.com:9000",
+        "url": "%URL%",
         "algo": "rx/0",
         "pass": "%WORKER_NAME%",
         "template": "wallet-address",
@@ -91,8 +102,11 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
       "target_name": "clore-default-",
       "reset_oc": "false",
       "apply_oc": "false",
+      "pool_urls": [
+        "usa.hashvault.pro:443"
+      ],
       "miner_config": {
-        "url": "usa.hashvault.pro:443",
+        "url": "%URL%",
         "algo": "rx/0",
         "pass": "%WORKER_NAME%",
         "template": "wallet-address",
@@ -114,8 +128,11 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "target_image": "ubuntu:24.04",
       "target_name": "clore-default-",
       "reset_oc": "false",
+      "pool_urls": [
+        "ca.quai.herominers.com:1185"
+      ],
       "miner_config": {
-        "url": "ca.quai.herominers.com:1185",
+        "url": "%URL%",
         "algo": "kawpow",
         "pass": "x",
         "template": "wallet-address.%WORKER_NAME%"
@@ -145,7 +162,7 @@ tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'
       "reset_oc": "false",
       "apply_oc": "false",
       "miner_config": {
-        "url": "ca.xelis.herominers.com:1225",
+        "url": "%URL%",
         "algo": "xelishashv3",
         "pass": "x",
         "template": "wallet-address",
@@ -175,7 +192,7 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "reset_oc": "true",
       "apply_oc": "false",
       "miner_config": {
-        "url": "ca.xelis.herominers.com:1225",
+        "url": "%URL%",
         "algo": "xelishashv3",
         "pass": "x",
         "template": "wallet-address",
@@ -198,8 +215,11 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "target_name": "clore-default-",
       "reset_oc": "false",
       "apply_oc": "false",
+      "pool_urls": [
+        "ca.warthog.herominers.com:1143"
+      ],
       "miner_config": {
-        "url": "ca.warthog.herominers.com:1143",
+        "url": "%URL%",
         "algo": "warthog",
         "pass": "x",
         "template": "wallet-address",
@@ -222,8 +242,11 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "target_name": "octa_idle_job",
       "reset_oc": "true",
       "apply_oc": "false",
+      "pool_urls": [
+        "ca.warthog.herominers.com:1143"
+      ],
       "miner_config": {
-        "url": "ca.warthog.herominers.com:1143",
+        "url": "%URL%",
         "algo": "warthog",
         "pass": "x",
         "template": "wallet-address",
@@ -246,8 +269,11 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "target_name": "octa_idle_job",
       "reset_oc": "true",
       "apply_oc": "true",
+      "pool_urls": [
+        "ca.quai.herominers.com:1185"
+      ],
       "miner_config": {
-        "url": "ca.quai.herominers.com:1185",
+        "url": "%URL%",
         "algo": "kawpow",
         "pass": "x",
         "template": "wallet-address.%WORKER_NAME%"
@@ -271,8 +297,11 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "target_name": "octa_idle_job",
       "reset_oc": "true",
       "apply_oc": "true",
+      "pool_urls": [
+        "ca.quai.herominers.com:1185"
+      ],
       "miner_config": {
-        "url": "ca.quai.herominers.com:1185",
+        "url": "%URL%",
         "algo": "kawpow",
         "pass": "x",
         "template": "wallet-address.%WORKER_NAME%"
@@ -296,14 +325,17 @@ tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
       "miner_alt": "keryx-miner",
       "reset_oc": "true",
       "apply_oc": "true",
+      "pool_urls": [
+        "10.10.0.126:22110"
+      ],
       "miner_config": {
-        "url": "",
+        "url": "%URL%",
         "algo": "",
         "pass": "",
         "template": "",
         "miner": "keryx-miner",
         "install_url": "https://github.com/Keryx-Labs/keryx-miner/releases/download/v0.4.2-OPoI/keryx-miner-v0.4.2-OPoI-linux-gnu-amd64.zip",
-        "user_config": "--escrow-key-file /opt/miners/escrow.key --mining-address keryx:********************* --keryxd-address 10.10.0.126:22110"
+        "user_config": "--escrow-key-file /opt/miners/escrow.key --mining-address keryx:********************* --keryxd-address %URL%"
       }
     }
   ]

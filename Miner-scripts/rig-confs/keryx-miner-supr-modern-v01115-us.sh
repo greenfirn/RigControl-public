@@ -1,3 +1,7 @@
+# -- keryx-miner-supr (the "supr"/suprnova-pool variant) v0.11.15 modern, write rig-gpu.json --
+# -- CUSTOM_MINER_SUPR_API_HOST/PORT in rigcontrol-agent.conf map to --api-bind here --
+# -- pool_urls[0] is the local keryxd node; the rest are suprnova failover stratum endpoints --
+mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
   "items": [

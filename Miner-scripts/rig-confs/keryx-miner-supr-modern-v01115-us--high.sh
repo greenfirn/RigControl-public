@@ -1,3 +1,6 @@
+# -- keryx-miner-supr --high variant (suprnova pool) v0.11.15 modern, write rig-gpu.json --
+# -- same as keryx-miner-supr-modern-v01115-us.sh but with --high added to user_config --
+mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
   "items": [
