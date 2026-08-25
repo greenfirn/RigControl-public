@@ -817,7 +817,13 @@ def detect_running_miners():
     and consume_miners_changed_flag() alone would never notice. Comparing PIDs catches that
     case directly from ps output and forces _named_miner_version() to re-query --version right
     away (see the force=True call below) instead of relying on the API's self-reported uptime
-    ever rolling back - which never happens if the API was never reachable in the first place."""
+    ever rolling back - which never happens if the API was never reachable in the first place.
+    Also invalidates _agent_conf_cache's mtime on a PID change, forcing the next
+    _read_agent_conf_val() call (used for that miner's <NAME>_API_HOST/_PORT/_BIN/_LOG_PATH) to
+    re-read rigcontrol-agent.conf from disk immediately rather than waiting for its normal
+    mtime-diff check - a miner restart is exactly the moment a conf edit (e.g. adding the
+    matching API port for a version that just enabled its stats API) is most likely to need to
+    take effect right away, without waiting on the next incidental conf write."""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
@@ -847,6 +853,7 @@ def detect_running_miners():
                     _pid = _pid_fields[1] if len(_pid_fields) > 1 else None
                     if _pid and _custom_miner_last_pid.get(_matched_slot) != _pid:
                         _custom_miner_last_pid[_matched_slot] = _pid
+                        _agent_conf_cache["mtime"] = None
                         _named_miner_version(custom_names[_matched_slot], force=True)
                     continue
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
