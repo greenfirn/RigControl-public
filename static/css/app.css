@@ -4790,6 +4790,33 @@ h1 {
 }
 .stats-chart-box.stats-chart-wide {
     grid-column: 1 / -1;
+    height: 268px;
+}
+.stats-hashrate-miner-legend {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--chart-border);
+}
+.stats-hashrate-miner-legend:empty {
+    display: none;
+}
+.stats-hashrate-miner-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-status-bar);
+    color: var(--text-secondary);
+}
+.stats-hashrate-miner-legend-swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex: 0 0 auto;
 }
 .stats-chart-title {
     color: var(--text-secondary);
@@ -5691,6 +5718,12 @@ h1 {
     color: var(--text-muted);
     font-size: var(--font-size-input);
     align-self: center;
+}
+/* Every .wdconfig-status now lives in a .cmd-header right after the title/target text with no
+   gap between them - prefix a dash whenever there's actually a message so it doesn't run
+   straight into the title (e.g. "WalletsSaved..."). :not(:empty) keeps it invisible otherwise. */
+.wdconfig-status:not(:empty)::before {
+    content: " - ";
 }
 #statuslog-modal .cmd-dialog {
     width: 75%;

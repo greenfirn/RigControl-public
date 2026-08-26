@@ -12623,6 +12623,7 @@ function renderStatsCharts(resp) {
         externalTooltip: buildHashrateTooltipHandler(hashrateMiners),
         segmentColorForName: hashrateSegmentColor
     });
+    renderHashrateMinerLegend(hashrateMiners);
 }
 // Colors each segment of a hashrate line by whichever miner was producing that algo's hashrate at
 // that point, instead of one flat color per algo - walks backward from dataIndex to the nearest
@@ -12639,6 +12640,25 @@ function buildHashrateSegmentColorFn(contributors) {
         }
         return stableColorForName(algoName);
     };
+}
+// Renders a swatch+name row under the Hashrate chart listing every distinct miner that shows up
+// anywhere in the current time range, using the same stableColorForName colors as the line
+// segments/tooltip above - lets someone match a color they see in the chart back to a miner name
+// without having to hover every point.
+function renderHashrateMinerLegend(contributors) {
+    const el = document.getElementById("stats-hashrate-miner-legend");
+    if (!el) return;
+    const minerNames = new Set();
+    Object.values(contributors).forEach((byIndex) => {
+        Object.values(byIndex).forEach((entries) => {
+            entries.forEach((entry) => minerNames.add(entry.minerName));
+        });
+    });
+    const sorted = Array.from(minerNames).sort((a, b) => a.localeCompare(b));
+    el.innerHTML = sorted.map((name) => {
+        const color = stableColorForName(name);
+        return `<span class="stats-hashrate-miner-legend-item"><span class="stats-hashrate-miner-legend-swatch" style="background:${color}"></span>${escapeHtml(name)}</span>`;
+    }).join("");
 }
 function openUnlockModal() {
     if (!viewOnlyMode) return;
