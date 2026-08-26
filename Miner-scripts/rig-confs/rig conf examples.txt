@@ -314,7 +314,7 @@ sudo systemctl restart docker_events_gpu
 sudo systemctl is-active docker_events_gpu
 #========================================================================================================
 # -- keryx-miner (custom, download via miner_alt/install_url) write rig-gpu.json --
-# -- see also: rig-confs/keryx-custom-rig-gpu.sh (identical standalone example)                            --
+# -- see also: rig-confs/custom-keryx-miner-node-v052.sh (up to date standalone example)                   --
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {

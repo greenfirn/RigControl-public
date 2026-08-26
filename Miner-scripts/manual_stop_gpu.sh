@@ -71,11 +71,19 @@ stop_miner() {
     echo "[$(date)] Stopping $SERVICE_TYPE miner..."
     if screen -list | grep -q "$SERVICE_TYPE"; then
         echo "[$(date)] Screen session found for $SERVICE_TYPE"
-        echo "[$(date)] Sending clean quit to screen session..."
-        screen -S "$SERVICE_TYPE" -X quit
-        echo "[$(date)] Waiting 5 seconds for miner cleanup..."
-        sleep 5
         local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
+        echo "[$(date)] Sending Ctrl+C to screen session (lets the miner unwind/flush state and release its API port before we tear anything down)..."
+        screen -S "$SERVICE_TYPE" -X stuff $'\003'
+        echo "[$(date)] Waiting 8 seconds for graceful exit..."
+        sleep 8
+        if [[ -f "$pid_file" ]] && ps -p "$(cat "$pid_file")" > /dev/null 2>&1; then
+            echo "[$(date)] Still running after Ctrl+C - sending clean quit to screen session..."
+            screen -S "$SERVICE_TYPE" -X quit
+            echo "[$(date)] Waiting 5 seconds for miner cleanup..."
+            sleep 5
+        else
+            echo "[$(date)] Miner exited cleanly after Ctrl+C."
+        fi
         if [[ -f "$pid_file" ]]; then
             local miner_pid=$(cat "$pid_file")
             if ps -p "$miner_pid" > /dev/null 2>&1; then
