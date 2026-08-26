@@ -6261,9 +6261,9 @@ function syncFsRawAfterApplyToChange() {
     if (!jsonItem) return;
     const values = collectFsFieldValues();
     const newBody = buildRigGpuJsonBody(values);
-    if (/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawEl.value)) {
+    if (/<<'EOF'\n[\s\S]*?\n[ \t]*EOF[ \t]*(?=\n|$)/.test(rawEl.value)) {
         rawEl.value = rawEl.value.replace(
-            /(<<'EOF'\n)[\s\S]*?(\nEOF\n)/,
+            /(<<'EOF'\n)[\s\S]*?(\n[ \t]*EOF[ \t]*)(?=\n|$)/,
             (_full, pre, post) => `${pre}${newBody}${post}`
         );
     } else {
@@ -7107,7 +7107,14 @@ function buildRigGpuJsonBody(values) {
 }
 function parseNativeRigGpuItemsFromRaw(rawText) {
     if (!rawText) return null;
-    const match = rawText.match(/<<'EOF'\n([\s\S]*?)\nEOF\n/);
+    // The EOF marker's line tolerates stray horizontal whitespace ([ \t]* on both sides) and the
+    // trailing "\n" after it is a lookahead, not a required consumed character - a paste that ends
+    // right at "EOF" with no final newline, or picks up a trailing space/indentation from being
+    // copied out of a rendered box (both very common), must still be recognized as native format.
+    // Missing this previously made native parsing silently fail and fall through to the lossy
+    // any-format field-scraping importer, which mangled real flightsheets (dropped miner_alt/
+    // install_url/user_config, corrupted pool_urls to "%URL%").
+    const match = rawText.match(/<<'EOF'\n([\s\S]*?)\n[ \t]*EOF[ \t]*(?=\n|$)/);
     const body = (match ? match[1] : rawText).trim();
     if (!body.startsWith("{")) return null;
     try {
@@ -8431,7 +8438,7 @@ function populateFsFieldsFromRaw(rawText) {
                 // Multiple services loaded - narrow the live preview to just the active tab.
                 rawEl.value = buildFsActivePreview();
                 autoResizeFsRaw();
-            } else if (!/<<'EOF'\n[\s\S]*?\nEOF\n/.test(rawText)) {
+            } else if (!/<<'EOF'\n[\s\S]*?\n[ \t]*EOF[ \t]*(?=\n|$)/.test(rawText)) {
                 rawEl.value = buildFsBlock(activeValues.SERVICE_TYPE);
                 autoResizeFsRaw();
             }
@@ -8528,7 +8535,7 @@ function updateRawFromFieldChange(target) {
         const values = collectFsFieldValues();
         const newBody = buildRigGpuJsonBody(values);
         rawEl.value = rawEl.value.replace(
-            /(<<'EOF'\n)[\s\S]*?(\nEOF\n)/,
+            /(<<'EOF'\n)[\s\S]*?(\n[ \t]*EOF[ \t]*)(?=\n|$)/,
             (_full, pre, post) => `${pre}${newBody}${post}`
         );
         autoResizeFsRaw();
