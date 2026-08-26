@@ -3758,16 +3758,13 @@ function handleCommandResponse(response) {
         const confLabel = LOGS_TYPE_LABELS[confType] || confType;
         if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
             // raw here is the literal `cat` output - the bare file body, no wrapper - so wrap it
-            // for display the same way loadDefaultConfEditTemplate()/the checkbox handler do, but
-            // keep saving the BARE raw to the DB Backups snapshot below (agent.conf only - that
-            // wants the file's actual contents, not the send-command shape).
+            // for display the same way loadDefaultConfEditTemplate()/the checkbox handler do.
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("agentconf-raw");
             const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
             if (rawEl) rawEl.value = wrapConfEditCommand(confType, raw, includeRestart);
             resizeAgentConfRaw();
             if (statusEl) statusEl.textContent = `Loaded current ${confLabel} from ${r.rig}`;
-            if (CONF_EDIT_TYPES[confType]?.isAgent) saveAgentConfSnapshot(r.rig, raw);
         } else {
             // Clear the box instead of leaving whatever was previously loaded sitting there - with
             // the type dropdown now able to switch between six different files, stale content left
@@ -5097,7 +5094,8 @@ function fetchLogs() {
         body: JSON.stringify({ rigs: [rig], command: builder(lines) })
     }).catch(err => {
         console.error("Log fetch failed", err);
-        if (statusEl) statusEl.textContent = "Failed to send request";
+        if (statusEl) statusEl.textContent = "";
+        alert("Failed to send request");
         pendingLogsFetchRig = null;
     });
 }
@@ -5480,6 +5478,15 @@ function switchSettingsMainTab(tabName) {
     document.querySelectorAll("#refresh-modal .settings-main-tab-panel").forEach((panel) => {
         panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
     });
+    // general-settings-status/agentconf-status/templates-config-status all live in the shared
+    // modal-level .cmd-header now (alongside the "(N workers selected)" text), not inside their
+    // own tab-panel, so a leftover message from one tab would otherwise stay visible after
+    // switching to another - clear all three up front; whichever tab we're switching into
+    // re-sets its own below if relevant.
+    ["general-settings-status", "agentconf-status", "templates-config-status"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "";
+    });
     if (tabName === "agentconf") {
         // Opening the tab no longer auto-reloads from the worker - the note above the dropdown
         // says Reload/edit/Send is a manual sequence, and silently overwriting an in-progress
@@ -5604,6 +5611,8 @@ async function applyStatsSettingsToSelectedRigs() {
             body: JSON.stringify(body)
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const statusEl = document.getElementById("general-settings-status");
+        if (statusEl) statusEl.textContent = `Applied to ${rigs.length} worker${rigs.length === 1 ? "" : "s"}`;
     } catch (err) {
         console.error("Failed to apply stats settings", err);
         alert(`Failed to apply stats settings: ${err.message}\n\nModal will remain open.`);
@@ -5646,7 +5655,8 @@ function saveAdvancedServerSettings() {
         })
         .catch(error => {
             console.error("Failed to save advanced server settings:", error);
-            if (statusEl) statusEl.textContent = "Failed to save: " + error.message;
+            if (statusEl) statusEl.textContent = "";
+            alert("Failed to save advanced server settings: " + error.message);
         });
 }
 function saveRefreshSettings() {
@@ -5802,6 +5812,8 @@ function saveRefreshSettings() {
         .then(results => {
             console.log("All server updates completed successfully");
             updateRefreshTimerUI();
+            const statusEl = document.getElementById("general-settings-status");
+            if (statusEl) statusEl.textContent = "Saved";
         })
         .catch(error => {
             console.error("One or more server updates failed:", error);
@@ -5986,14 +5998,19 @@ function sendTestNotification() {
     });
 }
 function triggerManualRefresh() {
+    const statusEl = document.getElementById("general-settings-status");
     fetch(`${API}/refresh`, {
         method: "POST"
     }).then(response => {
         if (response.ok) {
             console.log("Manual refresh requested from server");
+            if (statusEl) statusEl.textContent = "Refresh requested";
+        } else {
+            alert("Failed to request refresh");
         }
     }).catch(error => {
         console.error("Failed to request refresh:", error);
+        alert("Failed to request refresh");
     });
 }
 async function setServerRefreshInterval(seconds) {
@@ -6570,6 +6587,8 @@ function renderFlightsheets() {
             document.getElementById("fs-raw").value = fs.Value || "";
             populateFsFieldsFromRaw(fs.Value || "");
             autoResizeFsRaw();
+            const status = document.getElementById("fs-status");
+            if (status) status.textContent = `Loaded "${fs.FlightsheetId}"`;
         });
         list.appendChild(row);
     }
@@ -6781,6 +6800,8 @@ async function saveFlightsheetFromDialog() {
         const entries = collectFlightsheetEntries();
         await saveFlightsheet(flightsheetId, entries);
 		loadFlightsheets();
+        const status = document.getElementById("fs-status");
+        if (status) status.textContent = `Saved "${flightsheetId}"`;
     } catch (err) {
         alert(`Error saving flightsheet: ${err.message}`);
     }
@@ -8812,6 +8833,8 @@ async function deleteFlightsheet() {
             selectedFlightsheetId = null;
         }
         loadFlightsheets();
+        const status = document.getElementById("fs-status");
+        if (status) status.textContent = `Deleted ${ids.length - failed.length} flightsheet${ids.length !== 1 ? "s" : ""}`;
         if (failed.length > 0) {
             alert(`Deleted ${ids.length - failed.length} of ${ids.length}. Failed: ${failed.join(", ")}`);
         }
@@ -8825,6 +8848,7 @@ async function deleteFlightsheet() {
         return;
     }
     try {
+        const deletedId = selectedFlightsheetId;
         const res = await fetch(
             `${API}/api/flightsheets/${encodeURIComponent(selectedFlightsheetId)}`,
             { method: "DELETE" }
@@ -8834,6 +8858,8 @@ async function deleteFlightsheet() {
         document.getElementById("fs-name").value = "";
         document.getElementById("fs-raw").value = "";
         selectedFlightsheetId = null;
+        const status = document.getElementById("fs-status");
+        if (status) status.textContent = `Deleted "${deletedId}"`;
     } catch (err) {
         alert(err.message);
     }
@@ -8848,6 +8874,8 @@ function openFlightsheetsModal() {
     const fsLabelEl = document.getElementById("fs-target-label");
     if (fsCountEl) fsCountEl.textContent = fsCount;
     if (fsLabelEl) fsLabelEl.textContent = fsCount === 1 ? "worker" : "workers";
+    const status = document.getElementById("fs-status");
+    if (status) status.textContent = "";
 }
 let fsWalletSaveContext = null;
 function openFsWalletSaveDialog() {
@@ -9247,6 +9275,8 @@ function renderOverclocks() {
             document.getElementById("oc-raw").value = oc.Value || "";
             loadOcRowsFromScript(oc.Value || "");
             autoResizeOcRaw();
+            const status = document.getElementById("oc-status");
+            if (status) status.textContent = `Loaded "${oc.OverclockId}"`;
         });
         list.appendChild(row);
     }
@@ -9376,6 +9406,8 @@ async function saveOverclockFromDialog() {
         const entries = collectOverclockEntries();
         await saveOverclock(overclockId, entries);
         loadOverclocks();
+        const status = document.getElementById("oc-status");
+        if (status) status.textContent = `Saved "${overclockId}"`;
     } catch (err) {
         alert(`Error saving overclock: ${err.message}`);
     }
@@ -9714,6 +9746,8 @@ async function deleteOverclock() {
             selectedOverclockId = null;
         }
         loadOverclocks();
+        const status = document.getElementById("oc-status");
+        if (status) status.textContent = `Deleted ${ids.length - failed.length} overclock${ids.length !== 1 ? "s" : ""}`;
         if (failed.length > 0) {
             alert(`Deleted ${ids.length - failed.length} of ${ids.length}. Failed: ${failed.join(", ")}`);
         }
@@ -9727,6 +9761,7 @@ async function deleteOverclock() {
         return;
     }
     try {
+        const deletedId = selectedOverclockId;
         const res = await fetch(
             `${API}/api/overclocks/${encodeURIComponent(selectedOverclockId)}`,
             { method: "DELETE" }
@@ -9738,6 +9773,8 @@ async function deleteOverclock() {
         addOcRow(null, { skipRebuild: true });
         rebuildOcRawFromRows();
         selectedOverclockId = null;
+        const status = document.getElementById("oc-status");
+        if (status) status.textContent = `Deleted "${deletedId}"`;
     } catch (err) {
         alert(err.message);
     }
@@ -9758,6 +9795,8 @@ function openOverclocksModal() {
     const ocLabelEl = document.getElementById("oc-target-label");
     if (ocCountEl) ocCountEl.textContent = ocCount;
     if (ocLabelEl) ocLabelEl.textContent = ocCount === 1 ? "worker" : "workers";
+    const status = document.getElementById("oc-status");
+    if (status) status.textContent = "";
 }
 function clearWalletFields() {
     document.getElementById("wallet-field-coin").value = "";
@@ -10046,7 +10085,7 @@ function newWallet() {
     document.getElementById("wallet-name").value = "";
     clearWalletFields();
     const status = document.getElementById("wallet-status");
-    if (status) status.textContent = "";
+    if (status) status.textContent = "Cleared";
 }
 async function deleteWallet() {
     if (!selectedWalletId) {
@@ -10825,6 +10864,8 @@ async function saveWatchdogProfileFromDialog() {
         const entries = collectWatchdogProfileEntries();
         await saveWatchdogProfile(profileId, entries);
         loadWatchdogProfiles();
+        const status = document.getElementById("wdconfig-status");
+        if (status) status.textContent = `Saved "${profileId}"`;
     } catch (err) {
         alert(`Error saving watchdog profile: ${err.message}`);
     }
@@ -10838,12 +10879,15 @@ async function deleteWatchdogProfile() {
         return;
     }
     try {
+        const deletedId = selectedWatchdogProfileId;
         const res = await fetch(
             `${API}/api/watchdog-profiles/${encodeURIComponent(selectedWatchdogProfileId)}`,
             { method: "DELETE" }
         );
         if (!res.ok) throw new Error("Delete failed");
         loadWatchdogProfiles();
+        const status = document.getElementById("wdconfig-status");
+        if (status) status.textContent = `Deleted "${deletedId}"`;
     } catch (err) {
         alert(`Error deleting watchdog profile: ${err.message}`);
     } finally {
@@ -10879,6 +10923,8 @@ function clearWdConfigFields() {
     resetWdTabBodyHeight();
     setWdConfigTab("raw");
     addWdConfigRow();
+    const status = document.getElementById("wdconfig-status");
+    if (status) status.textContent = "Cleared";
 }
 function resetWdSettingsToDefaults() {
     for (const [id, checked] of Object.entries(WD_ACTION_CHECKBOX_DEFAULTS)) {
@@ -11233,7 +11279,8 @@ function autoLoadWdConfigForSelectedRig() {
     sendCommandToSelectedRigs(`cat ${TEMPLATES_CONFIG.watchdog.conf_path}`).catch(err => {
         console.error("Failed to request current watchdog config", err);
         if (pendingWdConfigFetchRig === rig) pendingWdConfigFetchRig = null;
-        if (statusEl) statusEl.textContent = `Failed to load current config from ${rig}`;
+        if (statusEl) statusEl.textContent = "";
+        alert(`Failed to load current config from ${rig}`);
     });
 }
 const AGENTCONF_RAW_HEIGHT_KEY = "rigcontrol_agentconf_raw_height";
@@ -11340,7 +11387,8 @@ function autoLoadConfForSelectedRig() {
     sendCommandToSelectedRigs(catCmd).catch(err => {
         console.error(`Failed to request current ${confLabel}`, err);
         if (pendingAgentConfFetchRig === rig) pendingAgentConfFetchRig = null;
-        if (statusEl) statusEl.textContent = `Failed to load current ${confLabel} from ${rig}`;
+        if (statusEl) statusEl.textContent = "";
+        alert(`Failed to load current ${confLabel} from ${rig}`);
     });
 }
 function buildConfEditCommand() {
@@ -11357,36 +11405,19 @@ function sendItConfEdit() {
     }
     const [rig] = selectedRigs;
     const command = buildConfEditCommand();
-    // Snapshot what we're ABOUT to send now, rather than waiting for a reply - the Confirm
-    // path hands off to the free-form Send Cmd modal, which has no structured success
-    // callback back to this tab, so there's no reliable "it actually landed" moment to hook.
-    // Optimistic, but this is a local backup convenience, not a correctness-critical value.
-    // Only agent.conf gets a DB Backups snapshot - the other conf types have no BACKUP_TARGETS entry.
-    if (CONF_EDIT_TYPES[confType]?.isAgent) {
-        saveAgentConfSnapshot(rig, unwrapConfEditCommand(document.getElementById("agentconf-raw")?.value ?? ""));
-    }
     const input = document.getElementById("cmd-input");
+    const statusEl = document.getElementById("agentconf-status");
     if (document.getElementById("confirm-agentconf")?.checked) {
         if (input) input.value = command;
         openCmdModal();
     } else {
-        sendCommandToSelectedRigs(command).catch(err => {
+        sendCommandToSelectedRigs(command).then(() => {
+            if (statusEl) statusEl.textContent = `Sent to ${rig}`;
+        }).catch(err => {
             console.error(`Failed to send ${confLabel}`, err);
             alert(`Failed to send ${confLabel}`);
         });
     }
-}
-function saveAgentConfSnapshot(rig, content) {
-    if (!rig) return;
-    fetch(`${API}/api/agent-conf/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rig, content }),
-    }).catch(err => {
-        // Best-effort local backup convenience - a failure here shouldn't interrupt the
-        // actual load/apply flow the user is doing, just log it.
-        console.warn("Failed to save agent conf snapshot for DB Backups:", err);
-    });
 }
 // Settings modal's Templates tab - lets templates.json (flightsheet/overclocking/watchdog/
 // agentconf/flightsheet_derivation) be edited and saved from the dashboard itself instead of
@@ -11413,7 +11444,8 @@ function loadTemplatesConfigTab() {
         })
         .catch(err => {
             console.error("Failed to load templates.json", err);
-            if (statusEl) statusEl.textContent = "Failed to load templates.json from server";
+            if (statusEl) statusEl.textContent = "";
+            alert("Failed to load templates.json from server");
         });
 }
 function applyTemplatesConfig() {
@@ -11425,14 +11457,13 @@ function applyTemplatesConfig() {
     try {
         JSON.parse(content);
     } catch (err) {
-        if (statusEl) statusEl.textContent = `Not valid JSON: ${err.message}`;
+        alert(`Not valid JSON: ${err.message}`);
         return;
     }
     // This isn't a per-rig write like the rest of the Conf tab - it overwrites templates.json on
     // the dashboard SERVER itself, which every open dashboard (and every rig's next-generated
     // Flightsheet/Overclock/Watchdog script) picks up. Worth a confirm, unlike a single worker's conf.
     if (!confirm("Save this content to templates.json on the server? This affects every dashboard and rig, not just this one.")) {
-        if (statusEl) statusEl.textContent = "Save cancelled";
         return;
     }
     if (statusEl) statusEl.textContent = "Saving…";
@@ -11457,7 +11488,8 @@ function applyTemplatesConfig() {
         })
         .catch(err => {
             console.error("Failed to save templates.json", err);
-            if (statusEl) statusEl.textContent = `Failed to save: ${err.message}`;
+            if (statusEl) statusEl.textContent = "";
+            alert(`Failed to save templates.json: ${err.message}`);
         });
 }
 function populateStatusLogRigSelect() {
@@ -11617,10 +11649,18 @@ function openBackupsModal() {
 }
 function setBackupsStatus(msg, isError) {
     const el = document.getElementById("backups-status");
+    if (isError) {
+        if (el) {
+            el.textContent = "";
+            el.classList.remove("error", "ok");
+        }
+        if (msg) alert(msg);
+        return;
+    }
     if (!el) return;
     el.textContent = msg || "";
-    el.classList.toggle("error", !!isError);
-    el.classList.toggle("ok", !isError && !!msg);
+    el.classList.remove("error");
+    el.classList.toggle("ok", !!msg);
 }
 function formatBackupBytes(n) {
     if (n === null || n === undefined) return "-";
@@ -12099,7 +12139,7 @@ function toggleAllStatusLogEntries(checked) {
 }
 async function deleteStatusLogEntriesByIds(ids, statusEl) {
     if (ids.length === 0) {
-        if (statusEl) statusEl.textContent = "No entries selected";
+        alert("No entries selected");
         return;
     }
     const confirmed = confirm(
@@ -12110,7 +12150,8 @@ async function deleteStatusLogEntriesByIds(ids, statusEl) {
     try {
         const res = await fetch(`${API}/api/status-log?ids=${ids.join(",")}`, { method: "DELETE" });
         if (!res.ok) {
-            if (statusEl) statusEl.textContent = "Failed to delete";
+            if (statusEl) statusEl.textContent = "";
+            alert("Failed to delete status log entries");
             return;
         }
         const details = document.getElementById("statuslog-details");
@@ -12120,7 +12161,8 @@ async function deleteStatusLogEntriesByIds(ids, statusEl) {
         fetchStatusLogSeverity();
     } catch (e) {
         console.error("Error deleting status log entries:", e);
-        if (statusEl) statusEl.textContent = "Failed to delete";
+        if (statusEl) statusEl.textContent = "";
+        alert("Failed to delete status log entries");
     }
 }
 async function clearVisibleStatusLogEntries() {
@@ -12311,7 +12353,7 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
     }
     const names = Object.keys(seriesMap);
     if (names.length === 0) return;
-    const { axisForName, y1Label, dashForName, externalTooltip } = opts || {};
+    const { axisForName, y1Label, dashForName, externalTooltip, segmentColorForName } = opts || {};
     const datasets = names.map((name, i) => ({
         label: name,
         data: seriesMap[name],
@@ -12322,7 +12364,13 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
         pointRadius: 0,
         tension: 0.15,
         spanGaps: true,
-        yAxisID: axisForName ? axisForName(name) : "y"
+        yAxisID: axisForName ? axisForName(name) : "y",
+        // Per-segment coloring (hashrate chart only): overrides the flat per-algo borderColor
+        // above so the line itself changes color wherever the miner producing that algo's
+        // hashrate changes, instead of only surfacing that info in the hover tooltip.
+        segment: segmentColorForName
+            ? { borderColor: (ctx) => segmentColorForName(name, ctx.p1DataIndex) }
+            : undefined
     }));
     const scales = {
         x: {
@@ -12566,9 +12614,31 @@ function renderStatsCharts(resp) {
             hashrateMiners[algoName][i].push({ minerName: algo.minerName || "unknown" });
         });
     });
-    renderStatsChart("stats-chart-hashrate", hashrate.labels, hashrate.seriesMap, hashrateUnit.unit, stableColorForName, {
-        externalTooltip: buildHashrateTooltipHandler(hashrateMiners)
+    // Legend/base swatch color: use the most recently active miner's color for that algo (so it
+    // matches the color at the right-hand/current end of the line) rather than a flat algo color.
+    const hashrateSegmentColor = buildHashrateSegmentColorFn(hashrateMiners);
+    const hashrateLegendColorForName = (algoName) =>
+        hashrateSegmentColor(algoName, hashrate.labels.length - 1);
+    renderStatsChart("stats-chart-hashrate", hashrate.labels, hashrate.seriesMap, hashrateUnit.unit, hashrateLegendColorForName, {
+        externalTooltip: buildHashrateTooltipHandler(hashrateMiners),
+        segmentColorForName: hashrateSegmentColor
     });
+}
+// Colors each segment of a hashrate line by whichever miner was producing that algo's hashrate at
+// that point, instead of one flat color per algo - walks backward from dataIndex to the nearest
+// point with a known contributor so a null/gap point (hr dropped to 0 briefly) doesn't fall back
+// to the generic algo color unnecessarily.
+function buildHashrateSegmentColorFn(contributors) {
+    return (algoName, dataIndex) => {
+        const byIndex = contributors[algoName];
+        if (byIndex) {
+            for (let i = dataIndex; i >= 0; i--) {
+                const miners = byIndex[i];
+                if (miners && miners.length) return stableColorForName(miners[0].minerName);
+            }
+        }
+        return stableColorForName(algoName);
+    };
 }
 function openUnlockModal() {
     if (!viewOnlyMode) return;
@@ -12966,7 +13036,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             .forEach(e => e.classList.remove('selected'));
         selectedSavedCommandId = null;
         const status = document.getElementById('saved-cmd-status');
-        if (status) status.textContent = '';
+        if (status) status.textContent = 'Cleared';
     });
     document.getElementById('btn-clear-fs').addEventListener('click', function() {
         document.getElementById("fs-raw").value = '';
@@ -12979,6 +13049,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
         document.getElementById("fs-name").value = '';
         clearFsApplyToSelection();
+        const status = document.getElementById("fs-status");
+        if (status) status.textContent = "Cleared";
     });
     document.getElementById("fs-raw")?.addEventListener("input", (e) => {
         autoResizeFsRaw();
@@ -13287,6 +13359,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         clearOcRows();
         addOcRow(null, { skipRebuild: true });
         rebuildOcRawFromRows();
+        const status = document.getElementById("oc-status");
+        if (status) status.textContent = "Cleared";
     });
     document.getElementById("btn-send-it-oc")?.addEventListener("click", sendItOc);
     initSendConfirmCheckbox("confirm-oc", "oc");

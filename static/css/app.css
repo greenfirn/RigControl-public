@@ -5689,21 +5689,8 @@ h1 {
 }
 .wdconfig-status {
     color: var(--text-muted);
-    font-size: var(--font-size-status-bar);
+    font-size: var(--font-size-input);
     align-self: center;
-}
-.wdconfig-status-top {
-    flex: 0 0 auto;
-    align-self: stretch;
-    min-height: 1em;
-    font-size: 14px;
-    background: var(--surface-modal-panel);
-    border: 1px solid var(--border-modal);
-    border-radius: 6px;
-    padding: 8px 10px;
-}
-.wdconfig-status-top:empty {
-    display: none;
 }
 #statuslog-modal .cmd-dialog {
     width: 75%;

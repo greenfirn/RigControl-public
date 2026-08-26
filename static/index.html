@@ -208,13 +208,13 @@
                 <span class="cmd-target">
                     (<span id="wdconfig-target-count">0</span> <span id="wdconfig-target-label">workers</span> selected)
                 </span>
+                <span id="wdconfig-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
                 <div class="wdconfig-main-tabs" id="wdconfig-main-tabs">
                     <button type="button" class="wdconfig-main-tab-btn active" id="wdconfig-main-tab-btn-logs" data-tab-panel="logs">Logs</button>
                     <button type="button" class="wdconfig-main-tab-btn" id="wdconfig-main-tab-btn-mining" data-tab-panel="mining">Mining</button>
                 </div>
-                <span id="wdconfig-status" class="wdconfig-status wdconfig-status-top"></span>
                 <div class="wdconfig-main-tab-panel hidden" data-tab-panel="mining">
                 <div class="fs-editor-panel">
                     <div class="wdconfig-mining-pause-note" title="Checked once per Mining Watchdog cycle, independently of the Log Watcher loop.">
@@ -1361,7 +1361,7 @@
                 <span class="cmd-target">
                     (<span id="cmd-target-count">0</span> workers)
                 </span>
-                <span id="saved-cmd-status" class="wdconfig-status wdconfig-status-top"></span>
+                <span id="saved-cmd-status" class="wdconfig-status"></span>
                 <button type="button" class="cmd-header-close" id="btn-close-cmd-modal" title="Close">&#10005;</button>
             </div>
             <textarea
@@ -1415,6 +1415,7 @@ nvidia-smi
                 <span class="cmd-target">
                     Logs / Config
                 </span>
+                <span id="logs-status" class="wdconfig-status"></span>
                 <input type="text" id="logs-filter-input" class="logs-filter-input" placeholder="Filter" spellcheck="false" autocomplete="off">
                 <button type="button" class="cmd-header-close" id="btn-close-logs-modal" title="Close">&#10005;</button>
             </div>
@@ -1458,7 +1459,6 @@ nvidia-smi
                     <button type="button" class="wdconfig-unit-btn" id="btn-logs-interval-up" title="Increase">&#9650;</button>
                     <span class="logs-interval-unit">s</span>
                 </div>
-                <span id="logs-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
                 <textarea id="logs-output" class="logs-output" readonly spellcheck="false" placeholder="Click Refresh to load..."></textarea>
@@ -1568,7 +1568,7 @@ nvidia-smi
             <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
             <div class="cmd-header">
                 <span class="cmd-target">Wallets</span>
-                <span id="wallet-status" class="wdconfig-status wdconfig-status-top"></span>
+                <span id="wallet-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
                 <div class="fs-editor-panel">
@@ -1660,6 +1660,7 @@ nvidia-smi
                 <span class="cmd-target">
                     (<span id="fs-target-count">0</span> <span id="fs-target-label">workers</span> selected)
                 </span>
+                <span id="fs-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
                 <div class="fs-editor-panel">
@@ -1876,6 +1877,7 @@ nvidia-smi
                 <span class="cmd-target">
                     (<span id="oc-target-count">0</span> <span id="oc-target-label">workers</span> selected)
                 </span>
+                <span id="oc-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
                 <div class="fs-editor-panel">
@@ -1989,6 +1991,10 @@ nvidia-smi
     </div>
     <div class="view-tab-panel hidden" id="statuslog-modal" data-tab-panel="statuslog">
         <div class="cmd-dialog">
+            <div class="cmd-header">
+                <span class="cmd-target">Status Log</span>
+                <span id="statuslog-status" class="wdconfig-status"></span>
+            </div>
             <div class="cmd-body">
                 <div class="fs-list-panel">
                     <select id="statuslog-rig-select" class="statuslog-rig-select">
@@ -2043,7 +2049,6 @@ nvidia-smi
                 <div class="cmd-btn-row">
                     <button class="cmd-btn secondary" id="btn-statuslog-prev-page" title="Previous page">&#8592; Prev</button>
                     <button class="cmd-btn secondary" id="btn-statuslog-next-page" title="Next page">Next &#8594;</button>
-                    <span id="statuslog-status" class="wdconfig-status"></span>
                     <button class="cmd-btn" id="btn-statuslog-refresh">Refresh</button>
                     <button class="cmd-btn danger" id="btn-statuslog-delete-selected" title="Deletes only the checked entries in the list - asks for confirmation first">Delete</button>
                     <button class="cmd-btn" id="btn-statuslog-clear" title="Deletes every entry currently visible in the list (respects the worker filter above) - asks for confirmation first">Clear</button>
@@ -2056,7 +2061,7 @@ nvidia-smi
             <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
             <div class="cmd-header">
                 <span class="cmd-target">Backups</span>
-                <span id="backups-status" class="wdconfig-status wdconfig-status-top"></span>
+                <span id="backups-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body backups-body">
                 <div class="backups-top-row">
@@ -2126,6 +2131,9 @@ nvidia-smi
                 <span class="cmd-target">
                     (<span id="stats-settings-target-count">0</span> <span id="stats-settings-target-label">workers</span> selected)
                 </span>
+                <span id="general-settings-status" class="wdconfig-status"></span>
+                <span id="agentconf-status" class="wdconfig-status"></span>
+                <span id="templates-config-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
             <div class="settings-main-tabs" id="settings-main-tabs">
@@ -2358,7 +2366,6 @@ nvidia-smi
                 <div class="cmd-footer">
                     <div class="quick-actions-row">
                         <button class="cmd-btn secondary" id="btn-agentconf-reload" title="Re-fetch the current file from the selected worker">⟳ Reload from Worker</button>
-                        <span id="agentconf-status" class="wdconfig-status"></span>
                     </div>
                     <div class="footer-buttons-right">
                         <label class="checkbox-label" title="Restart the relevant service on the worker after writing, so the change takes effect immediately instead of waiting on a live-reload (which for agent.conf only covers a subset of settings anyway).">
@@ -2390,7 +2397,6 @@ nvidia-smi
                 <div class="cmd-footer">
                     <div class="quick-actions-row">
                         <button class="cmd-btn secondary" id="btn-templates-config-reload" title="Re-fetch the current templates.json from this server, discarding any unsaved edits below">⟳ Reload from Server</button>
-                        <span id="templates-config-status" class="wdconfig-status"></span>
                     </div>
                     <div class="footer-buttons-right">
                         <button class="cmd-btn send-it" id="btn-templates-config-apply" title="Validate as JSON and save this content to static/config/templates.json on the server">Apply</button>
