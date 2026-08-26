@@ -2010,6 +2010,13 @@ nvidia-smi
                 </div>
             </div>
             <div class="statuslog-search-row">
+                <select id="statuslog-severity-filter" title="Filter by severity">
+                    <option value="">All Severities</option>
+                    <option value="GOOD">Good</option>
+                    <option value="WARN">Warn</option>
+                    <option value="IMPORTANT">Important</option>
+                    <option value="CRITICAL">Critical</option>
+                </select>
                 <input
                     type="text"
                     id="statuslog-search-title"

@@ -5783,8 +5783,30 @@ h1 {
     flex: 0 0 auto;
     padding: 0 12px 12px;
 }
+#statuslog-modal .statuslog-search-row #statuslog-severity-filter {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 6px 8px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    font-size: var(--font-size-input);
+    border-radius: 4px;
+}
+#statuslog-modal .statuslog-search-row #statuslog-severity-filter:focus {
+    border-color: var(--text-accent);
+}
+/* Title search gets a smaller share of the row than before (was an even 50/50 split with
+   Content search) - the severity dropdown to its left eats into that space, and title queries
+   tend to be short anyway, so Content search picks up the difference. */
+#statuslog-modal .statuslog-search-row #statuslog-search-title {
+    flex: 1 1 auto;
+}
+#statuslog-modal .statuslog-search-row #statuslog-search-content {
+    flex: 2 1 auto;
+}
 #statuslog-modal .statuslog-search-row .fs-search {
-    flex: 1 1 50%;
     width: auto;
     padding: 6px 10px;
     border: 1px solid var(--input-border);

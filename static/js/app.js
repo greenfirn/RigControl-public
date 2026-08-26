@@ -11961,6 +11961,7 @@ async function loadStatusLogList(autoSelectId) {
     const rig = rigSel ? rigSel.value : "";
     const titleQ = document.getElementById("statuslog-search-title")?.value.trim() || "";
     const contentQ = document.getElementById("statuslog-search-content")?.value.trim() || "";
+    const severity = document.getElementById("statuslog-severity-filter")?.value || "";
     if (statusEl) statusEl.textContent = "Loading...";
     try {
         const params = new URLSearchParams();
@@ -11969,6 +11970,7 @@ async function loadStatusLogList(autoSelectId) {
         if (rig) params.set("rig", rig);
         if (titleQ) params.set("title_q", titleQ);
         if (contentQ) params.set("content_q", contentQ);
+        if (severity) params.set("severity", severity);
         const res = await fetch(`${API}/api/status-log?${params.toString()}`);
         if (!res.ok) {
             if (statusEl) statusEl.textContent = "Failed to load";
@@ -13316,6 +13318,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("statuslog-rig-select")?.addEventListener("change", () => {
         statuslogPage = 0; // switching rigs should start back at page 1 of that rig's results
+        loadStatusLogList();
+    });
+    document.getElementById("statuslog-severity-filter")?.addEventListener("change", () => {
+        statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
         loadStatusLogList();
     });
     document.getElementById("wdconfig-hashrate-unit-up")?.addEventListener("click", () => stepWdHashrateUnit(1));

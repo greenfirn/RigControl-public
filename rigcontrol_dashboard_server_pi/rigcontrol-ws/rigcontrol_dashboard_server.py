@@ -775,7 +775,7 @@ class LocalStatusLogDB:
     # Shared by list_events()/count_filtered() below so the WHERE clause used to fetch a page and
     # the one used to count how many rows exist in total (for pagination's "of N" / total-pages
     # figure) can never drift out of sync with each other.
-    def _build_where(self, rig: str = None, title_q: str = None, content_q: str = None):
+    def _build_where(self, rig: str = None, title_q: str = None, content_q: str = None, severity: str = None):
         where_clauses = []
         params = []
         if rig:
@@ -788,13 +788,18 @@ class LocalStatusLogDB:
             where_clauses.append("(details LIKE ? OR reasons LIKE ?)")
             params.append(f"%{content_q}%")
             params.append(f"%{content_q}%")
+        if severity:
+            # Same "[GOOD]"/"[WARN]"/"[IMPORTANT]"/"[CRITICAL]" title tag severity_flags_by_rig()
+            # and the client's renderStatusLogList() regex both key off - not a real column.
+            where_clauses.append("title LIKE ?")
+            params.append(f"%[{severity}]%")
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         return where_sql, params
-    def list_events(self, rig: str = None, limit: int = 200, offset: int = 0, title_q: str = None, content_q: str = None):
+    def list_events(self, rig: str = None, limit: int = 200, offset: int = 0, title_q: str = None, content_q: str = None, severity: str = None):
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            where_sql, params = self._build_where(rig, title_q, content_q)
+            where_sql, params = self._build_where(rig, title_q, content_q, severity)
             cursor.execute(f'''
                 SELECT id, rig, algo, title, created_at FROM status_log_events
                 {where_sql}
@@ -813,13 +818,13 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] List error: {e}")
             return []
-    # Total rows matching the same rig/title_q/content_q filters as list_events() - i.e. how many
-    # exist across ALL pages, not just how many came back on this one (that's just len(items)).
-    def count_filtered(self, rig: str = None, title_q: str = None, content_q: str = None):
+    # Total rows matching the same rig/title_q/content_q/severity filters as list_events() - i.e.
+    # how many exist across ALL pages, not just how many came back on this one (len(items)).
+    def count_filtered(self, rig: str = None, title_q: str = None, content_q: str = None, severity: str = None):
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            where_sql, params = self._build_where(rig, title_q, content_q)
+            where_sql, params = self._build_where(rig, title_q, content_q, severity)
             cursor.execute(f'SELECT COUNT(*) as cnt FROM status_log_events {where_sql}', params)
             row = cursor.fetchone()
             return row["cnt"] if row else 0
@@ -3086,10 +3091,10 @@ def delete_watchdog_profile(profile_id: str):
         log(f"[WD DELETE LOCAL ERROR] Error: {e}")
         raise HTTPException(500, f"Failed to delete watchdog profile: {e}")
 @router.get("/api/status-log")
-def get_status_log(rig: Optional[str] = None, limit: int = 200, offset: int = 0, title_q: Optional[str] = None, content_q: Optional[str] = None):
+def get_status_log(rig: Optional[str] = None, limit: int = 200, offset: int = 0, title_q: Optional[str] = None, content_q: Optional[str] = None, severity: Optional[str] = None):
     try:
-        items = local_status_log_db.list_events(rig=rig or None, limit=limit, offset=offset, title_q=title_q or None, content_q=content_q or None)
-        total = local_status_log_db.count_filtered(rig=rig or None, title_q=title_q or None, content_q=content_q or None)
+        items = local_status_log_db.list_events(rig=rig or None, limit=limit, offset=offset, title_q=title_q or None, content_q=content_q or None, severity=severity or None)
+        total = local_status_log_db.count_filtered(rig=rig or None, title_q=title_q or None, content_q=content_q or None, severity=severity or None)
         # {items, total} instead of a bare array - the Status Log tab's Prev/Next pagination needs
         # the TRUE count matching the current rig/search filters (not just len(items), which is
         # capped at `limit`) to compute how many pages exist.
