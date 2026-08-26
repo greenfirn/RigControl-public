@@ -11935,6 +11935,13 @@ async function loadStatusLogList(autoSelectId) {
         const data = await res.json();
         const items = data.items || [];
         const total = data.total ?? items.length;
+        // Deleting entries (e.g. all of page 2) can leave statuslogPage pointing past the new
+        // last page - that showed up as "list doesn't refresh" (an empty page render instead of
+        // snapping back). Clamp and refetch the now-valid last page instead of rendering nothing.
+        if (items.length === 0 && total > 0 && statuslogPage > 0) {
+            statuslogPage = Math.max(0, Math.ceil(total / STATUSLOG_QUERY_LIMIT) - 1);
+            return loadStatusLogList(autoSelectId);
+        }
         renderStatusLogList(items);
         updateStatuslogPageDisplay(items.length, total);
         if (autoSelectId != null) {
