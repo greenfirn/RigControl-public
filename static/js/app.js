@@ -8487,6 +8487,18 @@ function updateRawFromFieldChange(target) {
     if (target.id === "fs-field-restart") {
         // Keep the tabs' green "will restart" indicator live as the checkbox is toggled.
         fsSyncServiceTabsUI();
+        // The trailing "sudo systemctl restart docker_events_X" line is added/removed by
+        // fsApplyRestartLine() operating on the WHOLE block, not a KEY "value" line the generic
+        // regex-replace path below can patch in place - that path's JSON-body branch only touches
+        // what's between <<'EOF' and EOF, so without this early return the restart line would never
+        // change in the raw box until Send (same bug just fixed for Watchdog/Agent Conf). Always do
+        // a full rebuild instead.
+        const rawEl = document.getElementById("fs-raw");
+        if (rawEl) {
+            rawEl.value = buildFsActivePreview();
+            autoResizeFsRaw();
+        }
+        return;
     }
     if (target.id === "fs-field-miner" || target.id === "fs-field-custom-miner") {
         fsUpdateRestartCheckboxDisabled();
