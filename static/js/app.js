@@ -67,7 +67,10 @@ const TEMPLATES_CONFIG = {
             "\"${CMD[@]}\"\n" +
             "\n" +
             "if [[ \"$FAN_MODE\" == \"curve\" ]]; then\n" +
-            "    :\n" +
+            // No hardcoded ":" here - buildOcScriptFromRows() supplies "    :\n" for %FAN_CURVE_BLOCK%
+            // only when nothing else uses curve mode (bash won't allow an empty then/fi body); when
+            // curve mode IS used, this substitutes the real fan-curve-service block instead, so
+            // there's no leftover dangling ":" line cluttering the output.
             "%FAN_CURVE_BLOCK%fi\n" +
             "EOF\n" +
             "sudo chmod +x /usr/local/bin/gpu_apply_ocs.sh",
@@ -9410,8 +9413,12 @@ function buildOcScriptFromRows() {
         });
     }
     const usesCurve = rows.some(r => classifyOcFanValue(r.fan).type === "curve");
+    // "    :\n" here (not "") when nothing uses curve mode - bash doesn't allow an empty then/fi
+    // body, so the if-block in apply_script_footer needs SOMETHING; when curve mode is used this
+    // is skipped entirely in favor of the real fan_curve_service_template block, so the output
+    // doesn't carry a pointless dangling ":" line alongside the real systemd service block.
     const footer = fillPlaceholders(ocCfg.apply_script_footer, {
-        "FAN_CURVE_BLOCK": usesCurve ? ocCfg.fan_curve_service_template : "",
+        "FAN_CURVE_BLOCK": usesCurve ? ocCfg.fan_curve_service_template : "    :\n",
     });
     return body + footer;
 }
