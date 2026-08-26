@@ -1402,7 +1402,7 @@ h1 {
     background: var(--button-hover-bg);
 }
 #btn-cmd-send {
-    border-color: var(--button-send-border);
+    border-color: transparent;
     color: var(--button-send-text);
     background: var(--button-send-bg);
 }
@@ -1935,6 +1935,15 @@ h1 {
     background-color: var(--button-danger-hover-bg);
     border-color: var(--button-danger-hover-border);
 }
+/* Backup = same green as the Save button family (pulling data up is a "confirming" action).
+   Restore = warning yellow, same var the status log badge uses - overwriting local data is the
+   one to think twice about. */
+#btn-backups-backup {
+    color: var(--button-save-text);
+}
+#btn-backups-restore {
+    color: var(--status-warning-text);
+}
 #btn-load-wdconfig {
     border-color: var(--button-stats-load-border);
     background: var(--button-stats-load-bg);
@@ -2252,9 +2261,12 @@ h1 {
     background: var(--button-save-hover-bg);
 }
 #btn-apply-stats-settings {
-    border-color: var(--button-apply-stats-border);
+    /* Generic blue border+text (same as Send/Refresh Now/Ping Now/Apply Notifications above),
+       not the --button-apply-stats-* vars - those are shared with #btn-open-color-scheme-json,
+       which wasn't asked to change. */
+    border-color: var(--button-refresh-now-border);
     background: var(--button-apply-stats-bg);
-    color: var(--button-apply-stats-text);
+    color: var(--button-refresh-now-text);
 }
 #btn-apply-stats-settings:hover {
     background: var(--button-apply-stats-hover-bg);
@@ -2761,15 +2773,17 @@ h1 {
     gap: 8px;
 }
 #btn-refresh-save {
-    border-color: var(--button-notify-border);
-    color: var(--button-notify-text);
+    /* Generic blue (same as Send/Refresh Now/Ping Now), matching Apply Stats below - not the
+       --button-notify-* vars, which are their own green shared with the Notify Test button. */
+    border-color: var(--button-refresh-now-border);
+    color: var(--button-refresh-now-text);
     background: var(--button-notify-bg);
 }
 #btn-refresh-save:hover {
     background: var(--button-notify-hover-bg);
 }
 #btn-refresh-now {
-    border-color: var(--button-refresh-now-border);
+    border-color: transparent;
     color: var(--button-refresh-now-text);
     background: var(--button-refresh-now-bg);
 }
@@ -2777,7 +2791,7 @@ h1 {
     background: var(--button-refresh-now-hover-bg);
 }
 #btn-offline-ping-now {
-    border-color: var(--button-ping-now-border);
+    border-color: transparent;
     color: var(--button-ping-now-text);
     background: var(--button-ping-now-bg);
 }
