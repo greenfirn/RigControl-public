@@ -7836,6 +7836,10 @@ function deriveHostLabelForClipboard(poolUrlValue) {
     const token = String(poolUrlValue).trim().split(/[\s,]+/)[0] || "";
     const host = token.replace(/^stratum\+(ssl|tcp):\/\//, "").split(":")[0].trim();
     if (!host) return null;
+    // An IPv4 address (a local node, a private pool proxy, etc.) has no real hostname structure to
+    // pull a label from - picking one octet (e.g. "0" out of "10.10.0.126") and calling it a pool/coin
+    // name is actively misleading rather than merely unhelpful, so bail out instead of guessing.
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null;
     const labels = host.split(".").filter(Boolean);
     if (labels.length === 0) return null;
     return labels.length >= 2 ? labels[labels.length - 2] : labels[0];
