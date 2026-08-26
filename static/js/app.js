@@ -7097,7 +7097,13 @@ function buildRigGpuItemObject(values, stash) {
     if (values.VERSION && values.VERSION.trim()) item.version = values.VERSION.trim();
     item.pool_urls = poolUrls;
     item.miner_config = minerConfig;
-    return item;
+    // Same pool short-name / coin ticker auto-fill "Copy JSON" already does (addPoolSlugForClipboard/
+    // addCoinTickerForClipboard below) - applied here too so the LIVE raw content (what Send/Save
+    // actually uses) carries them, instead of only the separate clipboard export. Both no-op if the
+    // item already has a real pool/coin value, so nothing here overrides an explicit user value.
+    const [withPoolSlug] = addPoolSlugForClipboard([item]);
+    const [withCoinTicker] = addCoinTickerForClipboard([withPoolSlug]);
+    return withCoinTicker;
 }
 function buildRigGpuJsonBody(values) {
     const item = buildRigGpuItemObject(values, snapshotFsLiveStash());
@@ -7843,7 +7849,10 @@ function addPoolSlugForClipboard(items) {
     return items.map((item) => {
         if (!item || typeof item !== "object") return item;
         if (item.pool && String(item.pool).trim()) return item;
-        if (item.miner === "custom") return item;
+        // Custom miners (miner: "custom", real identity in miner_alt) used to be skipped here on the
+        // assumption they'd rarely need this label - in practice most real fleets run custom binaries
+        // almost exclusively, so this left the "Copy JSON" pool slug blank for nearly every flightsheet.
+        // pool_urls is populated the same way regardless of miner type, so derive it here too.
         const primary = Array.isArray(item.pool_urls) && item.pool_urls.length > 0
             ? (item.pool_urls[0] || "").trim()
             : "";
@@ -7897,15 +7906,18 @@ function vowelStrippedFallback(text) {
     return stripped || null;
 }
 function deriveCoinForClipboard(algo, poolUrlValue) {
-    if (!algo) return null;
-    const algoKey = String(algo).trim().toLowerCase();
-    if (FS_ALGO_TO_COIN[algoKey]) return FS_ALGO_TO_COIN[algoKey];
+    // Unlike derivePoolSlugForClipboard() (pool-address-only, no algo needed), this used to bail out
+    // entirely with an empty algo before ever looking at the pool address - so a flightsheet whose
+    // ALGO field wasn't populated yet (or a custom miner with no dedicated algo field) got "pool"
+    // filled but never "coin", even though the pool-hint/vowel-fallback checks below don't need algo.
+    const algoKey = algo ? String(algo).trim().toLowerCase() : "";
+    if (algoKey && FS_ALGO_TO_COIN[algoKey]) return FS_ALGO_TO_COIN[algoKey];
     const token = (poolUrlValue || "").trim().split(/[\s,]+/)[0] || "";
     const host = token.replace(/^stratum\+(ssl|tcp):\/\//, "").split(":")[0].toLowerCase();
     for (const [hint, ticker] of FS_POOL_COIN_HINTS) {
         if (host.includes(hint)) return ticker;
     }
-    if (algoKey in FS_AMBIGUOUS_ALGO_DEFAULTS && FS_AMBIGUOUS_ALGO_DEFAULTS[algoKey]) {
+    if (algoKey && algoKey in FS_AMBIGUOUS_ALGO_DEFAULTS && FS_AMBIGUOUS_ALGO_DEFAULTS[algoKey]) {
         return FS_AMBIGUOUS_ALGO_DEFAULTS[algoKey];
     }
     return vowelStrippedFallback(deriveHostLabelForClipboard(poolUrlValue));
@@ -7914,7 +7926,7 @@ function addCoinTickerForClipboard(items) {
     return items.map((item) => {
         if (!item || typeof item !== "object") return item;
         if (item.coin && String(item.coin).trim()) return item;
-        if (item.miner === "custom") return item;
+        // See addPoolSlugForClipboard() above - same reasoning, custom miners shouldn't be excluded.
         const algo = item.miner_config && item.miner_config.algo;
         const primary = Array.isArray(item.pool_urls) && item.pool_urls.length > 0
             ? (item.pool_urls[0] || "").trim()
@@ -8402,6 +8414,16 @@ function populateFsFieldsFromRaw(rawText) {
     if (!rawText) return;
     const parsedItems = parseRigGpuItemsFromRaw(rawText);
     if (parsedItems) {
+        // Fill in a missing pool short-name / coin ticker right away on load/paste too - previously
+        // this only ran on the next field edit (buildRigGpuItemObject), so a pasted native flightsheet
+        // that already had pool_urls/algo just sat there missing "pool"/"coin" until something else
+        // triggered a rebuild. Reference-inequality here (addPoolSlugForClipboard/addCoinTickerForClipboard
+        // return the SAME object back when there's nothing to add) is what "wasFsItemsEnriched" below
+        // uses to decide whether the raw box text itself needs to be rewritten to match.
+        const fsItemsWithPool = addPoolSlugForClipboard(parsedItems.items);
+        const fsItemsEnriched = addCoinTickerForClipboard(fsItemsWithPool);
+        const wasFsItemsEnriched = fsItemsEnriched.some((it, i) => it !== parsedItems.items[i]);
+        parsedItems.items = fsItemsEnriched;
         setFsApplyToRigs(parsedItems.apply_to_workers || []);
         const classified = parsedItems.items.map((it) => ({
             item: it,
@@ -8440,6 +8462,17 @@ function populateFsFieldsFromRaw(rawText) {
                 autoResizeFsRaw();
             } else if (!/<<'EOF'\n[\s\S]*?\n[ \t]*EOF[ \t]*(?=\n|$)/.test(rawText)) {
                 rawEl.value = buildFsBlock(activeValues.SERVICE_TYPE);
+                autoResizeFsRaw();
+            } else if (wasFsItemsEnriched) {
+                // Native format, single service, but pool/coin got added above - splice the enriched
+                // items back into the existing heredoc body so the box reflects it (everything else
+                // in the pasted text - the tee line, any trailing restart line - stays untouched).
+                const enrichedBody = { items: parsedItems.items };
+                if (fsApplyToRigs.size > 0) enrichedBody.apply_to_workers = Array.from(fsApplyToRigs);
+                rawEl.value = rawText.replace(
+                    /(<<'EOF'\n)[\s\S]*?(\n[ \t]*EOF[ \t]*)(?=\n|$)/,
+                    (_full, pre, post) => `${pre}${JSON.stringify(enrichedBody, null, 2)}${post}`
+                );
                 autoResizeFsRaw();
             }
         }
