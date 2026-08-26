@@ -3605,9 +3605,14 @@ function handleCommandResponse(response) {
         pendingAgentConfFetchRig = null;
         const statusEl = document.getElementById("agentconf-status");
         if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
+            // raw here is the literal `cat` output - the bare file body, no wrapper - so wrap it
+            // for display the same way loadDefaultAgentConf()/the checkbox handler do, but keep
+            // saving the BARE raw to the DB Backups snapshot below (that wants the file's actual
+            // contents, not the send-command shape).
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("agentconf-raw");
-            if (rawEl) rawEl.value = raw;
+            const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
+            if (rawEl) rawEl.value = wrapAgentConfCommand(raw, includeRestart);
             resizeAgentConfRaw();
             if (statusEl) statusEl.textContent = `Loaded current agent conf from ${r.rig}`;
             saveAgentConfSnapshot(r.rig, raw);
@@ -11038,9 +11043,44 @@ function resizeAgentConfRaw() {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
 }
+// Wraps a bare rigcontrol-agent.conf body in the actual mkdir/tee/heredoc (+ optional restart)
+// command that gets sent - same reasoning as Watchdog's wrapWdConfigCommand(): the raw box should
+// always show the literal command Send Cmd will use, not just the file body with the wrapper
+// assembled invisibly elsewhere at send time.
+function wrapAgentConfCommand(bareContent, includeRestart) {
+    const heredocTag = "RIGCONTROL_AGENT_CONF_EOF";
+    let command =
+        `sudo mkdir -p ${TEMPLATES_CONFIG.agentconf.conf_dir}\n` +
+        `tee ${TEMPLATES_CONFIG.agentconf.conf_path} > /dev/null <<'${heredocTag}'\n` +
+        bareContent +
+        (bareContent.endsWith("\n") ? "" : "\n") +
+        heredocTag;
+    if (includeRestart) command += `\n${TEMPLATES_CONFIG.agentconf.restart_command}`;
+    return command;
+}
+// Reverse of the above - pulls just the heredoc body back out of a (possibly hand-edited) wrapped
+// command, for the one caller that wants the actual .conf file text rather than the send-command
+// shape: the DB Backups snapshot, which stores "what did this rig's conf file contain" for
+// reference, not a shell command to replay. Falls back to the input unchanged if the wrapper
+// markers aren't found (e.g. the user rewrote the box into something else entirely).
+function unwrapAgentConfCommand(text) {
+    // wrapAgentConfCommand() always leaves exactly one "\n" right before the closing tag (either
+    // the body's own trailing newline, or one added for it) - that single newline is inherently
+    // ambiguous to reverse (a bodyless-of-trailing-newline input is indistinguishable from one
+    // that already had it), so this always re-adds it. Harmless: real conf files end in a newline
+    // anyway, and this is only used for the informational DB Backups snapshot, never for sending.
+    const tag = "RIGCONTROL_AGENT_CONF_EOF";
+    const openIdx = text.indexOf(`<<'${tag}'\n`);
+    if (openIdx === -1) return text || "";
+    const bodyStart = openIdx + `<<'${tag}'\n`.length;
+    const closeIdx = text.indexOf(`\n${tag}`, bodyStart);
+    if (closeIdx === -1) return text || "";
+    return text.slice(bodyStart, closeIdx) + "\n";
+}
 function loadDefaultAgentConf() {
     const rawEl = document.getElementById("agentconf-raw");
-    if (rawEl) rawEl.value = AGENT_CONF_DEFAULT_TEMPLATE;
+    const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
+    if (rawEl) rawEl.value = wrapAgentConfCommand(AGENT_CONF_DEFAULT_TEMPLATE, includeRestart);
     resizeAgentConfRaw();
     const statusEl = document.getElementById("agentconf-status");
     if (statusEl) statusEl.textContent = "Loaded blank example template (not read from any worker)";
@@ -11062,19 +11102,9 @@ function autoLoadAgentConfForSelectedRig() {
     });
 }
 function buildAgentConfCommand() {
-    const rawEl = document.getElementById("agentconf-raw");
-    const fileContent = rawEl ? rawEl.value : "";
-    const heredocTag = "RIGCONTROL_AGENT_CONF_EOF";
-    let command =
-        `sudo mkdir -p ${TEMPLATES_CONFIG.agentconf.conf_dir}\n` +
-        `tee ${TEMPLATES_CONFIG.agentconf.conf_path} > /dev/null <<'${heredocTag}'\n` +
-        fileContent +
-        (fileContent.endsWith("\n") ? "" : "\n") +
-        `${heredocTag}`;
-    if (document.getElementById("agentconf-restart-after-apply")?.checked) {
-        command += `\n${TEMPLATES_CONFIG.agentconf.restart_command}`;
-    }
-    return command;
+    // agentconf-raw already holds the full command (mkdir + tee heredoc-wrapped conf body +
+    // optional restart line, via wrapAgentConfCommand()) - send it exactly as shown, no rebuilding.
+    return document.getElementById("agentconf-raw")?.value ?? "";
 }
 function sendItAgentConf() {
     if (selectedRigs.size !== 1) {
@@ -11087,7 +11117,7 @@ function sendItAgentConf() {
     // path hands off to the free-form Send Cmd modal, which has no structured success
     // callback back to this tab, so there's no reliable "it actually landed" moment to hook.
     // Optimistic, but this is a local backup convenience, not a correctness-critical value.
-    saveAgentConfSnapshot(rig, document.getElementById("agentconf-raw")?.value ?? "");
+    saveAgentConfSnapshot(rig, unwrapAgentConfCommand(document.getElementById("agentconf-raw")?.value ?? ""));
     const input = document.getElementById("cmd-input");
     if (document.getElementById("confirm-agentconf")?.checked) {
         if (input) input.value = command;
@@ -12972,6 +13002,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("agentconf-raw")?.addEventListener("input", resizeAgentConfRaw);
     document.getElementById("agentconf-raw")?.addEventListener("mouseup", saveAgentConfRawHeight);
     restoreAgentConfRawHeight();
+    // Toggling "restart after apply" changes what actually gets sent, so re-wrap the raw box right
+    // away to add/remove the restart line - keeps the box showing the real command at all times
+    // instead of only reflecting the checkbox once Send is clicked.
+    document.getElementById("agentconf-restart-after-apply")?.addEventListener("change", (e) => {
+        const rawEl = document.getElementById("agentconf-raw");
+        if (!rawEl) return;
+        rawEl.value = wrapAgentConfCommand(unwrapAgentConfCommand(rawEl.value), e.target.checked);
+        resizeAgentConfRaw();
+    });
     initSendConfirmCheckbox("confirm-agentconf", "agentconf");
     document.getElementById("btn-save-wallet")?.addEventListener("click", saveWalletFromDialog);
     document.getElementById("btn-delete-wallet")?.addEventListener("click", deleteWallet);
