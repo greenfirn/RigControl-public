@@ -1468,6 +1468,10 @@ nvidia-smi
     <div class="view-tab-panel hidden" id="stats-modal" data-tab-panel="stats">
         <div class="cmd-dialog">
             <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">Stats</span>
+                <span id="stats-status" class="wdconfig-status"></span>
+            </div>
             <div class="cmd-body stats-body">
                 <div class="stats-controls">
                     <div class="field-group stats-worker-field">
@@ -1506,7 +1510,6 @@ nvidia-smi
                             <label class="stats-load-btn-spacer" aria-hidden="true">&nbsp;</label>
                             <button class="cmd-btn ok" id="btn-stats-load">Load</button>
                         </div>
-                        <span id="stats-status" class="stats-status"></span>
                     </div>
                 </div>
                 <div class="stats-charts">

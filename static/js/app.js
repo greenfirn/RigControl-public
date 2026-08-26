@@ -3505,6 +3505,7 @@ const STATUS_TIMESTAMP_IDS = [
     "fs-status", "oc-status", "wdconfig-status", "wallet-status",
     "saved-cmd-status", "backups-status", "logs-status", "statuslog-status",
     "agentconf-status", "templates-config-status", "general-settings-status",
+    "stats-status",
 ];
 const NATIVE_TEXT_CONTENT_DESC = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
 function initStatusTimestamps() {
