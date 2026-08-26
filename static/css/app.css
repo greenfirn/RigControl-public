@@ -1401,8 +1401,11 @@ h1 {
 .cmd-btn:hover {
     background: var(--button-hover-bg);
 }
+#btn-cmd-clear-send {
+    border-color: var(--button-refresh-now-border);
+}
 #btn-cmd-send {
-    border-color: transparent;
+    border-color: var(--button-send-border);
     color: var(--button-send-text);
     background: var(--button-send-bg);
 }
@@ -1546,7 +1549,6 @@ h1 {
 #btn-save-wdconfig,
 #btn-fs-pools-save,
 #btn-fs-wallet-save-confirm,
-#btn-save-saved-cmd,
 #btn-save-advanced-server-settings {
     border-color: var(--button-save-border);
     background: var(--button-save-bg);
@@ -1558,7 +1560,6 @@ h1 {
 #btn-save-wdconfig:hover,
 #btn-fs-pools-save:hover,
 #btn-fs-wallet-save-confirm:hover,
-#btn-save-saved-cmd:hover,
 #btn-save-advanced-server-settings:hover {
     background: var(--button-save-hover-bg) !important;
 }
@@ -2799,7 +2800,7 @@ h1 {
     background: var(--button-ping-now-hover-bg);
 }
 #btn-test-notification {
-    border-color: var(--button-test-alert-border);
+    border-color: transparent;
     color: var(--button-test-alert-text);
     background: var(--button-test-alert-bg);
 }
@@ -5965,7 +5966,10 @@ h1 {
 #btn-save-saved-cmd {
     border-color: var(--button-saved-cmd-save-border);
     background: var(--button-saved-cmd-save-bg);
-    color: var(--button-saved-cmd-save-text);
+    /* This rule comes after (and overrides) the shared Save-button block near the top of the
+       file, which is why adding this id there didn't actually turn the text green - fixed here,
+       at the rule that wins the cascade, instead. */
+    color: var(--button-save-text);
 }
 #btn-save-saved-cmd:hover {
     background: var(--button-saved-cmd-save-hover-bg) !important;
