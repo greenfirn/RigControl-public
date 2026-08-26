@@ -5723,7 +5723,10 @@ h1 {
    gap between them - prefix a dash whenever there's actually a message so it doesn't run
    straight into the title (e.g. "WalletsSaved..."). :not(:empty) keeps it invisible otherwise. */
 .wdconfig-status:not(:empty)::before {
-    content: " - ";
+    /* Non-breaking spaces, not regular ones - a plain leading space here gets collapsed away as
+       "whitespace at the start of a line box" since this is the very first character inside the
+       flex item, which was swallowing the space before the dash. */
+    content: "\00a0-\00a0";
 }
 #statuslog-modal .cmd-dialog {
     width: 75%;
