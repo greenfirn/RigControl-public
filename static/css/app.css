@@ -109,11 +109,11 @@
     --checkbox-hover: var(--list-item-hover);
     --tab-bg: #1b1d23;
     --tab-border: #3c3f4a;
-    --tab-hover-bg: #23252d;
+    --tab-hover-bg: #33353f;
     --tab-active-bg: #1f2937;
     --tab-active-border: #3b82f6;
     --tab-active-text: #ffffff;
-    --tab-active-hover-bg: #28344a;
+    --tab-active-hover-bg: #304060;
     --tab-text: #aaa;
     --wd-toggle-bg: #3a2c0a;
     --wd-toggle-border: #d9a441;
@@ -123,55 +123,58 @@
     --wd-toggle-text: var(--rig-name-watchdog-active-text);
     --rig-name-watchdog-active-text: #fbc02d;
     --rig-name-watchdog-standby-text: var(--text-muted);
-    --wd-toggle-hover-bg: #3a2c0a;
+    --wd-toggle-hover-bg: #5a4718;
     --button-border: #444;
     --button-bg: #2e2e2e;
-    --button-hover-bg: #252525;
-    --button-hover-border: #3a3a3a;
+    /* Was #252525/#3a3a3a - darker than the resting state, and only by a few shades, so hovering
+       most plain (non-specially-colored) buttons across the app was nearly invisible. Lighter and
+       higher-contrast now, matching the "hover brightens" convention instead of dimming. */
+    --button-hover-bg: #424242;
+    --button-hover-border: #666;
     --button-active-bg: #2d2d2d;
     --button-text: #eee;
     --button-send-bg: #2e2e2e;
     --button-send-border: #4fc3f7;
     --button-send-text: #4fc3f7;
-    --button-send-hover-bg: #203040;
+    --button-send-hover-bg: #2e4a66;
     --button-unlock-request-bg: #2e2e2e;
     --button-unlock-request-border: #4fc3f7;
     --button-unlock-request-text: #4fc3f7;
-    --button-unlock-request-hover-bg: #203040;
+    --button-unlock-request-hover-bg: #2e4a66;
     --button-unlock-submit-bg: #2e2e2e;
     --button-unlock-submit-border: #4fc3f7;
     --button-unlock-submit-text: #4fc3f7;
-    --button-unlock-submit-hover-bg: #203040;
+    --button-unlock-submit-hover-bg: #2e4a66;
     --button-apply-fs-bg: #2e2e2e;
     --button-apply-fs-border: #4fc3f7;
     --button-apply-fs-text: #4fc3f7;
-    --button-apply-fs-hover-bg: #203040;
+    --button-apply-fs-hover-bg: #2e4a66;
     --button-apply-oc-bg: #2e2e2e;
     --button-apply-oc-border: #4fc3f7;
     --button-apply-oc-text: #4fc3f7;
-    --button-apply-oc-hover-bg: #203040;
+    --button-apply-oc-hover-bg: #2e4a66;
     --button-stats-load-bg: #2e2e2e;
     --button-stats-load-border: #4fc3f7;
     --button-stats-load-text: #4fc3f7;
-    --button-stats-load-hover-bg: #203040;
+    --button-stats-load-hover-bg: #2e4a66;
     --button-apply-wd-bg: #2e2e2e;
     --button-apply-wd-border: #4fc3f7;
     --button-apply-wd-text: #4fc3f7;
-    --button-apply-wd-hover-bg: #203040;
+    --button-apply-wd-hover-bg: #2e4a66;
     --button-apply-qa-bg: #2e2e2e;
     --button-apply-qa-border: #4fc3f7;
     --button-apply-qa-text: #4fc3f7;
-    --button-apply-qa-hover-bg: #203040;
+    --button-apply-qa-hover-bg: #2e4a66;
     --button-save-border: #444;
     --button-save-bg: #2e2e2e;
     /* Green - matches the "good" green used elsewhere (severity/shares good text) rather than a
        new one-off color, so Save buttons read as a positive/confirming action everywhere. */
     --button-save-text: #66bb6a;
-    --button-save-hover-bg: #252525;
+    --button-save-hover-bg: #424242;
     --button-apply-stats-bg: #1c1c1c;
     --button-apply-stats-border: #333;
     --button-apply-stats-text: #eee;
-    --button-apply-stats-hover-bg: #252525;
+    --button-apply-stats-hover-bg: #2e2e2e;
     --button-apply-stats-hover-border: #3a3a3a;
     --button-refresh-now-bg: #1c1c1c;
     --button-refresh-now-border: #4fc3f7;
@@ -180,7 +183,7 @@
     --button-agentconf-reload-bg: #1c1c1c;
     --button-agentconf-reload-border: #66bb6a;
     --button-agentconf-reload-text: #66bb6a;
-    --button-agentconf-reload-hover-bg: #203020;
+    --button-agentconf-reload-hover-bg: #274527;
     --button-ping-now-bg: #1c1c1c;
     --button-ping-now-border: #4fc3f7;
     --button-ping-now-text: #4fc3f7;
@@ -194,14 +197,14 @@
     --button-danger-bg: #dc3545;
     --button-danger-border: #dc3545;
     --button-danger-text: white;
-    --button-danger-hover-bg: #c82333;
+    --button-danger-hover-bg: #e94f5f;
     --button-danger-hover-border: #c82333;
     --button-notify-hover-bg: rgba(144, 238, 144, 0.1);
     --button-notify-text: #90ee90;
     --button-notify-bg: #2e2e2e;
     --button-new-bg: #2e2e2e;
     --button-new-text: #eee;
-    --button-new-hover-bg: #252525;
+    --button-new-hover-bg: #424242;
     --button-notify-border: #90ee90;
     --button-new-border: #555;
     --button-clear-border: #555;
@@ -212,31 +215,31 @@
     --button-close-unlock-bg: #2e2e2e;
     --button-close-unlock-border: #555;
     --button-close-unlock-text: #eee;
-    --button-close-unlock-hover-bg: #252525;
+    --button-close-unlock-hover-bg: #424242;
     --button-close-qa-bg: #2e2e2e;
     --button-close-qa-border: #555;
     --button-close-qa-text: #eee;
-    --button-close-qa-hover-bg: #252525;
+    --button-close-qa-hover-bg: #424242;
     --button-close-themes-bg: #2e2e2e;
     --button-close-themes-border: #555;
     --button-close-themes-text: #eee;
-    --button-close-themes-hover-bg: #252525;
+    --button-close-themes-hover-bg: #424242;
     --button-close-themes-json-bg: #2e2e2e;
     --button-close-themes-json-border: #555;
     --button-close-themes-json-text: #eee;
-    --button-close-themes-json-hover-bg: #252525;
+    --button-close-themes-json-hover-bg: #424242;
     --button-close-cmd-bg: #2e2e2e;
     --button-close-cmd-border: #555;
     --button-close-cmd-text: #eee;
-    --button-close-cmd-hover-bg: #252525;
+    --button-close-cmd-hover-bg: #424242;
     --button-saved-cmd-save-bg: #2e2e2e;
     --button-saved-cmd-save-border: #444;
     --button-saved-cmd-save-text: #eee;
-    --button-saved-cmd-save-hover-bg: #252525;
+    --button-saved-cmd-save-hover-bg: #424242;
     --button-saved-cmd-delete-bg: #dc3545;
     --button-saved-cmd-delete-border: #dc3545;
     --button-saved-cmd-delete-text: white;
-    --button-saved-cmd-delete-hover-bg: #c82333;
+    --button-saved-cmd-delete-hover-bg: #e94f5f;
     --button-cmd-clear-bg: #2e2e2e;
     --button-cmd-clear-border: #555;
     --button-cmd-clear-text: #4fc3f7;
@@ -245,10 +248,10 @@
     --button-close-refresh-bg: #2e2e2e;
     --button-close-refresh-border: #555;
     --button-close-refresh-text: #aaa;
-    --button-close-refresh-hover-bg: #252525;
+    --button-close-refresh-hover-bg: #424242;
     --button-send-it-bg: #2e2e2e;
     --button-send-it-border: #ff9800;
-    --button-send-it-hover-bg: #3a2510;
+    --button-send-it-hover-bg: #5a3a18;
     --btn-remote-logout-text: #ff6b5e;
     --btn-remote-logout-hover-text: #ff8478;
     --btn-remote-logout-hover-border: #5a2b26;
@@ -287,7 +290,7 @@
     --view-only-banner-bg: #3a2a12;
     --view-only-banner-text: #ffcc00;
     --view-only-banner-border: #5a4418;
-    --view-only-banner-hover-bg: #46310f;
+    --view-only-banner-hover-bg: #56400f;
     --action-output-bg: var(--surface-header);
     --action-output-border: #333;
     --action-output-expanded-bg: #242424;
@@ -1400,6 +1403,10 @@ h1 {
 }
 .cmd-btn:hover {
     background: var(--button-hover-bg);
+    /* Most colored per-button :hover rules only touch background, so this border brighten only
+       shows through on plain/generic buttons that don't override border-color themselves - still
+       gives every button *some* visible hover feedback beyond just the bg shift above. */
+    border-color: var(--button-hover-border);
 }
 #btn-cmd-clear-send {
     border-color: var(--button-refresh-now-border);
@@ -2271,7 +2278,10 @@ h1 {
 }
 #btn-apply-stats-settings:hover {
     background: var(--button-apply-stats-hover-bg);
-    border-color: var(--button-apply-stats-hover-border);
+    /* No border-color change here (unlike #btn-open-color-scheme-json below, which still uses
+       the plain --button-apply-stats-* family) - this button's border is the blue override
+       above, and --button-apply-stats-hover-border would revert it to grey on hover, which
+       looked inconsistent next to Apply Notifications, whose border stays blue on hover. */
 }
 #btn-open-color-scheme-json {
     border-color: var(--button-apply-stats-border);
@@ -2774,14 +2784,15 @@ h1 {
     gap: 8px;
 }
 #btn-refresh-save {
-    /* Generic blue (same as Send/Refresh Now/Ping Now), matching Apply Stats below - not the
-       --button-notify-* vars, which are their own green shared with the Notify Test button. */
+    /* Fully matches Apply Stats below now (border, text, bg, and hover-bg) - they're a paired
+       row of buttons, so styling one differently from the other read as inconsistent/buggy.
+       --button-notify-* is otherwise unused (nothing else in the app references it). */
     border-color: var(--button-refresh-now-border);
     color: var(--button-refresh-now-text);
-    background: var(--button-notify-bg);
+    background: var(--button-apply-stats-bg);
 }
 #btn-refresh-save:hover {
-    background: var(--button-notify-hover-bg);
+    background: var(--button-apply-stats-hover-bg);
 }
 #btn-refresh-now {
     border-color: transparent;
