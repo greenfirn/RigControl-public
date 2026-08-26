@@ -164,7 +164,9 @@
     --button-apply-qa-hover-bg: #203040;
     --button-save-border: #444;
     --button-save-bg: #2e2e2e;
-    --button-save-text: #eee;
+    /* Green - matches the "good" green used elsewhere (severity/shares good text) rather than a
+       new one-off color, so Save buttons read as a positive/confirming action everywhere. */
+    --button-save-text: #66bb6a;
     --button-save-hover-bg: #252525;
     --button-apply-stats-bg: #1c1c1c;
     --button-apply-stats-border: #333;
@@ -1541,7 +1543,11 @@ h1 {
 #btn-save-fs,
 #btn-save-oc,
 #btn-save-wallet,
-#btn-save-wdconfig {
+#btn-save-wdconfig,
+#btn-fs-pools-save,
+#btn-fs-wallet-save-confirm,
+#btn-save-saved-cmd,
+#btn-save-advanced-server-settings {
     border-color: var(--button-save-border);
     background: var(--button-save-bg);
     color: var(--button-save-text);
@@ -1549,7 +1555,11 @@ h1 {
 #btn-save-fs:hover,
 #btn-save-oc:hover,
 #btn-save-wallet:hover,
-#btn-save-wdconfig:hover {
+#btn-save-wdconfig:hover,
+#btn-fs-pools-save:hover,
+#btn-fs-wallet-save-confirm:hover,
+#btn-save-saved-cmd:hover,
+#btn-save-advanced-server-settings:hover {
     background: var(--button-save-hover-bg) !important;
 }
 .cmd-btn.clear {
