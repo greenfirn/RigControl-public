@@ -117,7 +117,10 @@
     --tab-text: #aaa;
     --wd-toggle-bg: #3a2c0a;
     --wd-toggle-border: #d9a441;
-    --wd-toggle-text: #ffcc66;
+    /* Aliased to the worker-row "watchdog active" yellow (not its own hardcoded value) so the
+       toggle button and the worker name color always stay the same shade, including across
+       theme changes - editing "WD Active Text" in the theme editor updates both at once. */
+    --wd-toggle-text: var(--rig-name-watchdog-active-text);
     --rig-name-watchdog-active-text: #fbc02d;
     --rig-name-watchdog-standby-text: var(--text-muted);
     --wd-toggle-hover-bg: #3a2c0a;
@@ -2756,12 +2759,14 @@ h1 {
     padding-left: 14px;
     padding-right: 14px;
 }
-#btn-agentconf-reload {
+#btn-agentconf-reload,
+#btn-templates-config-reload {
     border-color: var(--button-agentconf-reload-border);
     color: var(--button-agentconf-reload-text);
     background: var(--button-agentconf-reload-bg);
 }
-#btn-agentconf-reload:hover {
+#btn-agentconf-reload:hover,
+#btn-templates-config-reload:hover {
     background: var(--button-agentconf-reload-hover-bg);
 }
 #btn-agentconf-clear {
@@ -2777,7 +2782,33 @@ h1 {
 #refresh-modal .wdconfig-raw-section {
     flex: 0 0 auto;
 }
-#refresh-modal #agentconf-raw {
+/* Conf tab's type dropdown - a single compact inline control, deliberately NOT using the General
+   tab's .settings-row-horizontal/.field-group system (that's built for several stretchy same-width
+   inputs side by side, which just left this one dropdown stretched near-full-width with the label
+   floating above it - wrong look for a single select). Sized/styled like .logs-toolbar select
+   instead, which is the same "one compact dropdown next to a label" pattern already used by the
+   Logs/Config modal. */
+.conf-type-select-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.conf-type-select-row label {
+    font-size: var(--font-size-input);
+    color: var(--text-secondary, var(--text-primary));
+}
+.conf-type-select-row select {
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: var(--font-size-input);
+    width: auto;
+}
+#refresh-modal #agentconf-raw,
+#refresh-modal #templates-config-raw {
     display: block;
     width: 100%;
     box-sizing: border-box;
@@ -4062,6 +4093,26 @@ h1 {
 }
 .rig-status-log-badge:hover {
     background: var(--text-accent);
+    color: var(--surface-app);
+}
+/* Critical/warn beat the default accent color when the worker has a matching status log entry -
+   critical wins over warn if both are present (see updateStatusLogBadgeClass() in app.js). Uses
+   the same theme-editable status colors as .shares-warning/.shares-bad so they move together
+   with theme changes instead of being separately hardcoded. */
+.rig-status-log-badge.has-warn {
+    border-color: var(--status-warning-text);
+    color: var(--status-warning-text);
+}
+.rig-status-log-badge.has-warn:hover {
+    background: var(--status-warning-text);
+    color: var(--surface-app);
+}
+.rig-status-log-badge.has-critical {
+    border-color: var(--status-error-text);
+    color: var(--status-error-text);
+}
+.rig-status-log-badge.has-critical:hover {
+    background: var(--status-error-text);
     color: var(--surface-app);
 }
 .rig-row {
@@ -5577,12 +5628,33 @@ h1 {
 #statuslog-modal .fs-list-panel {
     display: flex;
     flex-direction: column;
+    /* Was a hard-locked 280px (width/min-width/max-width all equal) - now just a starting point.
+       #statuslog-col-resizer (see below) drags this via inline style, and
+       restoreStatuslogListWidth() in app.js applies a saved width on load, so min/max here are
+       guardrails against dragging it absurdly narrow/wide, not a fixed size. */
     width: 280px;
-    min-width: 280px;
-    max-width: 280px;
+    min-width: 180px;
+    max-width: 600px;
     height: 100%;
     gap: 8px;
     flex: none;
+}
+/* Draggable divider between the entry list and the details pane - lets the list column be
+   widened/narrowed independently of the whole dialog (that's what .dialog-resize-handle-right/
+   -corner already cover). Sits inline in the flex row (not absolutely positioned over an edge like
+   those), so it needs its own small fixed width rather than overlaying a parent's border. */
+.statuslog-col-resizer {
+    flex: 0 0 6px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    border-radius: 2px;
+}
+.statuslog-col-resizer:hover,
+.statuslog-col-resizer.dragging {
+    background: var(--text-accent);
+    opacity: 0.35;
 }
 #statuslog-modal .statuslog-rig-select {
     flex: 0 0 auto;
@@ -5677,6 +5749,11 @@ h1 {
     margin-top: 2px;
 }
 #statuslog-modal .fs-editor-panel {
+    /* relative so .dialog-resize-handle-corner below anchors to the textarea's own corner instead
+       of the whole .cmd-dialog's - same reasoning/pattern as #raw-content-modal .raw-content-slot
+       (see its comment above): the dialog's own corner sits below the search row and footer,
+       nowhere near the textarea, which is a confusing place for a "resize this" handle to be. */
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -5684,6 +5761,9 @@ h1 {
     height: 100%;
     min-height: 0;
 }
+/* No offset needed (unlike raw-content-slot's 12px) - .fs-editor-panel has no padding of its own
+   and the textarea already fills it edge-to-edge, so the handle's default right:0/bottom:0 already
+   lands right on the textarea's visible corner. */
 .statuslog-details {
     flex: 1;
     width: 100%;

@@ -1318,6 +1318,31 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] Count error: {e}")
             return {}
+    # Severity isn't its own column - it's a "[GOOD]"/"[WARN]"/"[IMPORTANT]"/"[CRITICAL]" tag
+    # baked into the title text by whatever wrote the event (matches the client-side regex in
+    # renderStatusLogList()). Used to color the per-worker status log badge - critical wins over
+    # warn if a worker has both, matching "worse severity always shows" everywhere else severity
+    # is displayed (statuslog-item-title, wdconfig severity select, etc).
+    def severity_flags_by_rig(self):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT rig,
+                       SUM(CASE WHEN title LIKE '%[CRITICAL]%' THEN 1 ELSE 0 END) as critical_cnt,
+                       SUM(CASE WHEN title LIKE '%[WARN]%' THEN 1 ELSE 0 END) as warn_cnt
+                FROM status_log_events GROUP BY rig
+            ''')
+            result = {}
+            for row in cursor.fetchall():
+                result[row["rig"]] = {
+                    "critical": (row["critical_cnt"] or 0) > 0,
+                    "warn": (row["warn_cnt"] or 0) > 0,
+                }
+            return result
+        except Exception as e:
+            log(f"[StatusLogDB] Severity count error: {e}")
+            return {}
     def get_event(self, event_id):
         try:
             conn = self._get_connection()
@@ -3110,6 +3135,13 @@ def get_status_log_counts():
         return local_status_log_db.count_by_rig()
     except Exception as e:
         log(f"[STATUSLOG COUNTS ERROR] Exception: {e}")
+        return {}
+@router.get("/api/status-log-severity")
+def get_status_log_severity():
+    try:
+        return local_status_log_db.severity_flags_by_rig()
+    except Exception as e:
+        log(f"[STATUSLOG SEVERITY ERROR] Exception: {e}")
         return {}
 @router.get("/api/status-log/{event_id}")
 def get_status_log_entry(event_id: int):

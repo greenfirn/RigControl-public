@@ -359,7 +359,9 @@ const COLOR_SCHEME_MAP = {
     "color-button-send-it-bg": ["--button-send-it-bg"],
     "color-button-send-it-border": ["--button-send-it-border"],
     "color-button-send-it-hover-bg": ["--button-send-it-hover-bg"],
-    "color-wd-toggle-text": ["--wd-toggle-text"],
+    // No separate "color-wd-toggle-text" entry - --wd-toggle-text is aliased in app.css to
+    // --rig-name-watchdog-active-text (var() reference), so editing "WD Active Text" below
+    // keeps the toggle button's active-state text color in sync automatically.
     "color-wd-toggle-bg": ["--wd-toggle-bg"],
     "color-wd-toggle-border": ["--wd-toggle-border"],
     "color-wd-toggle-hover-bg": ["--wd-toggle-hover-bg"],
@@ -3390,6 +3392,7 @@ function initAfterConfig() {
     }
     wsInitialized = true;
     fetchStatusLogCounts();
+    fetchStatusLogSeverity();
     setTimeout(function() {
         initWebSocket();
     }, 500);
@@ -3597,6 +3600,16 @@ function initWebSocket() {
                     const evtRig = msg.status_log_event?.rig;
                     if (evtRig) {
                         statusLogCounts[evtRig] = (statusLogCounts[evtRig] || 0) + 1;
+                        // Same [CRITICAL]/[WARN] title tag regex as renderStatusLogList() - updates
+                        // the badge instantly instead of waiting on the next fetchStatusLogSeverity()
+                        // poll. Only ever flips flags on (matches the DB being append-only here);
+                        // a full refetch after delete/clear is what can turn them back off.
+                        const evtSevMatch = /\[(WARN|CRITICAL)\]/.exec(msg.status_log_event?.title || "");
+                        if (evtSevMatch) {
+                            const sev = statusLogSeverityByRig[evtRig] || (statusLogSeverityByRig[evtRig] = {});
+                            if (evtSevMatch[1] === "CRITICAL") sev.critical = true;
+                            else sev.warn = true;
+                        }
                         queueRender();
                         refreshStatusLogRigSelectIfOpen();
                     }
@@ -4359,6 +4372,7 @@ function render() {
                 ev.stopPropagation();
                 openStatusLogForRig(rigName);
             });
+            updateStatusLogBadgeClass(statusLogBadge, rigName);
             nameEl.appendChild(statusLogBadge);
         }
         const nameTextEl = document.createElement("span");
@@ -12077,6 +12091,7 @@ async function deleteStatusLogEntriesByIds(ids, statusEl) {
         if (details) details.value = "";
         await loadStatusLogList();
         fetchStatusLogCounts();
+        fetchStatusLogSeverity();
     } catch (e) {
         console.error("Error deleting status log entries:", e);
         if (statusEl) statusEl.textContent = "Failed to delete";
@@ -12589,6 +12604,10 @@ function resetModalCollapseState(modalId, buttonId) {
     if (btn) btn.textContent = "Collapse";
 }
 let statusLogCounts = {};
+// Per-rig {critical, warn} flags - not from a DB column, derived server-side from the same
+// "[CRITICAL]"/"[WARN]" title tag the client already parses in renderStatusLogList(). Drives the
+// worker status log badge color (critical beats warn if a worker has both - see updateStatusLogBadgeClass()).
+let statusLogSeverityByRig = {};
 function refreshStatusLogRigSelectIfOpen() {
     if (!document.getElementById("statuslog-modal")?.classList.contains("hidden")) {
         populateStatusLogRigSelect();
@@ -12604,6 +12623,24 @@ async function fetchStatusLogCounts() {
     } catch (e) {
         console.error("Error fetching status log counts:", e);
     }
+}
+async function fetchStatusLogSeverity() {
+    try {
+        const res = await fetch(`${API}/api/status-log-severity`);
+        if (!res.ok) return;
+        statusLogSeverityByRig = await res.json();
+        queueRender();
+    } catch (e) {
+        console.error("Error fetching status log severity:", e);
+    }
+}
+// Applies the right modifier class to an already-built badge element - shared by the main worker
+// list render and the live websocket update path so both stay in sync with the same priority
+// rule (critical > warn > plain).
+function updateStatusLogBadgeClass(badgeEl, rigName) {
+    const sev = statusLogSeverityByRig[rigName];
+    badgeEl.classList.toggle("has-critical", !!sev?.critical);
+    badgeEl.classList.toggle("has-warn", !sev?.critical && !!sev?.warn);
 }
 let lastSyncedStatsRig = null;
 let lastSyncedStatuslogRig = null;
