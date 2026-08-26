@@ -4746,6 +4746,47 @@ h1 {
     height: 240px;
     display: flex;
     flex-direction: column;
+    position: relative;
+}
+.stats-hashrate-tooltip {
+    position: absolute;
+    z-index: 20;
+    pointer-events: none;
+    background: var(--surface-modal-panel);
+    border: 1px solid var(--border-modal);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: var(--font-size-status-bar);
+    color: var(--text-primary);
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.stats-hashrate-tooltip.hidden {
+    display: none;
+}
+.stats-hashrate-tooltip-title {
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.stats-hashrate-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.stats-hashrate-tooltip-miner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 14px;
+    color: var(--text-secondary);
+}
+.stats-hashrate-tooltip-swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex: 0 0 auto;
 }
 .stats-chart-box.stats-chart-wide {
     grid-column: 1 / -1;

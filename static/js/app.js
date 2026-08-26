@@ -2423,7 +2423,18 @@ function closeRawContentModal() {
 function initRawContentTriggers() {
     document.querySelectorAll(".fs-raw-label-clickable").forEach((btn) => {
         btn.addEventListener("click", () => {
-            openRawContentModal(btn.dataset.rawTarget, btn.dataset.rawTitle);
+            const baseTitle = btn.dataset.rawTitle || "Raw Content";
+            let title = baseTitle;
+            // Only Flightsheets actually have a different raw content per category - its
+            // CPU/GPU/AUX service-type tabs are independent configs (see handleFsServiceSwitch()),
+            // so #fs-raw's content genuinely changes with fsCurrentServiceType. Overclock/Watchdog
+            // don't have that per-item structure (their raw content doesn't vary by category), so
+            // appending one to their title would just be misleading - left as plain titles.
+            if (btn.dataset.rawTarget === "fs-raw") {
+                const categoryLabel = { cpu: "CPU", gpu: "GPU", aux: "AUX" }[fsCurrentServiceType];
+                if (categoryLabel) title = `${baseTitle} - ${categoryLabel}`;
+            }
+            openRawContentModal(btn.dataset.rawTarget, title);
         });
     });
     document.getElementById("btn-raw-content-close-x")?.addEventListener("click", closeRawContentModal);
@@ -5199,6 +5210,8 @@ function renderSavedCommandsList() {
             selectedSavedCommandId = c.CommandId;
             document.getElementById("saved-cmd-name").value = c.CommandId;
             document.getElementById("cmd-input").value = c.Value || "";
+            const status = document.getElementById("saved-cmd-status");
+            if (status) status.textContent = `Loaded "${c.CommandId}"`;
         });
         list.appendChild(row);
     }
@@ -9852,6 +9865,8 @@ function selectWalletById(walletId) {
     document.getElementById("wallet-field-notes").value = wallet.Notes || "";
     linkifyWalletNotesOverlay();
     setWalletPoolsSelect(wallet.Pools || []);
+    const status = document.getElementById("wallet-status");
+    if (status) status.textContent = `Loaded "${wallet.WalletId}"`;
 }
 function renderWalletNameSuggestions() {
     const box = document.getElementById("wallet-name-suggestions");
@@ -10017,6 +10032,8 @@ async function saveWalletFromDialog() {
         const walletId = computeWalletIdForSave(rawName, coin);
         await saveWallet(walletId, entries);
         loadWallets();
+        const status = document.getElementById("wallet-status");
+        if (status) status.textContent = `Saved "${walletId}"`;
     } catch (err) {
         alert(`Error saving wallet: ${err.message}`);
     }
@@ -10028,6 +10045,8 @@ function newWallet() {
     selectedWalletId = null;
     document.getElementById("wallet-name").value = "";
     clearWalletFields();
+    const status = document.getElementById("wallet-status");
+    if (status) status.textContent = "";
 }
 async function deleteWallet() {
     if (!selectedWalletId) {
@@ -10038,6 +10057,7 @@ async function deleteWallet() {
         return;
     }
     try {
+        const deletedId = selectedWalletId;
         const res = await fetch(
             `${API}/api/wallets/${encodeURIComponent(selectedWalletId)}`,
             { method: "DELETE" }
@@ -10047,6 +10067,8 @@ async function deleteWallet() {
         document.getElementById("wallet-name").value = "";
         clearWalletFields();
         selectedWalletId = null;
+        const status = document.getElementById("wallet-status");
+        if (status) status.textContent = `Deleted "${deletedId}"`;
     } catch (err) {
         alert(err.message);
     }
@@ -10055,6 +10077,8 @@ function openWalletsModal() {
     closeCmdModal();
     switchViewTab("wallets");
     loadWallets();
+    const status = document.getElementById("wallet-status");
+    if (status) status.textContent = "";
 }
 function populateWdAlgoSuggestions() {
     const algoNames = new Set();
@@ -12287,7 +12311,7 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
     }
     const names = Object.keys(seriesMap);
     if (names.length === 0) return;
-    const { axisForName, y1Label, dashForName } = opts || {};
+    const { axisForName, y1Label, dashForName, externalTooltip } = opts || {};
     const datasets = names.map((name, i) => ({
         label: name,
         data: seriesMap[name],
@@ -12324,6 +12348,12 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
             grid: { drawOnChartArea: false }
         };
     }
+    // externalTooltip (if provided) fully replaces the default box tooltip with our own
+    // absolutely-positioned div - used by the hashrate chart to list which miner(s) produced
+    // each algo's total, since the default tooltip can only show one flat "label: value" line.
+    const tooltipPlugin = externalTooltip
+        ? { enabled: false, external: externalTooltip }
+        : undefined;
     statsCharts[canvasId] = new Chart(canvas.getContext("2d"), {
         type: "line",
         data: { labels, datasets },
@@ -12334,10 +12364,45 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
             interaction: { mode: "nearest", axis: "x", intersect: false },
             scales,
             plugins: {
-                legend: { display: names.length > 1, labels: { color: "#c9d1d9", boxWidth: 12 } }
+                legend: { display: names.length > 1, labels: { color: "#c9d1d9", boxWidth: 12 } },
+                ...(tooltipPlugin ? { tooltip: tooltipPlugin } : {})
             }
         }
     });
+}
+// Renders the custom hover box for the Hashrate chart, showing which miner(s) produced each
+// algo's total hashrate at that point in time - the default Chart.js tooltip only has room for
+// "algoName: value" and can't show a per-contributor breakdown, so this replaces it entirely via
+// the `external` tooltip hook. `contributors` is keyed [algoName][dataIndex] -> [{minerName, hs}].
+function buildHashrateTooltipHandler(contributors) {
+    return (context) => {
+        const { chart, tooltip } = context;
+        const el = document.getElementById("stats-hashrate-tooltip");
+        if (!el) return;
+        if (!tooltip || tooltip.opacity === 0 || !(tooltip.dataPoints || []).length) {
+            el.classList.add("hidden");
+            return;
+        }
+        let html = `<div class="stats-hashrate-tooltip-title">${escapeHtml(tooltip.title?.[0] || "")}</div>`;
+        tooltip.dataPoints.forEach((dp) => {
+            const algoName = dp.dataset.label;
+            const color = dp.dataset.borderColor;
+            html += `<div class="stats-hashrate-tooltip-row"><span class="stats-hashrate-tooltip-swatch" style="background:${color}"></span>${escapeHtml(algoName)}: ${escapeHtml(dp.formattedValue)}</div>`;
+            const miners = (contributors[algoName] && contributors[algoName][dp.dataIndex]) || [];
+            miners.forEach((m) => {
+                const mColor = stableColorForName(m.minerName);
+                html += `<div class="stats-hashrate-tooltip-miner"><span class="stats-hashrate-tooltip-swatch" style="background:${mColor}"></span>${escapeHtml(m.minerName)}</div>`;
+            });
+        });
+        el.innerHTML = html;
+        el.classList.remove("hidden");
+        const box = chart.canvas.parentElement;
+        const boxWidth = box ? box.clientWidth : chart.width;
+        const flip = tooltip.caretX > boxWidth / 2;
+        el.style.left = flip ? "" : `${chart.canvas.offsetLeft + tooltip.caretX + 10}px`;
+        el.style.right = flip ? `${boxWidth - (chart.canvas.offsetLeft + tooltip.caretX) + 10}px` : "";
+        el.style.top = `${chart.canvas.offsetTop + tooltip.caretY}px`;
+    };
 }
 function mostRecentStatsAlgoName(entries) {
     for (let i = (entries || []).length - 1; i >= 0; i--) {
@@ -12486,7 +12551,24 @@ function renderStatsCharts(resp) {
         });
         return out;
     });
-    renderStatsChart("stats-chart-hashrate", hashrate.labels, hashrate.seriesMap, hashrateUnit.unit, stableColorForName);
+    // Tracks which miner(s) contributed to each algo's total at each point in time, so hovering
+    // the hashrate chart can show which miner software was actually producing that hashrate -
+    // buildLabelsAndSeries()'s extractFn shape only returns numbers, not enough to carry this too.
+    const hashrateMiners = {};
+    entries.forEach((entry, i) => {
+        (DataHelper.getAllAlgorithms(entry.data) || []).forEach((algo) => {
+            const algoName = DataHelper.getAlgorithmName(algo);
+            if (algoFilter !== "all" && algoName !== algoFilter) return;
+            const hr = DataHelper.getTotalHashrateHS(algo);
+            if (hr <= 0) return;
+            if (!hashrateMiners[algoName]) hashrateMiners[algoName] = {};
+            if (!hashrateMiners[algoName][i]) hashrateMiners[algoName][i] = [];
+            hashrateMiners[algoName][i].push({ minerName: algo.minerName || "unknown" });
+        });
+    });
+    renderStatsChart("stats-chart-hashrate", hashrate.labels, hashrate.seriesMap, hashrateUnit.unit, stableColorForName, {
+        externalTooltip: buildHashrateTooltipHandler(hashrateMiners)
+    });
 }
 function openUnlockModal() {
     if (!viewOnlyMode) return;

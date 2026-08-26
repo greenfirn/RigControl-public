@@ -1361,6 +1361,7 @@
                 <span class="cmd-target">
                     (<span id="cmd-target-count">0</span> workers)
                 </span>
+                <span id="saved-cmd-status" class="wdconfig-status wdconfig-status-top"></span>
                 <button type="button" class="cmd-header-close" id="btn-close-cmd-modal" title="Close">&#10005;</button>
             </div>
             <textarea
@@ -1384,7 +1385,6 @@ nvidia-smi
                     placeholder="Search..."
                     autocomplete="off"
                 />
-                <span id="saved-cmd-status" class="wdconfig-status"></span>
                 <div class="field-group saved-cmd-name-group">
                     <label for="saved-cmd-name">Name</label>
                     <input
@@ -1513,6 +1513,7 @@ nvidia-smi
                     <div class="stats-chart-box stats-chart-wide">
                         <div class="stats-chart-title">Hashrate</div>
                         <canvas id="stats-chart-hashrate"></canvas>
+                        <div id="stats-hashrate-tooltip" class="stats-hashrate-tooltip hidden"></div>
                     </div>
                     <div class="stats-chart-box">
                         <div class="stats-chart-title">GPU Core Clock (MHz)</div>
@@ -1565,6 +1566,10 @@ nvidia-smi
     <div class="view-tab-panel hidden" id="wallet-modal" data-tab-panel="wallets">
         <div class="cmd-dialog">
             <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">Wallets</span>
+                <span id="wallet-status" class="wdconfig-status wdconfig-status-top"></span>
+            </div>
             <div class="cmd-body">
                 <div class="fs-editor-panel">
                     <div class="fs-fields-panel" id="wallet-fields-panel">
@@ -2049,6 +2054,10 @@ nvidia-smi
     <div class="view-tab-panel hidden" id="backups-modal" data-tab-panel="backups">
         <div class="cmd-dialog">
             <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
+            <div class="cmd-header">
+                <span class="cmd-target">Backups</span>
+                <span id="backups-status" class="wdconfig-status wdconfig-status-top"></span>
+            </div>
             <div class="cmd-body backups-body">
                 <div class="backups-top-row">
                     <div class="backups-list-panel">
@@ -2095,7 +2104,6 @@ nvidia-smi
                         <div class="input-help backups-accesskeys-hint">Create an AWS IAM user with DynamoDB read/write/execute access, export its accessKeys.csv, then import it here.</div>
                     </div>
                 </div>
-                <span id="backups-status" class="wdconfig-status"></span>
                 <div class="backups-vsizer" id="backups-vsizer" title="Drag to resize the preview area"></div>
                 <div class="backups-preview-panel" id="backups-preview-panel">
                     <div id="backups-preview-list" class="fs-list backups-preview-list"></div>
