@@ -4517,6 +4517,11 @@ h1 {
 .gpu-table tr:last-child td {
     border-bottom: none;
 }
+.gpu-shares-aggregate-note {
+    padding: 6px 10px;
+    font-size: var(--font-size-main-list-table-header);
+    color: var(--text-muted);
+}
 .gpu-name-cell {
     color: var(--text-secondary);
 }

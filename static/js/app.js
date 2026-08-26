@@ -18,18 +18,61 @@ const TEMPLATES_CONFIG = {
             "sudo systemctl restart docker_events_aux",
     },
     overclocking: {
-        apply_script_template:
-            "sudo tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n" +
+        // These 4 keys mirror static/config/templates.json's "overclocking" section exactly (kept
+        // in sync by hand) - they're the fallback used only if that file's fetch fails below, so
+        // buildOcScriptFromRows() never reads an undefined key and silently breaks OC raw generation.
+        apply_script_header:
+            "tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n" +
             "#!/bin/bash\n" +
-            "echo \"Setting OC's for...\"\n" +
-            "py-nvtool --setcore %Lock Core Clock% --setcoreoffset %Core Clock Offset% " +
-            "--setmem %Lock Memory Clock% --setmemoffset %Memory Clock Offset% " +
-            "--setpl %Power Limit%%Fan Args%\n" +
+            "# gpu_apply_ocs.sh <algo_name> / <custom miner name>\n" +
+            "# Generated from the dashboard's Overclock module - edit there, not by hand.\n" +
+            "# Note: a row's Algorithm field can list multiple comma-separated algo names\n" +
+            "# (e.g. keryxhash,keryx-miner,keryx-minerx) - they're combined into one case\n" +
+            "# pattern below, joined by '|', so they all share this row's OC settings.\n" +
+            "\n" +
+            "ALGO=\"${1:-}\"\n" +
+            "if [[ -z \"$ALGO\" ]]; then\n" +
+            "    echo \"Usage: $0 <algo_name>\"\n" +
+            "    exit 1\n" +
+            "fi\n" +
+            "\n" +
+            "ALGO_LOWER=$(echo \"$ALGO\" | tr '[:upper:]' '[:lower:]')\n" +
+            "\n" +
+            "case \"$ALGO_LOWER\" in\n",
+        apply_script_algo_block:
+            "    %ALGO%)\n" +
+            "        CORE=%Lock Core Clock%\n" +
+            "        CORE_OFFSET=%Core Clock Offset%\n" +
+            "        MEM=%Lock Memory Clock%\n" +
+            "        MEM_OFFSET=%Memory Clock Offset%\n" +
+            "        POWER_LIMIT=%Power Limit%\n" +
+            "        FAN_MODE=\"%Fan Mode%\"\n" +
+            "        FAN_VALUE=\"%Fan Value%\"\n" +
+            "        ;;\n",
+        apply_script_footer:
+            "    *)\n" +
+            "        echo \"No OC profile defined for algo '$ALGO' - add a row for it in the dashboard's Overclock module\"\n" +
+            "        exit 1\n" +
+            "        ;;\n" +
+            "esac\n" +
+            "\n" +
+            "echo \"Setting GPU OC for algo '$ALGO': core=$CORE (+$CORE_OFFSET) mem=$MEM (+$MEM_OFFSET) power_limit=$POWER_LIMIT fan=$FAN_MODE:$FAN_VALUE\"\n" +
+            "CMD=(py-nvtool --setcore \"$CORE\" --setcoreoffset \"$CORE_OFFSET\" --setmem \"$MEM\" --setmemoffset \"$MEM_OFFSET\")\n" +
+            "if [[ -n \"$POWER_LIMIT\" && \"$POWER_LIMIT\" != \"0\" ]]; then\n" +
+            "    CMD+=(--setpl \"$POWER_LIMIT\")\n" +
+            "fi\n" +
+            "if [[ \"$FAN_MODE\" == \"percent\" ]]; then\n" +
+            "    CMD+=(--setfan \"$FAN_VALUE\")\n" +
+            "fi\n" +
+            "\"${CMD[@]}\"\n" +
+            "\n" +
+            "if [[ \"$FAN_MODE\" == \"curve\" ]]; then\n" +
+            "    :\n" +
+            "%FAN_CURVE_BLOCK%fi\n" +
             "EOF\n" +
-            "sudo chmod +x /usr/local/bin/gpu_apply_ocs.sh\n" +
-            "sudo /usr/local/bin/gpu_apply_ocs.sh",
+            "sudo chmod +x /usr/local/bin/gpu_apply_ocs.sh",
         fan_curve_service_template:
-            "sudo tee /etc/systemd/system/fan-curve.service > /dev/null << 'EOF'\n" +
+            "    tee /etc/systemd/system/fan-curve.service > /dev/null <<FCEOF\n" +
             "[Unit]\n" +
             "Description=NVIDIA Fan Curve Controller (NVML, no Xorg/Coolbits required)\n" +
             "After=multi-user.target nvidia-persistenced.service\n" +
@@ -47,14 +90,14 @@ const TEMPLATES_CONFIG = {
             "ExecStart=/usr/bin/python3 /usr/local/bin/fan_curve.py \\\n" +
             "    --interval 2 --hysteresis 2 \\\n" +
             "    --cooldown-delta 10 --cooldown-seconds 15 \\\n" +
-            "    --curve \"%FAN Curve%\"\n" +
+            "    --curve \"$FAN_VALUE\"\n" +
             "Restart=always\n" +
             "RestartSec=5\n" +
             "[Install]\n" +
             "WantedBy=multi-user.target\n" +
-            "EOF\n" +
-            "sudo systemctl daemon-reload\n" +
-            "sudo systemctl restart fan-curve.service",
+            "FCEOF\n" +
+            "    sudo systemctl daemon-reload\n" +
+            "    sudo systemctl restart fan-curve.service\n",
     },
     watchdog: {
         conf_dir: "/etc/rigcontrol",
@@ -4265,6 +4308,25 @@ function render() {
                     </tr>`;
             });
             gpuPaneHtml += `</tbody></table>`;
+            // Some miners (e.g. keryx-miner-supr) only ever report accepted/rejected shares in
+            // AGGREGATE, never broken out per device - on a multi-GPU rig every row above then has
+            // no per-GPU number to show (gpuAcceptedMap/gpuRejectedMap stay empty), which used to
+            // just look like "shares reporting is broken" for that miner rather than "this miner's
+            // API doesn't support per-GPU attribution". If NO GPU got a per-device number but the
+            // miner-level total is non-zero, show that total once instead of leaving every row blank.
+            if (Object.keys(gpuAcceptedMap).length === 0 && Object.keys(gpuRejectedMap).length === 0) {
+                let totalAccepted = 0, totalRejected = 0, haveTotal = false;
+                DataHelper.getAllAlgorithms(d).forEach(algo => {
+                    totalAccepted += DataHelper.getAcceptedShares(algo);
+                    totalRejected += DataHelper.getRejectedShares(algo);
+                    haveTotal = true;
+                });
+                if (haveTotal && (totalAccepted > 0 || totalRejected > 0)) {
+                    const totalStr = fmtShares(totalAccepted, totalRejected);
+                    const totalClass = DataHelper.getFormattedShares(totalAccepted, totalRejected).class;
+                    gpuPaneHtml += `<div class="gpu-shares-aggregate-note">Shares (aggregate, not reported per-GPU by this miner): <span class="${totalClass}">${totalStr}</span></div>`;
+                }
+            }
         }
         const gpuPaneSection = gpuPaneHtml
             ? `<div class="pop-gpus">${gpuPaneHtml}</div>`
@@ -7664,7 +7726,7 @@ function fsApplyVersionBlock(blockText, version, minerName) {
         `if sudo grep -q '^${key} ' /etc/rigcontrol/miner.conf; then\n` +
         `    sudo sed -i 's/^${key} .*/${sedReplacement}/' /etc/rigcontrol/miner.conf\n` +
         "else\n" +
-        `    echo '${line}' | sudo tee -a /etc/rigcontrol/miner.conf > /dev/null\n` +
+        `    echo '${line}' | tee -a /etc/rigcontrol/miner.conf > /dev/null\n` +
         "fi";
     return `${confBlock}\n${blockText}`;
 }
@@ -8890,7 +8952,7 @@ function clearOcApplyToSelection() {
 }
 // Overclock raw content is a plain shell script (heredoc), not JSON like flightsheets, so "apply to"
 // has nowhere structured to live - it's persisted as a leading "# APPLY_TO=..." comment line placed
-// BEFORE the "sudo tee ... <<'EOF'" line, so it never ends up inside the installed gpu_apply_ocs.sh
+// BEFORE the "tee ... <<'EOF'" line, so it never ends up inside the installed gpu_apply_ocs.sh
 // file on the rig and is a no-op if it's ever sent as-is (bash ignores comment lines).
 function getOcApplyToFromScript(scriptText) {
     const m = (scriptText || "").match(/^# APPLY_TO=(.*)$/m);
@@ -10878,12 +10940,14 @@ function buildWdConfigCommand() {
         alert("Add at least one algorithm row before applying, or uncheck \"Enable Mining Watchdog\" on the Mining tab if you only want the Log Watcher.");
         return null;
     }
-    rebuildWdRawFromSettings();
+    // No rebuild here on purpose - the raw box already reflects every field change (each row/checkbox
+    // handler calls rebuildWdRawFromSettings() itself), so what's sent is exactly what's on screen,
+    // including any direct manual edit to the raw box that a forced rebuild would otherwise clobber.
     const fileContent = document.getElementById("wdconfig-raw").value;
     const heredocTag = "RIGCONTROL_WATCHDOG_CONF_EOF";
     return (
         `sudo mkdir -p ${TEMPLATES_CONFIG.watchdog.conf_dir}\n` +
-        `sudo tee ${TEMPLATES_CONFIG.watchdog.conf_path} > /dev/null <<'${heredocTag}'\n` +
+        `tee ${TEMPLATES_CONFIG.watchdog.conf_path} > /dev/null <<'${heredocTag}'\n` +
         fileContent +
         (fileContent.endsWith("\n") ? "" : "\n") +
         `${heredocTag}`
@@ -10975,7 +11039,7 @@ function buildAgentConfCommand() {
     const heredocTag = "RIGCONTROL_AGENT_CONF_EOF";
     let command =
         `sudo mkdir -p ${TEMPLATES_CONFIG.agentconf.conf_dir}\n` +
-        `sudo tee ${TEMPLATES_CONFIG.agentconf.conf_path} > /dev/null <<'${heredocTag}'\n` +
+        `tee ${TEMPLATES_CONFIG.agentconf.conf_path} > /dev/null <<'${heredocTag}'\n` +
         fileContent +
         (fileContent.endsWith("\n") ? "" : "\n") +
         `${heredocTag}`;

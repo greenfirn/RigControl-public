@@ -32,6 +32,42 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
 def log(msg):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[RigControl] {timestamp} {msg}", flush=True)
+def _fmt_hashrate_hs(hs):
+    """H/s -> a short auto-scaled string (kH/s, MH/s, GH/s, TH/s) for the log line - mirrors the
+    dashboard's fmtRateHs() scaling, just without the DOM/formatting concerns that function has."""
+    try:
+        hs = float(hs or 0)
+    except (TypeError, ValueError):
+        return "0 H/s"
+    if hs <= 0:
+        return "0 H/s"
+    for unit, div in (("TH/s", 1e12), ("GH/s", 1e9), ("MH/s", 1e6), ("kH/s", 1e3)):
+        if hs >= div:
+            return f"{hs / div:.2f} {unit}"
+    return f"{hs:.0f} H/s"
+def log_miner_summary(payload):
+    """Logs one line per detected+active miner - name, hashrate, and accepted/rejected shares -
+    right after a telemetry push, so "is the miner actually being detected/read correctly" is
+    answerable from the Windows console/service log alone, without needing to inspect the MQTT
+    payload or open the dashboard. Pulled straight from the same miner_<name> entries (built by
+    _build_miner_result() in rigcontrol_telemetry.py) the dashboard itself reads, so this can
+    never show something different than what actually got sent."""
+    detected = payload.get("detected_miners") or []
+    if not detected:
+        log("[Telemetry] No miner process detected")
+        return
+    for name in detected:
+        miner = payload.get(f"miner_{name}")
+        if not isinstance(miner, dict):
+            continue
+        if miner.get("status") != "ok":
+            log(f"[Telemetry] {name}: {miner.get('status', 'unknown')} - {miner.get('error', '')}".rstrip(" -"))
+            continue
+        display_name = miner.get("miner") or name
+        hashrate_str = _fmt_hashrate_hs(miner.get("total_hashrate_hs"))
+        accepted = miner.get("total_accepted_shares") or 0
+        rejected = miner.get("total_rejected_shares") or 0
+        log(f"[Telemetry] {display_name} detected - hashrate {hashrate_str}, shares {accepted} accepted / {rejected} rejected")
 # CONFIG - load
 def load_broker_config():
     """Load configuration from rigcontrol_agent.conf"""
@@ -341,6 +377,7 @@ def publish_status(reason="request"):
             result = mqtt_client.publish(STATUS_TOPIC, json.dumps(payload))
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 log(f"Telemetry sent ({reason})")
+                log_miner_summary(payload)
             else:
                 log(f"Failed to publish status: MQTT error {result.rc}")
         except Exception as e:
