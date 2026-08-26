@@ -3494,6 +3494,40 @@ function fmtUptime(sec) {
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
 }
+// Every save/load/delete/clear/etc title-bar status span (Wallets, Flightsheets, Overclock,
+// Watchdog, Send Cmd, Backups, Status Log, Logs, Settings' Conf/Templates/General tabs) should
+// show a local-time timestamp after its message. Rather than touching every one of the 70+
+// call sites that do `someStatusEl.textContent = "..."` throughout the file, redefine
+// `.textContent` on just these elements so any assignment - existing or future - automatically
+// gets " H:MM:SS AM/PM" appended for you. The getter still returns exactly what's on screen
+// (timestamp included), so nothing reading it back sees anything unexpected.
+const STATUS_TIMESTAMP_IDS = [
+    "fs-status", "oc-status", "wdconfig-status", "wallet-status",
+    "saved-cmd-status", "backups-status", "logs-status", "statuslog-status",
+    "agentconf-status", "templates-config-status", "general-settings-status",
+];
+const NATIVE_TEXT_CONTENT_DESC = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+function initStatusTimestamps() {
+    STATUS_TIMESTAMP_IDS.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.tsWired) return;
+        el.dataset.tsWired = "1";
+        Object.defineProperty(el, "textContent", {
+            configurable: true,
+            get() {
+                return NATIVE_TEXT_CONTENT_DESC.get.call(this);
+            },
+            set(value) {
+                const raw = value || "";
+                if (!raw) {
+                    NATIVE_TEXT_CONTENT_DESC.set.call(this, "");
+                    return;
+                }
+                NATIVE_TEXT_CONTENT_DESC.set.call(this, `${raw} ${new Date().toLocaleTimeString()}`);
+            }
+        });
+    });
+}
 function escapeHtml(str) {
     return String(str)
         .replace(/&/g, "&amp;")
@@ -12924,6 +12958,7 @@ function syncOpenModulesToSelection() {
     }
 }
 document.addEventListener("DOMContentLoaded", async () => {
+    initStatusTimestamps();
     setupHeaderBarHeightSync();
     setupActionOutputWidthSync();
     setupWorkerListWidthSync();
