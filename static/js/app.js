@@ -3586,9 +3586,13 @@ function handleCommandResponse(response) {
         pendingWdConfigFetchRig = null;
         const statusEl = document.getElementById("wdconfig-status");
         if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
+            // r.stdout here is the literal `cat` output of the conf file on the rig - i.e. the bare
+            // body, no wrapper - so wrap it the same way rebuildWdRawFromSettings() does before
+            // displaying it, to keep "loaded from rig" and "rebuilt from fields" showing the same
+            // full-command shape instead of one being wrapped and the other not.
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("wdconfig-raw");
-            if (rawEl) rawEl.value = raw;
+            if (rawEl) rawEl.value = wrapWdConfigCommand(raw);
             populateWdSettingsFromRaw(raw);
             autoResizeWdRaw();
             if (statusEl) statusEl.textContent = `Loaded current config from ${r.rig}`;
@@ -9903,11 +9907,10 @@ function renderWdAlgoSuggestions(inputEl) {
     });
     box.classList.remove("hidden");
 }
-// Watchdog "Apply to", like Overclocking, is persisted as a leading "# APPLY_TO=..." comment
-// line in wdconfig-raw. Unlike Overclocking's raw shell script, this raw text IS teed verbatim
-// into the actual /etc/.../rigcontrol_watchdog.conf on the rig - but _load_kv_conf() (and every
-// other watchdog conf parser) explicitly skips any line starting with "#", so the marker is a
-// safe no-op there. It round-trips through save/load and drives cmdModalRigOverride at send time.
+// Watchdog "Apply to", same as Overclocking, is persisted as a leading "# APPLY_TO=..." comment
+// line in wdconfig-raw, placed BEFORE the "tee ... <<'EOF'" line (see wrapWdConfigCommand()) so it
+// never ends up inside the conf file actually written on the rig. It round-trips through
+// save/load and drives cmdModalRigOverride at send time.
 let wdApplyToRigs = new Set();
 function isWdApplyToDropdownOpen() {
     const list = document.getElementById("wd-apply-to-list");
@@ -10527,10 +10530,20 @@ function loadSelectedWatchdogProfile() {
         if (status) status.textContent = "Selected profile no longer exists";
         return;
     }
+    // Profiles saved before the raw box showed the full mkdir/tee/EOF command have a bare body
+    // stored (optionally with a leading "# APPLY_TO=..." line) - strip that comment, re-wrap the
+    // body, then re-add the comment outside the wrapper, so an old profile displays the same full
+    // command shape as a freshly-built one instead of showing stale, un-wrapped content forever.
+    const storedValue = p.Value || "";
+    const bare = stripWdApplyToComment(storedValue);
     document.getElementById("wdconfig-name").value = p.WatchdogProfileId;
-    document.getElementById("wdconfig-raw").value = p.Value || "";
-    setWdApplyToRigs(getWdApplyToFromScript(p.Value || ""));
-    populateWdSettingsFromRaw(p.Value || "");
+    setWdApplyToRigs(getWdApplyToFromScript(storedValue));
+    let wrapped = wrapWdConfigCommand(bare);
+    if (wdApplyToRigs.size > 0) {
+        wrapped = `# APPLY_TO=${Array.from(wdApplyToRigs).join(",")}\n${wrapped}`;
+    }
+    document.getElementById("wdconfig-raw").value = wrapped;
+    populateWdSettingsFromRaw(bare);
     resetWdTabBodyHeight();
     setWdConfigTab("raw");
     if (status) status.textContent = `Loaded "${p.WatchdogProfileId}"`;
@@ -10745,8 +10758,29 @@ function buildWdConfigRawFromSettings() {
     }
     return lines.join("\n").replace(/\n+$/, "\n");
 }
+// Wraps the bare rigcontrol-watchdog.conf body in the actual mkdir/tee/heredoc command that gets
+// sent - matching Overclocking/Flightsheets, whose raw boxes already show the full command rather
+// than just the file body. Kept as its own function since 3 different places need to produce this
+// same wrapped text: a fresh rebuild from the row/settings fields, a profile loaded from storage,
+// and a live conf pulled from a rig via "cat".
+function wrapWdConfigCommand(bareContent) {
+    const heredocTag = "RIGCONTROL_WATCHDOG_CONF_EOF";
+    return (
+        `sudo mkdir -p ${TEMPLATES_CONFIG.watchdog.conf_dir}\n` +
+        `tee ${TEMPLATES_CONFIG.watchdog.conf_path} > /dev/null <<'${heredocTag}'\n` +
+        bareContent +
+        (bareContent.endsWith("\n") ? "" : "\n") +
+        heredocTag
+    );
+}
+// Strips a leading "# APPLY_TO=..." line, if present, so it can be re-added OUTSIDE the tee
+// heredoc instead of inside it - see the wdApplyToRigs comment above for why that placement matters.
+function stripWdApplyToComment(text) {
+    return (text || "").replace(/^# APPLY_TO=.*\n?/, "");
+}
 function rebuildWdRawFromSettings() {
-    let raw = buildWdConfigRawFromSettings();
+    const bare = buildWdConfigRawFromSettings();
+    let raw = wrapWdConfigCommand(bare);
     if (wdApplyToRigs.size > 0) {
         raw = `# APPLY_TO=${Array.from(wdApplyToRigs).join(",")}\n${raw}`;
     }
@@ -10940,18 +10974,12 @@ function buildWdConfigCommand() {
         alert("Add at least one algorithm row before applying, or uncheck \"Enable Mining Watchdog\" on the Mining tab if you only want the Log Watcher.");
         return null;
     }
-    // No rebuild here on purpose - the raw box already reflects every field change (each row/checkbox
-    // handler calls rebuildWdRawFromSettings() itself), so what's sent is exactly what's on screen,
-    // including any direct manual edit to the raw box that a forced rebuild would otherwise clobber.
-    const fileContent = document.getElementById("wdconfig-raw").value;
-    const heredocTag = "RIGCONTROL_WATCHDOG_CONF_EOF";
-    return (
-        `sudo mkdir -p ${TEMPLATES_CONFIG.watchdog.conf_dir}\n` +
-        `tee ${TEMPLATES_CONFIG.watchdog.conf_path} > /dev/null <<'${heredocTag}'\n` +
-        fileContent +
-        (fileContent.endsWith("\n") ? "" : "\n") +
-        `${heredocTag}`
-    );
+    // No rebuild and no re-wrapping here on purpose - the raw box already holds the FULL command
+    // (mkdir + tee heredoc-wrapped conf body + closing tag, via rebuildWdRawFromSettings()'s call to
+    // wrapWdConfigCommand()) and already reflects every field change (each row/checkbox handler calls
+    // rebuildWdRawFromSettings() itself), so what's sent is exactly what's on screen, including any
+    // direct manual edit to the raw box that a forced rebuild would otherwise clobber.
+    return document.getElementById("wdconfig-raw").value;
 }
 function sendItWd() {
     if (selectedRigs.size === 0 && wdApplyToRigs.size === 0) {
