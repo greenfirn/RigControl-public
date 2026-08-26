@@ -18,9 +18,11 @@ const TEMPLATES_CONFIG = {
             "sudo systemctl restart docker_events_aux",
     },
     overclocking: {
-        // These 4 keys mirror static/config/templates.json's "overclocking" section exactly (kept
+        // These 3 keys mirror static/config/templates.json's "overclocking" section exactly (kept
         // in sync by hand) - they're the fallback used only if that file's fetch fails below, so
         // buildOcScriptFromRows() never reads an undefined key and silently breaks OC raw generation.
+        // fan-curve.service itself is intentionally NOT one of these keys - it's installed once,
+        // separately, via Fan-control/py-nvtool/install_fan-curve.sh (see apply_script_footer below).
         apply_script_header:
             "tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n" +
             "#!/bin/bash\n" +
@@ -66,41 +68,27 @@ const TEMPLATES_CONFIG = {
             "fi\n" +
             "\"${CMD[@]}\"\n" +
             "\n" +
+            "\n" +
+            // fan-curve.service is installed ONCE, separately (Fan-control/py-nvtool/install_fan-curve.sh) -
+            // this only ever updates its --curve value in place, and only restarts the already-running
+            // daemon when that value actually changed, instead of rewriting/bouncing the whole service on
+            // every single miner (re)start regardless of whether the curve differs from before.
             "if [[ \"$FAN_MODE\" == \"curve\" ]]; then\n" +
-            // No hardcoded ":" here - buildOcScriptFromRows() supplies "    :\n" for %FAN_CURVE_BLOCK%
-            // only when nothing else uses curve mode (bash won't allow an empty then/fi body); when
-            // curve mode IS used, this substitutes the real fan-curve-service block instead, so
-            // there's no leftover dangling ":" line cluttering the output.
-            "%FAN_CURVE_BLOCK%fi\n" +
+            "    FAN_SVC=/etc/systemd/system/fan-curve.service\n" +
+            "    if [[ -f \"$FAN_SVC\" ]]; then\n" +
+            "        CURRENT_CURVE=$(sed -n 's/.*--curve \"\\([^\"]*\\)\".*/\\1/p' \"$FAN_SVC\")\n" +
+            "        if [[ \"$CURRENT_CURVE\" != \"$FAN_VALUE\" ]]; then\n" +
+            "            echo \"Fan curve changed - updating fan-curve.service and restarting it...\"\n" +
+            "            sed -i \"s|--curve \\\"[^\\\"]*\\\"|--curve \\\"$FAN_VALUE\\\"|\" \"$FAN_SVC\"\n" +
+            "            systemctl daemon-reload\n" +
+            "            systemctl restart fan-curve.service\n" +
+            "        fi\n" +
+            "    else\n" +
+            "        echo \"WARNING: fan-curve.service is not installed - run Fan-control/py-nvtool/install_fan-curve.sh once to set it up, then re-apply OC\"\n" +
+            "    fi\n" +
+            "fi\n" +
             "EOF\n" +
             "sudo chmod +x /usr/local/bin/gpu_apply_ocs.sh",
-        fan_curve_service_template:
-            "    tee /etc/systemd/system/fan-curve.service > /dev/null <<FCEOF\n" +
-            "[Unit]\n" +
-            "Description=NVIDIA Fan Curve Controller (NVML, no Xorg/Coolbits required)\n" +
-            "After=multi-user.target nvidia-persistenced.service\n" +
-            "Wants=nvidia-persistenced.service\n" +
-            "StartLimitIntervalSec=0\n" +
-            "[Service]\n" +
-            "Type=notify\n" +
-            "NotifyAccess=main\n" +
-            "User=root\n" +
-            "Environment=PYTHONUNBUFFERED=1\n" +
-            "TimeoutStartSec=30\n" +
-            "WatchdogSec=15\n" +
-            "WatchdogSignal=SIGTERM\n" +
-            "ExecStartPre=/bin/bash -c 'sleep 3'\n" +
-            "ExecStart=/usr/bin/python3 /usr/local/bin/fan_curve.py \\\n" +
-            "    --interval 2 --hysteresis 2 \\\n" +
-            "    --cooldown-delta 10 --cooldown-seconds 15 \\\n" +
-            "    --curve \"$FAN_VALUE\"\n" +
-            "Restart=always\n" +
-            "RestartSec=5\n" +
-            "[Install]\n" +
-            "WantedBy=multi-user.target\n" +
-            "FCEOF\n" +
-            "    sudo systemctl daemon-reload\n" +
-            "    sudo systemctl restart fan-curve.service\n",
     },
     watchdog: {
         conf_dir: "/etc/rigcontrol",
@@ -111,10 +99,57 @@ const TEMPLATES_CONFIG = {
         conf_path: "/etc/rigcontrol/rigcontrol-agent.conf",
         restart_command: "sudo systemctl restart rigcontrol-agent.service",
     },
+    // Lookup tables used by the Flightsheets auto-fill (pool short-name / coin ticker) - see
+    // deriveCoinForClipboard()/derivePoolSlugForClipboard() below. Editing these in templates.json
+    // (instead of here) lets new algo->coin mappings, pool hints, etc. be added without an app.js
+    // redeploy. Each key here is a FULL replacement if present in templates.json, not a per-entry
+    // merge - so an edit there should include the whole map, not just the new entries.
+    flightsheet_derivation: {
+        algo_to_coin: {
+            autolykos2: "ERG",
+            btx: "BTX",
+            dynex: "DNX",
+            keryxhash: "KRX",
+            pearlhash: "PRL",
+            qhash: "QTC",
+            qubic: "QUBIC",
+            verushash: "VRSC",
+            warthog: "WART",
+            xelishashv3: "XEL",
+        },
+        pool_coin_hints: [
+            ["xmr", "XMR"],
+            ["zephyr", "ZEPH"],
+            ["tari", "XTM"],
+            ["xtm", "XTM"],
+            ["quai", "QUAI"],
+            ["ergo", "ERG"],
+            ["warthog", "WART"],
+            ["xelis", "XEL"],
+            ["qtc", "QTC"],
+            ["pearl", "PRL"],
+            ["etica", "ETI"],
+        ],
+        // Algos deliberately mapped to null - shared by multiple coins, so guessing one would be
+        // more misleading than leaving "coin" blank for the user to fill in themselves.
+        ambiguous_algo_defaults: {
+            "rx/0": null,
+            kawpow: null,
+        },
+        pool_slug_overrides: {
+            luckypool: "luckypoolio",
+            vipor: "vipornet",
+            pearlhash: "pearlhash.xyz",
+        },
+    },
 };
-(async function loadTemplatesConfig() {
+// Fetches static/config/templates.json and merges it over the hardcoded defaults above (section by
+// section, key by key - see the TEMPLATES_CONFIG comment). Named (not an IIFE) so the Settings
+// modal's Templates tab can re-run this after a successful save, refreshing TEMPLATES_CONFIG in
+// this page immediately instead of only taking effect on the next page load.
+async function loadTemplatesConfig() {
     try {
-        const res = await fetch(TEMPLATES_CONFIG_URL);
+        const res = await fetch(`${TEMPLATES_CONFIG_URL}?_=${Date.now()}`);
         if (!res.ok) return;
         const data = await res.json();
         for (const section of Object.keys(TEMPLATES_CONFIG)) {
@@ -125,7 +160,8 @@ const TEMPLATES_CONFIG = {
     } catch (err) {
         console.error("Failed to load templates.json, using built-in defaults", err);
     }
-})();
+}
+loadTemplatesConfig();
 let rigsState = {};
 let popoverState = {};
 let lastUpdateTs = 0;
@@ -937,8 +973,12 @@ const WD_ACTION_RAW_KEYS = [
 ];
 let pendingWdConfigFetchRig = null;
 let pendingAgentConfFetchRig = null;
+// Which *.conf the Settings modal's Conf tab dropdown currently has selected - see CONF_EDIT_TYPES
+// below for the full list. Defaults to agent.conf, matching this tab's original single-purpose behavior.
+let selectedConfEditType = "agent.conf";
 // Real-world example starting point for a rig that doesn't have a rigcontrol-agent.conf yet -
-// loaded by the "Clear" button on the Agent Conf tab. Mirrors an actual production conf, with
+// loaded by the "Clear" button on the Conf tab (only offered when agent.conf is selected - the
+// other conf types don't have an equivalent bundled blank example). Mirrors an actual production conf, with
 // BROKER_PASS left blank (never ship a real password in a template) and broker host/miner slots
 // as illustrative examples to edit before sending.
 const AGENT_CONF_DEFAULT_TEMPLATE =
@@ -1028,6 +1068,53 @@ const LOGS_COMMAND_BUILDERS = {
     "sys.rocmsmi": () => "rocm-smi",
     "sys.df": () => "df -h",
     "sys.top": (n) => `ps -eo pid,user,pri,ni,vsz,rss,stat,pcpu,pmem,time,args --sort=-pcpu | head -n ${n}`,
+};
+// Backs the Settings modal's Conf tab (formerly "Agent Conf" - now a dropdown-selectable editor
+// for any of the *.conf files below, not just rigcontrol-agent.conf). Read uses the matching
+// LOGS_COMMAND_BUILDERS[type]() cat command above (same file, same command, kept in one place);
+// this table only adds what reading alone doesn't need: where to write it back to, and what to
+// restart afterward so the change actually takes effect.
+const CONF_EDIT_TYPES = {
+    "agent.conf": {
+        dir: () => TEMPLATES_CONFIG.agentconf.conf_dir,
+        path: () => TEMPLATES_CONFIG.agentconf.conf_path,
+        restartCmd: () => TEMPLATES_CONFIG.agentconf.restart_command,
+        isAgent: true,
+    },
+    "cpu.conf": {
+        dir: () => "/etc/rigcontrol",
+        path: () => "/etc/rigcontrol/rig-cpu.json",
+        restartCmd: () => "sudo systemctl restart docker_events_cpu",
+    },
+    "gpu.conf": {
+        dir: () => "/etc/rigcontrol",
+        path: () => "/etc/rigcontrol/rig-gpu.json",
+        restartCmd: () => "sudo systemctl restart docker_events_gpu",
+    },
+    "aux.conf": {
+        dir: () => "/etc/rigcontrol",
+        path: () => "/etc/rigcontrol/rig-aux.json",
+        restartCmd: () => "sudo systemctl restart docker_events_aux",
+    },
+    "watchdog.conf": {
+        dir: () => TEMPLATES_CONFIG.watchdog.conf_dir,
+        path: () => TEMPLATES_CONFIG.watchdog.conf_path,
+        // The dedicated Watchdog Config modal restarts via the "watchdog.restart" pseudo-command
+        // (rigcontrol_cmd.sh's own case statement, matched on the whole command being exactly that
+        // literal string) - that only works standalone, not as a second line tacked onto a raw shell
+        // blob, so this uses the equivalent literal systemctl call instead (same default service
+        // name rigcontrol_cmd.sh itself falls back to: WATCHDOG_SERVICE_NAME unset -> rigcontrol_watchdog.service).
+        restartCmd: () => "sudo systemctl restart rigcontrol_watchdog.service",
+    },
+    "fancurve.conf": {
+        // fan-curve.service is a systemd UNIT file, not a /etc/rigcontrol app conf - editing it here
+        // is a deliberate escape hatch for a one-off manual tweak; the normal way to manage it is
+        // still install_fan-curve.sh once, then Overclock's per-algo curve value (see templates.json's
+        // apply_script_footer, which only touches the --curve line, not the rest of the unit).
+        dir: () => "/etc/systemd/system",
+        path: () => "/etc/systemd/system/fan-curve.service",
+        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart fan-curve.service",
+    },
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
@@ -2267,6 +2354,42 @@ function initDialogResizeHandles() {
             document.addEventListener("mouseup", onMouseUp);
         });
     });
+}
+const STATUSLOG_LIST_WIDTH_KEY = "rigcontrol_statuslog_list_width";
+// Draggable divider between the Status Log entry list and its details pane (#statuslog-col-resizer)
+// - separate from initDialogResizeHandles() above, which only resizes the whole dialog. Same
+// mousedown/mousemove/mouseup drag mechanics, but clamps against the list panel's own min/max-width
+// (see app.css) and persists the chosen width to localStorage, same pattern as
+// AGENTCONF_RAW_HEIGHT_KEY/CMD_INPUT_HEIGHT_KEY use for other manually-resized elements.
+function initStatuslogColResizer() {
+    const handle = document.getElementById("statuslog-col-resizer");
+    const listPanel = document.querySelector("#statuslog-modal .fs-list-panel");
+    if (!handle || !listPanel) return;
+    handle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = listPanel.getBoundingClientRect().width;
+        handle.classList.add("dragging");
+        document.body.style.userSelect = "none";
+        function onMouseMove(moveEvent) {
+            const delta = moveEvent.clientX - startX;
+            listPanel.style.width = `${startWidth + delta}px`;
+        }
+        function onMouseUp() {
+            handle.classList.remove("dragging");
+            document.body.style.userSelect = "";
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+            if (listPanel.style.width) localStorage.setItem(STATUSLOG_LIST_WIDTH_KEY, listPanel.style.width);
+        }
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+    });
+}
+function restoreStatuslogListWidth() {
+    const listPanel = document.querySelector("#statuslog-modal .fs-list-panel");
+    const saved = localStorage.getItem(STATUSLOG_LIST_WIDTH_KEY);
+    if (listPanel && saved) listPanel.style.width = saved;
 }
 // Shared "Raw Content" popup used by Flightsheets/Overclocking/Watchdog - each module's raw
 // textarea lives at rest inside a hidden .raw-content-home wrapper in its own modal; clicking
@@ -3607,20 +3730,29 @@ function handleCommandResponse(response) {
     if (pendingAgentConfFetchRig && r.rig === pendingAgentConfFetchRig) {
         pendingAgentConfFetchRig = null;
         const statusEl = document.getElementById("agentconf-status");
+        const confType = selectedConfEditType;
+        const confLabel = LOGS_TYPE_LABELS[confType] || confType;
         if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
             // raw here is the literal `cat` output - the bare file body, no wrapper - so wrap it
-            // for display the same way loadDefaultAgentConf()/the checkbox handler do, but keep
-            // saving the BARE raw to the DB Backups snapshot below (that wants the file's actual
-            // contents, not the send-command shape).
+            // for display the same way loadDefaultConfEditTemplate()/the checkbox handler do, but
+            // keep saving the BARE raw to the DB Backups snapshot below (agent.conf only - that
+            // wants the file's actual contents, not the send-command shape).
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("agentconf-raw");
             const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
-            if (rawEl) rawEl.value = wrapAgentConfCommand(raw, includeRestart);
+            if (rawEl) rawEl.value = wrapConfEditCommand(confType, raw, includeRestart);
             resizeAgentConfRaw();
-            if (statusEl) statusEl.textContent = `Loaded current agent conf from ${r.rig}`;
-            saveAgentConfSnapshot(r.rig, raw);
+            if (statusEl) statusEl.textContent = `Loaded current ${confLabel} from ${r.rig}`;
+            if (CONF_EDIT_TYPES[confType]?.isAgent) saveAgentConfSnapshot(r.rig, raw);
         } else {
-            if (statusEl) statusEl.textContent = `No existing rigcontrol-agent.conf found on ${r.rig} (click Clear for a blank example)`;
+            // Clear the box instead of leaving whatever was previously loaded sitting there - with
+            // the type dropdown now able to switch between six different files, stale content left
+            // over from the last successful load would otherwise look like it belongs to this
+            // rig/type when it doesn't exist here at all.
+            const rawEl = document.getElementById("agentconf-raw");
+            if (rawEl) rawEl.value = "";
+            resizeAgentConfRaw();
+            if (statusEl) statusEl.textContent = `No existing ${confLabel} found on ${r.rig}${CONF_EDIT_TYPES[confType]?.isAgent ? " (click Clear for a blank example)" : ""}`;
         }
         return;
     }
@@ -5322,8 +5454,31 @@ function switchSettingsMainTab(tabName) {
         panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
     });
     if (tabName === "agentconf") {
+        // Opening the tab no longer auto-reloads from the worker - the note above the dropdown
+        // says Reload/edit/Send is a manual sequence, and silently overwriting an in-progress
+        // edit just from switching tabs away and back (e.g. to check Templates, then back here)
+        // was surprising. lastSyncedAgentConfRig is still updated here so a genuine rig-selection
+        // change made WHILE this tab is open still auto-reloads via syncOpenModulesToSelection()
+        // below - that's a different, expected case (you picked a different rig to edit).
         lastSyncedAgentConfRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
-        autoLoadAgentConfForSelectedRig();
+        updateConfEditTypeUi();
+        const statusEl = document.getElementById("agentconf-status");
+        const rawEl = document.getElementById("agentconf-raw");
+        if (statusEl && !rawEl?.value) {
+            const confLabel = LOGS_TYPE_LABELS[selectedConfEditType] || selectedConfEditType;
+            statusEl.textContent = selectedRigs.size === 1
+                ? `Click Reload to load current ${confLabel} from ${Array.from(selectedRigs)[0]}`
+                : `Select exactly one worker, then click Reload to load its ${confLabel}`;
+        }
+    }
+    if (tabName === "templates") {
+        const rawEl = document.getElementById("templates-config-raw");
+        // Only auto-load the first time this tab is opened in a page session - once loaded,
+        // switching away and back shouldn't silently discard an in-progress unsaved edit.
+        if (rawEl && !rawEl.dataset.loaded) {
+            rawEl.dataset.loaded = "1";
+            loadTemplatesConfigTab();
+        }
     }
 }
 function initColorSchemeTabs() {
@@ -7829,11 +7984,6 @@ function resolveUrlTokenForClipboard(items) {
         };
     });
 }
-const FS_POOL_SLUG_OVERRIDES = {
-    luckypool: "luckypoolio",
-    vipor: "vipornet",
-    pearlhash: "pearlhash.xyz",
-};
 function deriveHostLabelForClipboard(poolUrlValue) {
     if (!poolUrlValue) return null;
     const token = String(poolUrlValue).trim().split(/[\s,]+/)[0] || "";
@@ -7850,7 +8000,7 @@ function deriveHostLabelForClipboard(poolUrlValue) {
 function derivePoolSlugForClipboard(poolUrlValue) {
     const derived = deriveHostLabelForClipboard(poolUrlValue);
     if (!derived) return null;
-    return FS_POOL_SLUG_OVERRIDES[derived] || derived;
+    return TEMPLATES_CONFIG.flightsheet_derivation.pool_slug_overrides[derived] || derived;
 }
 function addPoolSlugForClipboard(items) {
     return items.map((item) => {
@@ -7879,34 +8029,6 @@ function addPoolSlugForClipboard(items) {
         return newItem;
     });
 }
-const FS_ALGO_TO_COIN = {
-    autolykos2: "ERG",
-    btx: "BTX",
-    dynex: "DNX",
-    pearlhash: "PRL",
-    qhash: "QTC",
-    qubic: "QUBIC",
-    verushash: "VRSC",
-    warthog: "WART",
-    xelishashv3: "XEL",
-};
-const FS_POOL_COIN_HINTS = [
-    ["xmr", "XMR"],
-    ["zephyr", "ZEPH"],
-    ["tari", "XTM"],
-    ["xtm", "XTM"],
-    ["quai", "QUAI"],
-    ["ergo", "ERG"],
-    ["warthog", "WART"],
-    ["xelis", "XEL"],
-    ["qtc", "QTC"],
-    ["pearl", "PRL"],
-    ["etica", "ETI"],
-];
-const FS_AMBIGUOUS_ALGO_DEFAULTS = {
-    "rx/0": null,
-    kawpow: null,
-};
 function vowelStrippedFallback(text) {
     if (!text) return null;
     const stripped = String(text).replace(/[aeiou]/gi, "").toUpperCase();
@@ -7917,15 +8039,16 @@ function deriveCoinForClipboard(algo, poolUrlValue) {
     // entirely with an empty algo before ever looking at the pool address - so a flightsheet whose
     // ALGO field wasn't populated yet (or a custom miner with no dedicated algo field) got "pool"
     // filled but never "coin", even though the pool-hint/vowel-fallback checks below don't need algo.
+    const deriv = TEMPLATES_CONFIG.flightsheet_derivation;
     const algoKey = algo ? String(algo).trim().toLowerCase() : "";
-    if (algoKey && FS_ALGO_TO_COIN[algoKey]) return FS_ALGO_TO_COIN[algoKey];
+    if (algoKey && deriv.algo_to_coin[algoKey]) return deriv.algo_to_coin[algoKey];
     const token = (poolUrlValue || "").trim().split(/[\s,]+/)[0] || "";
     const host = token.replace(/^stratum\+(ssl|tcp):\/\//, "").split(":")[0].toLowerCase();
-    for (const [hint, ticker] of FS_POOL_COIN_HINTS) {
+    for (const [hint, ticker] of deriv.pool_coin_hints) {
         if (host.includes(hint)) return ticker;
     }
-    if (algoKey && algoKey in FS_AMBIGUOUS_ALGO_DEFAULTS && FS_AMBIGUOUS_ALGO_DEFAULTS[algoKey]) {
-        return FS_AMBIGUOUS_ALGO_DEFAULTS[algoKey];
+    if (algoKey && algoKey in deriv.ambiguous_algo_defaults && deriv.ambiguous_algo_defaults[algoKey]) {
+        return deriv.ambiguous_algo_defaults[algoKey];
     }
     return vowelStrippedFallback(deriveHostLabelForClipboard(poolUrlValue));
 }
@@ -9412,15 +9535,11 @@ function buildOcScriptFromRows() {
             "Fan Value": fan.value,
         });
     }
-    const usesCurve = rows.some(r => classifyOcFanValue(r.fan).type === "curve");
-    // "    :\n" here (not "") when nothing uses curve mode - bash doesn't allow an empty then/fi
-    // body, so the if-block in apply_script_footer needs SOMETHING; when curve mode is used this
-    // is skipped entirely in favor of the real fan_curve_service_template block, so the output
-    // doesn't carry a pointless dangling ":" line alongside the real systemd service block.
-    const footer = fillPlaceholders(ocCfg.apply_script_footer, {
-        "FAN_CURVE_BLOCK": usesCurve ? ocCfg.fan_curve_service_template : "    :\n",
-    });
-    return body + footer;
+    // apply_script_footer is fully static now - fan-curve.service itself is installed once,
+    // separately (Fan-control/py-nvtool/install_fan-curve.sh); the footer just syncs its --curve
+    // value in place when curve mode is active, so there's no per-row template substitution left
+    // to do here.
+    return body + ocCfg.apply_script_footer;
 }
 function rebuildOcRawFromRows() {
     const el = document.getElementById("oc-raw");
@@ -11110,29 +11229,33 @@ function resizeAgentConfRaw() {
 // command that gets sent - same reasoning as Watchdog's wrapWdConfigCommand(): the raw box should
 // always show the literal command Send Cmd will use, not just the file body with the wrapper
 // assembled invisibly elsewhere at send time.
-function wrapAgentConfCommand(bareContent, includeRestart) {
-    const heredocTag = "RIGCONTROL_AGENT_CONF_EOF";
+// Generic heredoc tag - fine for it to be shared across all CONF_EDIT_TYPES since only one type is
+// ever loaded into agentconf-raw at a time (the box holds one conf's write-command at once).
+const CONF_EDIT_HEREDOC_TAG = "RIGCONTROL_CONF_EDIT_EOF";
+function wrapConfEditCommand(confType, bareContent, includeRestart) {
+    const cfg = CONF_EDIT_TYPES[confType];
+    if (!cfg) return bareContent;
     let command =
-        `sudo mkdir -p ${TEMPLATES_CONFIG.agentconf.conf_dir}\n` +
-        `tee ${TEMPLATES_CONFIG.agentconf.conf_path} > /dev/null <<'${heredocTag}'\n` +
+        `sudo mkdir -p ${cfg.dir()}\n` +
+        `tee ${cfg.path()} > /dev/null <<'${CONF_EDIT_HEREDOC_TAG}'\n` +
         bareContent +
         (bareContent.endsWith("\n") ? "" : "\n") +
-        heredocTag;
-    if (includeRestart) command += `\n${TEMPLATES_CONFIG.agentconf.restart_command}`;
+        CONF_EDIT_HEREDOC_TAG;
+    if (includeRestart) command += `\n${cfg.restartCmd()}`;
     return command;
 }
 // Reverse of the above - pulls just the heredoc body back out of a (possibly hand-edited) wrapped
 // command, for the one caller that wants the actual .conf file text rather than the send-command
-// shape: the DB Backups snapshot, which stores "what did this rig's conf file contain" for
-// reference, not a shell command to replay. Falls back to the input unchanged if the wrapper
-// markers aren't found (e.g. the user rewrote the box into something else entirely).
-function unwrapAgentConfCommand(text) {
-    // wrapAgentConfCommand() always leaves exactly one "\n" right before the closing tag (either
+// shape: the DB Backups snapshot (agent.conf only), which stores "what did this rig's conf file
+// contain" for reference, not a shell command to replay. Falls back to the input unchanged if the
+// wrapper markers aren't found (e.g. the user rewrote the box into something else entirely).
+function unwrapConfEditCommand(text) {
+    // wrapConfEditCommand() always leaves exactly one "\n" right before the closing tag (either
     // the body's own trailing newline, or one added for it) - that single newline is inherently
     // ambiguous to reverse (a bodyless-of-trailing-newline input is indistinguishable from one
     // that already had it), so this always re-adds it. Harmless: real conf files end in a newline
     // anyway, and this is only used for the informational DB Backups snapshot, never for sending.
-    const tag = "RIGCONTROL_AGENT_CONF_EOF";
+    const tag = CONF_EDIT_HEREDOC_TAG;
     const openIdx = text.indexOf(`<<'${tag}'\n`);
     if (openIdx === -1) return text || "";
     const bodyStart = openIdx + `<<'${tag}'\n`.length;
@@ -11140,55 +11263,78 @@ function unwrapAgentConfCommand(text) {
     if (closeIdx === -1) return text || "";
     return text.slice(bodyStart, closeIdx) + "\n";
 }
-function loadDefaultAgentConf() {
+// Refreshes the Conf tab's chrome (path label, Clear button visibility) to match whatever's
+// currently selected in the type dropdown - called on dropdown change and whenever the tab is opened.
+function updateConfEditTypeUi() {
+    const cfg = CONF_EDIT_TYPES[selectedConfEditType];
+    const labelEl = document.getElementById("agentconf-raw-label");
+    if (labelEl) labelEl.textContent = cfg ? cfg.path() : "";
+    // Only agent.conf has a bundled blank-example template to load - hide Clear for everything else
+    // rather than have it silently do nothing. Inline style, not a "hidden" class - app.css only
+    // defines that class scoped to specific parent selectors, not as a bare display:none utility.
+    const clearBtn = document.getElementById("btn-agentconf-clear");
+    if (clearBtn) clearBtn.style.display = cfg?.isAgent ? "" : "none";
+}
+function loadDefaultConfEditTemplate() {
+    // Only agent.conf has a bundled blank example - the Clear button is hidden for every other
+    // type (see updateConfEditTypeUi()), so this shouldn't normally be reachable otherwise.
+    if (selectedConfEditType !== "agent.conf") return;
     const rawEl = document.getElementById("agentconf-raw");
     const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
-    if (rawEl) rawEl.value = wrapAgentConfCommand(AGENT_CONF_DEFAULT_TEMPLATE, includeRestart);
+    if (rawEl) rawEl.value = wrapConfEditCommand("agent.conf", AGENT_CONF_DEFAULT_TEMPLATE, includeRestart);
     resizeAgentConfRaw();
     const statusEl = document.getElementById("agentconf-status");
     if (statusEl) statusEl.textContent = "Loaded blank example template (not read from any worker)";
 }
-function autoLoadAgentConfForSelectedRig() {
+function autoLoadConfForSelectedRig() {
     pendingAgentConfFetchRig = null;
     const statusEl = document.getElementById("agentconf-status");
+    const confType = selectedConfEditType;
+    const confLabel = LOGS_TYPE_LABELS[confType] || confType;
     if (selectedRigs.size !== 1) {
-        if (statusEl) statusEl.textContent = "Select exactly one worker to load/edit its agent conf";
+        if (statusEl) statusEl.textContent = `Select exactly one worker to load/edit its ${confLabel}`;
         return;
     }
     const [rig] = selectedRigs;
     pendingAgentConfFetchRig = rig;
-    if (statusEl) statusEl.textContent = `Loading current agent conf from ${rig}…`;
-    sendCommandToSelectedRigs(`cat ${TEMPLATES_CONFIG.agentconf.conf_path}`).catch(err => {
-        console.error("Failed to request current agent conf", err);
+    if (statusEl) statusEl.textContent = `Loading current ${confLabel} from ${rig}…`;
+    const catCmd = LOGS_COMMAND_BUILDERS[confType]?.() || `cat ${CONF_EDIT_TYPES[confType]?.path() ?? ""}`;
+    sendCommandToSelectedRigs(catCmd).catch(err => {
+        console.error(`Failed to request current ${confLabel}`, err);
         if (pendingAgentConfFetchRig === rig) pendingAgentConfFetchRig = null;
-        if (statusEl) statusEl.textContent = `Failed to load current agent conf from ${rig}`;
+        if (statusEl) statusEl.textContent = `Failed to load current ${confLabel} from ${rig}`;
     });
 }
-function buildAgentConfCommand() {
+function buildConfEditCommand() {
     // agentconf-raw already holds the full command (mkdir + tee heredoc-wrapped conf body +
-    // optional restart line, via wrapAgentConfCommand()) - send it exactly as shown, no rebuilding.
+    // optional restart line, via wrapConfEditCommand()) - send it exactly as shown, no rebuilding.
     return document.getElementById("agentconf-raw")?.value ?? "";
 }
-function sendItAgentConf() {
+function sendItConfEdit() {
+    const confType = selectedConfEditType;
+    const confLabel = LOGS_TYPE_LABELS[confType] || confType;
     if (selectedRigs.size !== 1) {
-        alert("Select exactly one worker to write its agent conf");
+        alert(`Select exactly one worker to write its ${confLabel}`);
         return;
     }
     const [rig] = selectedRigs;
-    const command = buildAgentConfCommand();
+    const command = buildConfEditCommand();
     // Snapshot what we're ABOUT to send now, rather than waiting for a reply - the Confirm
     // path hands off to the free-form Send Cmd modal, which has no structured success
     // callback back to this tab, so there's no reliable "it actually landed" moment to hook.
     // Optimistic, but this is a local backup convenience, not a correctness-critical value.
-    saveAgentConfSnapshot(rig, unwrapAgentConfCommand(document.getElementById("agentconf-raw")?.value ?? ""));
+    // Only agent.conf gets a DB Backups snapshot - the other conf types have no BACKUP_TARGETS entry.
+    if (CONF_EDIT_TYPES[confType]?.isAgent) {
+        saveAgentConfSnapshot(rig, unwrapConfEditCommand(document.getElementById("agentconf-raw")?.value ?? ""));
+    }
     const input = document.getElementById("cmd-input");
     if (document.getElementById("confirm-agentconf")?.checked) {
         if (input) input.value = command;
         openCmdModal();
     } else {
         sendCommandToSelectedRigs(command).catch(err => {
-            console.error("Failed to send agent conf", err);
-            alert("Failed to send agent conf");
+            console.error(`Failed to send ${confLabel}`, err);
+            alert(`Failed to send ${confLabel}`);
         });
     }
 }
@@ -11203,6 +11349,78 @@ function saveAgentConfSnapshot(rig, content) {
         // actual load/apply flow the user is doing, just log it.
         console.warn("Failed to save agent conf snapshot for DB Backups:", err);
     });
+}
+// Settings modal's Templates tab - lets templates.json (flightsheet/overclocking/watchdog/
+// agentconf/flightsheet_derivation) be edited and saved from the dashboard itself instead of
+// hand-editing the file on the server. Same auto-grow-textarea pattern as Agent Conf above.
+function resizeTemplatesConfigRaw() {
+    const el = document.getElementById("templates-config-raw");
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+}
+function loadTemplatesConfigTab() {
+    const rawEl = document.getElementById("templates-config-raw");
+    const statusEl = document.getElementById("templates-config-status");
+    if (statusEl) statusEl.textContent = "Loading templates.json from server…";
+    fetch(`${API}/api/templates-config`)
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
+            if (rawEl) rawEl.value = data.content ?? "";
+            resizeTemplatesConfigRaw();
+            if (statusEl) statusEl.textContent = "Loaded from server";
+        })
+        .catch(err => {
+            console.error("Failed to load templates.json", err);
+            if (statusEl) statusEl.textContent = "Failed to load templates.json from server";
+        });
+}
+function applyTemplatesConfig() {
+    const rawEl = document.getElementById("templates-config-raw");
+    const statusEl = document.getElementById("templates-config-status");
+    const content = rawEl?.value ?? "";
+    // Validate client-side first so a typo shows an immediate, specific error instead of a
+    // round-trip to the server just to get the same JSON.parse failure back.
+    try {
+        JSON.parse(content);
+    } catch (err) {
+        if (statusEl) statusEl.textContent = `Not valid JSON: ${err.message}`;
+        return;
+    }
+    // This isn't a per-rig write like the rest of the Conf tab - it overwrites templates.json on
+    // the dashboard SERVER itself, which every open dashboard (and every rig's next-generated
+    // Flightsheet/Overclock/Watchdog script) picks up. Worth a confirm, unlike a single worker's conf.
+    if (!confirm("Save this content to templates.json on the server? This affects every dashboard and rig, not just this one.")) {
+        if (statusEl) statusEl.textContent = "Save cancelled";
+        return;
+    }
+    if (statusEl) statusEl.textContent = "Saving…";
+    fetch(`${API}/api/templates-config/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+    })
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+            return data;
+        })
+        .then(() => {
+            if (statusEl) statusEl.textContent = "Saved - reloading into this dashboard...";
+            // Re-run the same startup fetch/merge app.js uses on page load, so the new values
+            // take effect immediately here too, not just for the next person to open the page.
+            return loadTemplatesConfig();
+        })
+        .then(() => {
+            if (statusEl) statusEl.textContent = "Saved and applied";
+        })
+        .catch(err => {
+            console.error("Failed to save templates.json", err);
+            if (statusEl) statusEl.textContent = `Failed to save: ${err.message}`;
+        });
 }
 function populateStatusLogRigSelect() {
     const sel = document.getElementById("statuslog-rig-select");
@@ -11655,6 +11873,7 @@ async function importAccessKeysFile(file) {
 }
 function openStatusLogModal(autoSelectId) {
     closeCmdModal();
+    statuslogPage = 0;
     populateStatusLogRigSelect();
     if (autoSelectId) {
         const sel = document.getElementById("statuslog-rig-select");
@@ -11669,6 +11888,7 @@ function openStatusLogModal(autoSelectId) {
 }
 function openStatusLogForRig(rigName) {
     closeCmdModal();
+    statuslogPage = 0;
     populateStatusLogRigSelect();
     switchViewTab("statuslog");
     const sel = document.getElementById("statuslog-rig-select");
@@ -11685,6 +11905,11 @@ function openStatusLogForRig(rigName) {
     if (statusEl) statusEl.textContent = "";
     loadStatusLogList();
 }
+// Mirrors get_status_log()'s default `limit: int = 200` in rigcontrol_dashboard_server.py - sent
+// explicitly (rather than just relying on the server's own default) so this stays in lockstep even
+// if that default is ever changed there without a matching edit here.
+const STATUSLOG_QUERY_LIMIT = 200;
+let statuslogPage = 0; // 0-indexed - reset to 0 whenever the rig/search filters change
 async function loadStatusLogList(autoSelectId) {
     const list = document.getElementById("statuslog-list");
     const statusEl = document.getElementById("statuslog-status");
@@ -11695,19 +11920,23 @@ async function loadStatusLogList(autoSelectId) {
     if (statusEl) statusEl.textContent = "Loading...";
     try {
         const params = new URLSearchParams();
+        params.set("limit", String(STATUSLOG_QUERY_LIMIT));
+        params.set("offset", String(statuslogPage * STATUSLOG_QUERY_LIMIT));
         if (rig) params.set("rig", rig);
         if (titleQ) params.set("title_q", titleQ);
         if (contentQ) params.set("content_q", contentQ);
-        const qs = params.toString();
-        const url = qs ? `${API}/api/status-log?${qs}` : `${API}/api/status-log`;
-        const res = await fetch(url);
+        const res = await fetch(`${API}/api/status-log?${params.toString()}`);
         if (!res.ok) {
             if (statusEl) statusEl.textContent = "Failed to load";
             return;
         }
-        const items = await res.json();
+        // {items, total} - total is the TRUE count matching the current rig/search filters across
+        // every page, not just how many came back on this one (see get_status_log() server-side).
+        const data = await res.json();
+        const items = data.items || [];
+        const total = data.total ?? items.length;
         renderStatusLogList(items);
-        if (statusEl) statusEl.textContent = `${items.length} entries`;
+        updateStatuslogPageDisplay(items.length, total);
         if (autoSelectId != null) {
             selectStatusLogEntry(autoSelectId);
         }
@@ -11715,6 +11944,24 @@ async function loadStatusLogList(autoSelectId) {
         console.error("Error loading status log:", e);
         if (statusEl) statusEl.textContent = "Failed to load";
     }
+}
+// Single combined status text (same span/style as before "N entries" always used) - now also
+// covers the Prev/Next page range instead of a separate page-count element.
+function updateStatuslogPageDisplay(shownCount, total) {
+    const statusEl = document.getElementById("statuslog-status");
+    const prevBtn = document.getElementById("btn-statuslog-prev-page");
+    const nextBtn = document.getElementById("btn-statuslog-next-page");
+    const totalPages = Math.max(1, Math.ceil(total / STATUSLOG_QUERY_LIMIT));
+    const pageNum = statuslogPage + 1;
+    if (statusEl) {
+        const startIdx = total === 0 ? 0 : statuslogPage * STATUSLOG_QUERY_LIMIT + 1;
+        const endIdx = statuslogPage * STATUSLOG_QUERY_LIMIT + shownCount;
+        statusEl.textContent = totalPages > 1
+            ? `Page ${pageNum} of ${totalPages} · ${startIdx}-${endIdx} of ${total} entries`
+            : `${total} entries`;
+    }
+    if (prevBtn) prevBtn.disabled = statuslogPage <= 0;
+    if (nextBtn) nextBtn.disabled = pageNum >= totalPages;
 }
 function renderStatusLogList(items) {
     const list = document.getElementById("statuslog-list");
@@ -12376,12 +12623,13 @@ function syncOpenModulesToSelection() {
             const [onlyAc] = selectedRigs;
             if (onlyAc !== lastSyncedAgentConfRig) {
                 lastSyncedAgentConfRig = onlyAc;
-                autoLoadAgentConfForSelectedRig();
+                autoLoadConfForSelectedRig();
             }
         } else {
             lastSyncedAgentConfRig = null;
             const statusEl = document.getElementById("agentconf-status");
-            if (statusEl) statusEl.textContent = "Select exactly one worker to load/edit its agent conf";
+            const confLabel = LOGS_TYPE_LABELS[selectedConfEditType] || selectedConfEditType;
+            if (statusEl) statusEl.textContent = `Select exactly one worker to load/edit its ${confLabel}`;
         }
     }
     const statsModal = document.getElementById("stats-modal");
@@ -12453,6 +12701,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         setupResizableDialogWidthSaving(containerId, storageKey);
     }
     initDialogResizeHandles();
+    initStatuslogColResizer();
+    restoreStatuslogListWidth();
     initRawContentTriggers();
     restoreResizableDialogSize("raw-content-modal", "rigcontrol_raw_content_modal_size");
     setupResizableDialogSizeSaving("raw-content-modal", "rigcontrol_raw_content_modal_size");
@@ -12949,10 +13199,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     let statuslogSearchDebounceTimer = null;
     const debounceStatuslogSearch = () => {
         clearTimeout(statuslogSearchDebounceTimer);
-        statuslogSearchDebounceTimer = setTimeout(() => loadStatusLogList(), 300);
+        statuslogSearchDebounceTimer = setTimeout(() => {
+            statuslogPage = 0; // a new search should start back at page 1, not wherever you were
+            loadStatusLogList();
+        }, 300);
     };
     document.getElementById("statuslog-search-title")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("statuslog-search-content")?.addEventListener("input", debounceStatuslogSearch);
+    document.getElementById("btn-statuslog-prev-page")?.addEventListener("click", () => {
+        if (statuslogPage > 0) {
+            statuslogPage--;
+            loadStatusLogList();
+        }
+    });
+    document.getElementById("btn-statuslog-next-page")?.addEventListener("click", () => {
+        statuslogPage++;
+        loadStatusLogList();
+    });
     document.getElementById("backups-select-all")?.addEventListener("change", (e) => {
         toggleAllBackupFiles(e.target.checked);
     });
@@ -12970,7 +13233,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         importAccessKeysFile(file);
         e.target.value = "";
     });
-    document.getElementById("statuslog-rig-select")?.addEventListener("change", () => loadStatusLogList());
+    document.getElementById("statuslog-rig-select")?.addEventListener("change", () => {
+        statuslogPage = 0; // switching rigs should start back at page 1 of that rig's results
+        loadStatusLogList();
+    });
     document.getElementById("wdconfig-hashrate-unit-up")?.addEventListener("click", () => stepWdHashrateUnit(1));
     document.getElementById("wdconfig-hashrate-unit-down")?.addEventListener("click", () => stepWdHashrateUnit(-1));
     document.getElementById("wdconfig-global-stop-up")?.addEventListener("click", () => stepWdGlobalStopFails(1));
@@ -13059,19 +13325,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     initWdconfigMainTabs();
     initSettingsMainTabs();
-    document.getElementById("btn-agentconf-reload")?.addEventListener("click", autoLoadAgentConfForSelectedRig);
-    document.getElementById("btn-agentconf-clear")?.addEventListener("click", loadDefaultAgentConf);
-    document.getElementById("btn-agentconf-apply")?.addEventListener("click", sendItAgentConf);
+    document.getElementById("btn-agentconf-reload")?.addEventListener("click", autoLoadConfForSelectedRig);
+    document.getElementById("btn-agentconf-clear")?.addEventListener("click", loadDefaultConfEditTemplate);
+    document.getElementById("btn-agentconf-apply")?.addEventListener("click", sendItConfEdit);
     document.getElementById("agentconf-raw")?.addEventListener("input", resizeAgentConfRaw);
     document.getElementById("agentconf-raw")?.addEventListener("mouseup", saveAgentConfRawHeight);
     restoreAgentConfRawHeight();
+    document.getElementById("settings-conf-type-select")?.addEventListener("change", (e) => {
+        selectedConfEditType = e.target.value;
+        updateConfEditTypeUi();
+        autoLoadConfForSelectedRig();
+    });
+    updateConfEditTypeUi();
+    document.getElementById("btn-templates-config-reload")?.addEventListener("click", loadTemplatesConfigTab);
+    document.getElementById("btn-templates-config-apply")?.addEventListener("click", applyTemplatesConfig);
+    document.getElementById("templates-config-raw")?.addEventListener("input", resizeTemplatesConfigRaw);
     // Toggling "restart after apply" changes what actually gets sent, so re-wrap the raw box right
     // away to add/remove the restart line - keeps the box showing the real command at all times
     // instead of only reflecting the checkbox once Send is clicked.
     document.getElementById("agentconf-restart-after-apply")?.addEventListener("change", (e) => {
         const rawEl = document.getElementById("agentconf-raw");
         if (!rawEl) return;
-        rawEl.value = wrapAgentConfCommand(unwrapAgentConfCommand(rawEl.value), e.target.checked);
+        rawEl.value = wrapConfEditCommand(selectedConfEditType, unwrapConfEditCommand(rawEl.value), e.target.checked);
         resizeAgentConfRaw();
     });
     initSendConfirmCheckbox("confirm-agentconf", "agentconf");

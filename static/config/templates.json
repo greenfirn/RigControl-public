@@ -9,13 +9,17 @@
         "",
         "overclocking is split into 3 separate fields that get concatenated per-algorithm row into one generated script - apply_script_header (written once, before any rows), apply_script_algo_block (repeated once per algorithm row, joined together), and apply_script_footer (written once, after all rows):",
         "  apply_script_algo_block placeholders: %ALGO% (the case-pattern label, from the row's Algorithm field), %Lock Core Clock% %Core Clock Offset% %Lock Memory Clock% %Memory Clock Offset% %Power Limit% %Fan Mode% %Fan Value% - direct field values. Fan Mode is literally 'percent' or 'curve'; Fan Value is either the fan percent number or the curve string ('30:30,40:45,50:65') depending on Fan Mode.",
-        "  apply_script_footer placeholder: %FAN_CURVE_BLOCK% - filled in automatically by the dashboard with the full contents of fan_curve_service_template when any row uses curve mode, otherwise replaced with an empty string. Leave this placeholder as-is.",
-        "",
-        "overclocking.fan_curve_service_template has NO %placeholder% tokens of its own - it gets substituted whole into apply_script_footer's %FAN_CURVE_BLOCK%, and its \"$FAN_VALUE\" is a literal bash variable reference (not a %-token), relying on the surrounding script already having set FAN_VALUE=\"%Fan Value%\" earlier in apply_script_algo_block.",
+        "  apply_script_footer has no placeholders left - it's fully static. When FAN_MODE is 'curve' it updates the already-installed fan-curve.service's --curve value in place via sed and only restarts the daemon if that value actually changed, instead of rewriting/restarting the whole service on every miner (re)start. fan-curve.service itself (the systemd unit, fan_curve.py) is installed ONCE, separately, via Fan-control/py-nvtool/install_fan-curve.sh - it is intentionally NOT generated from this file, since it should not be recreated/bounced on every OC apply.",
         "",
         "watchdog.conf_dir / watchdog.conf_path are plain values (not templates with placeholders) - the directory watchdog config gets mkdir'd into, and the full path the watchdog conf file gets written to/read from on each worker.",
         "",
-        "agentconf.conf_dir / agentconf.conf_path / agentconf.restart_command are the same kind of plain values, for the Settings modal's Agent Conf tab - the directory/path rigcontrol-agent.conf gets mkdir'd/written/read at on each worker, and the command run afterward when 'Restart agent after apply' is checked."
+        "agentconf.conf_dir / agentconf.conf_path / agentconf.restart_command are the same kind of plain values, for the Settings modal's Agent Conf tab - the directory/path rigcontrol-agent.conf gets mkdir'd/written/read at on each worker, and the command run afterward when 'Restart agent after apply' is checked.",
+        "",
+        "flightsheet_derivation holds the lookup tables the Flightsheets pool-short-name / coin-ticker auto-fill uses (deriveCoinForClipboard()/derivePoolSlugForClipboard() in app.js). It only ever fills in a blank 'pool' or 'coin' field - it never overwrites a value that's already present. Each key here is a FULL replacement if you edit it - copy the existing entries too, not just the new one, or you'll lose the built-in mappings.",
+        "  algo_to_coin: {algo: COIN} - exact, case-insensitive match on the miner's algo field. Checked first, before the pool address is even looked at.",
+        "  pool_coin_hints: [[substring, COIN], ...] - checked in order against the pool hostname if algo_to_coin had no match. First substring found in the hostname wins, so put more specific hints earlier if two could both match.",
+        "  ambiguous_algo_defaults: {algo: null} - algos deliberately mapped to null (e.g. rx/0, kawpow are mined for many different coins) so the auto-fill leaves 'coin' blank instead of guessing wrong.",
+        "  pool_slug_overrides: {derived_label: real_slug} - the pool short-name is normally just pulled from the pool hostname (e.g. 'herominers' from ca.pearl.herominers.com); this remaps specific derived labels to a nicer/more correct value."
     ],
     "flightsheet": {
         "cpu_template": "tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_cpu",
@@ -25,8 +29,7 @@
     "overclocking": {
         "apply_script_header": "tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n#!/bin/bash\n# gpu_apply_ocs.sh <algo_name> / <custom miner name>\n# Generated from the dashboard's Overclock module - edit there, not by hand.\n# Note: a row's Algorithm field can list multiple comma-separated algo names\n# (e.g. keryxhash,keryx-miner,keryx-minerx) - they're combined into one case\n# pattern below, joined by '|', so they all share this row's OC settings.\n\nALGO=\"${1:-}\"\nif [[ -z \"$ALGO\" ]]; then\n    echo \"Usage: $0 <algo_name>\"\n    exit 1\nfi\n\nALGO_LOWER=$(echo \"$ALGO\" | tr '[:upper:]' '[:lower:]')\n\ncase \"$ALGO_LOWER\" in\n",
         "apply_script_algo_block": "    %ALGO%)\n        CORE=%Lock Core Clock%\n        CORE_OFFSET=%Core Clock Offset%\n        MEM=%Lock Memory Clock%\n        MEM_OFFSET=%Memory Clock Offset%\n        POWER_LIMIT=%Power Limit%\n        FAN_MODE=\"%Fan Mode%\"\n        FAN_VALUE=\"%Fan Value%\"\n        ;;\n",
-        "apply_script_footer": "    *)\n        echo \"No OC profile defined for algo '$ALGO' - add a row for it in the dashboard's Overclock module\"\n        exit 1\n        ;;\nesac\n\necho \"Setting GPU OC for algo '$ALGO': core=$CORE (+$CORE_OFFSET) mem=$MEM (+$MEM_OFFSET) power_limit=$POWER_LIMIT fan=$FAN_MODE:$FAN_VALUE\"\nCMD=(py-nvtool --setcore \"$CORE\" --setcoreoffset \"$CORE_OFFSET\" --setmem \"$MEM\" --setmemoffset \"$MEM_OFFSET\")\nif [[ -n \"$POWER_LIMIT\" && \"$POWER_LIMIT\" != \"0\" ]]; then\n    CMD+=(--setpl \"$POWER_LIMIT\")\nfi\nif [[ \"$FAN_MODE\" == \"percent\" ]]; then\n    CMD+=(--setfan \"$FAN_VALUE\")\nfi\n\"${CMD[@]}\"\n\nif [[ \"$FAN_MODE\" == \"curve\" ]]; then\n%FAN_CURVE_BLOCK%fi\nEOF\nsudo chmod +x /usr/local/bin/gpu_apply_ocs.sh",
-        "fan_curve_service_template": "    tee /etc/systemd/system/fan-curve.service > /dev/null <<FCEOF\n[Unit]\nDescription=NVIDIA Fan Curve Controller (NVML, no Xorg/Coolbits required)\nAfter=multi-user.target nvidia-persistenced.service\nWants=nvidia-persistenced.service\nStartLimitIntervalSec=0\n[Service]\nType=notify\nNotifyAccess=main\nUser=root\nEnvironment=PYTHONUNBUFFERED=1\nTimeoutStartSec=30\nWatchdogSec=15\nWatchdogSignal=SIGTERM\nExecStartPre=/bin/bash -c 'sleep 3'\nExecStart=/usr/bin/python3 /usr/local/bin/fan_curve.py \\\n    --interval 2 --hysteresis 2 \\\n    --cooldown-delta 10 --cooldown-seconds 15 \\\n    --curve \"$FAN_VALUE\"\nRestart=always\nRestartSec=5\n[Install]\nWantedBy=multi-user.target\nFCEOF\n    sudo systemctl daemon-reload\n    sudo systemctl restart fan-curve.service\n"
+        "apply_script_footer": "    *)\n        echo \"No OC profile defined for algo '$ALGO' - add a row for it in the dashboard's Overclock module\"\n        exit 1\n        ;;\nesac\n\necho \"Setting GPU OC for algo '$ALGO': core=$CORE (+$CORE_OFFSET) mem=$MEM (+$MEM_OFFSET) power_limit=$POWER_LIMIT fan=$FAN_MODE:$FAN_VALUE\"\nCMD=(py-nvtool --setcore \"$CORE\" --setcoreoffset \"$CORE_OFFSET\" --setmem \"$MEM\" --setmemoffset \"$MEM_OFFSET\")\nif [[ -n \"$POWER_LIMIT\" && \"$POWER_LIMIT\" != \"0\" ]]; then\n    CMD+=(--setpl \"$POWER_LIMIT\")\nfi\nif [[ \"$FAN_MODE\" == \"percent\" ]]; then\n    CMD+=(--setfan \"$FAN_VALUE\")\nfi\n\"${CMD[@]}\"\n\n# fan-curve.service is installed ONCE, separately (Fan-control/py-nvtool/install_fan-curve.sh) -\n# this only ever updates its --curve value in place, and only restarts the already-running daemon\n# when that value actually changed, instead of rewriting/bouncing the whole service on every single\n# miner (re)start regardless of whether the curve differs from before.\nif [[ \"$FAN_MODE\" == \"curve\" ]]; then\n    FAN_SVC=/etc/systemd/system/fan-curve.service\n    if [[ -f \"$FAN_SVC\" ]]; then\n        CURRENT_CURVE=$(sed -n 's/.*--curve \"\\([^\"]*\\)\".*/\\1/p' \"$FAN_SVC\")\n        if [[ \"$CURRENT_CURVE\" != \"$FAN_VALUE\" ]]; then\n            echo \"Fan curve changed - updating fan-curve.service and restarting it...\"\n            sed -i \"s|--curve \\\"[^\\\"]*\\\"|--curve \\\"$FAN_VALUE\\\"|\" \"$FAN_SVC\"\n            systemctl daemon-reload\n            systemctl restart fan-curve.service\n        fi\n    else\n        echo \"WARNING: fan-curve.service is not installed - run Fan-control/py-nvtool/install_fan-curve.sh once to set it up, then re-apply OC\"\n    fi\nfi\nEOF\nsudo chmod +x /usr/local/bin/gpu_apply_ocs.sh"
     },
     "watchdog": {
         "conf_dir": "/etc/rigcontrol",
@@ -36,5 +39,41 @@
         "conf_dir": "/etc/rigcontrol",
         "conf_path": "/etc/rigcontrol/rigcontrol-agent.conf",
         "restart_command": "sudo systemctl restart rigcontrol-agent.service"
+    },
+    "flightsheet_derivation": {
+        "algo_to_coin": {
+            "autolykos2": "ERG",
+            "btx": "BTX",
+            "dynex": "DNX",
+            "keryxhash": "KRX",
+            "pearlhash": "PRL",
+            "qhash": "QTC",
+            "qubic": "QUBIC",
+            "verushash": "VRSC",
+            "warthog": "WART",
+            "xelishashv3": "XEL"
+        },
+        "pool_coin_hints": [
+            ["xmr", "XMR"],
+            ["zephyr", "ZEPH"],
+            ["tari", "XTM"],
+            ["xtm", "XTM"],
+            ["quai", "QUAI"],
+            ["ergo", "ERG"],
+            ["warthog", "WART"],
+            ["xelis", "XEL"],
+            ["qtc", "QTC"],
+            ["pearl", "PRL"],
+            ["etica", "ETI"]
+        ],
+        "ambiguous_algo_defaults": {
+            "rx/0": null,
+            "kawpow": null
+        },
+        "pool_slug_overrides": {
+            "luckypool": "luckypoolio",
+            "vipor": "vipornet",
+            "pearlhash": "pearlhash.xyz"
+        }
     }
 }

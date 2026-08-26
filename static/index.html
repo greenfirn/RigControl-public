@@ -1985,7 +1985,6 @@ nvidia-smi
     </div>
     <div class="view-tab-panel hidden" id="statuslog-modal" data-tab-panel="statuslog">
         <div class="cmd-dialog">
-            <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
             <div class="cmd-body">
                 <div class="fs-list-panel">
                     <select id="statuslog-rig-select" class="statuslog-rig-select">
@@ -2000,6 +1999,7 @@ nvidia-smi
                     <div id="statuslog-list" class="fs-list">
                     </div>
                 </div>
+                <div class="statuslog-col-resizer" id="statuslog-col-resizer" title="Drag to resize the list width"></div>
                 <div class="fs-editor-panel">
                     <textarea
                         id="statuslog-details"
@@ -2007,6 +2007,7 @@ nvidia-smi
                         readonly
                         placeholder="Select an entry to see its full details..."
                     ></textarea>
+                    <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
                 </div>
             </div>
             <div class="statuslog-search-row">
@@ -2029,6 +2030,8 @@ nvidia-smi
             </div>
             <div class="cmd-footer">
                 <div class="cmd-btn-row">
+                    <button class="cmd-btn secondary" id="btn-statuslog-prev-page" title="Previous page">&#8592; Prev</button>
+                    <button class="cmd-btn secondary" id="btn-statuslog-next-page" title="Next page">Next &#8594;</button>
                     <span id="statuslog-status" class="wdconfig-status"></span>
                     <button class="cmd-btn" id="btn-statuslog-refresh">Refresh</button>
                     <button class="cmd-btn danger" id="btn-statuslog-delete-selected" title="Deletes only the checked entries in the list - asks for confirmation first">Delete</button>
@@ -2113,7 +2116,8 @@ nvidia-smi
             <div class="cmd-body">
             <div class="settings-main-tabs" id="settings-main-tabs">
                 <button type="button" class="settings-main-tab-btn active" id="settings-main-tab-btn-general" data-tab-panel="general">General</button>
-                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Agent Conf</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Conf</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-templates" data-tab-panel="templates">Templates</button>
                 <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-advanced" data-tab-panel="advanced">Advanced Server Settings</button>
             </div>
             <div class="settings-main-tab-panel" data-tab-panel="general">
@@ -2315,10 +2319,21 @@ nvidia-smi
             </div>
             <div class="settings-main-tab-panel hidden" data-tab-panel="agentconf">
                 <div class="wdconfig-mining-pause-note">
-                    Edits the selected worker's own <code>/etc/rigcontrol/rigcontrol-agent.conf</code> directly (KEY=value lines - broker settings, per-miner &lt;NAME&gt;_API_HOST / &lt;NAME&gt;_API_PORT / &lt;NAME&gt;_BIN / &lt;NAME&gt;_LOG_PATH overrides, etc). Select exactly one worker, then Reload, edit, and Send it.
+                    Edits the selected worker's own config files directly - pick which one below. Select exactly one worker, then Reload, edit, and Send it.
                 </div>
                 <div class="wdconfig-raw-section">
-                    <label for="agentconf-raw" class="fs-raw-label">rigcontrol-agent.conf</label>
+                    <div class="conf-type-select-row">
+                        <label for="settings-conf-type-select">Conf</label>
+                        <select id="settings-conf-type-select" title="Which config file to load/edit/write">
+                            <option value="agent.conf" selected>Agent conf</option>
+                            <option value="cpu.conf">CPU rig conf</option>
+                            <option value="gpu.conf">GPU rig conf</option>
+                            <option value="aux.conf">AUX rig conf</option>
+                            <option value="watchdog.conf">Watchdog conf</option>
+                            <option value="fancurve.conf">Fan curve conf</option>
+                        </select>
+                    </div>
+                    <label for="agentconf-raw" class="fs-raw-label" id="agentconf-raw-label">rigcontrol-agent.conf</label>
                     <textarea
                         id="agentconf-raw"
                         class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
@@ -2332,16 +2347,39 @@ nvidia-smi
                         <span id="agentconf-status" class="wdconfig-status"></span>
                     </div>
                     <div class="footer-buttons-right">
-                        <label class="checkbox-label" title="Restart the rigcontrol-agent service on the worker after writing, so the new settings take effect immediately instead of waiting on the agent's own live-reload (which only covers a subset of settings).">
+                        <label class="checkbox-label" title="Restart the relevant service on the worker after writing, so the change takes effect immediately instead of waiting on a live-reload (which for agent.conf only covers a subset of settings anyway).">
                             <input type="checkbox" id="agentconf-restart-after-apply" checked>
-                            <span class="checkbox-text">Restart agent after apply</span>
+                            <span class="checkbox-text">Restart after apply</span>
                         </label>
                         <label class="checkbox-label send-confirm-label" title="Checked: copies the write command to Send Cmd for review before sending. Unchecked: sends immediately and shows the reply in the status area above.">
                             <input type="checkbox" id="confirm-agentconf" checked>
                             <span class="checkbox-text">Confirm</span>
                         </label>
-                        <button class="cmd-btn send-it" id="btn-agentconf-apply" title="Write this content to the selected worker's rigcontrol-agent.conf">Send it !</button>
+                        <button class="cmd-btn send-it" id="btn-agentconf-apply" title="Write this content to the selected worker's config file">Send it !</button>
                         <button class="cmd-btn secondary" id="btn-agentconf-clear" title="Replace the text below with a blank, commented example rigcontrol-agent.conf - useful for a rig that doesn't have one yet">Clear</button>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-main-tab-panel hidden" data-tab-panel="templates">
+                <div class="wdconfig-mining-pause-note">
+                    Edits <code>static/config/templates.json</code> on this dashboard server directly - the example scripts Flightsheets/Overclock/Watchdog generate (pool/coin auto-fill lookup tables, tee targets, systemctl service names, placeholders). Saved changes apply immediately; every open dashboard picks them up on its next page load.
+                </div>
+                <div class="wdconfig-raw-section">
+                    <label for="templates-config-raw" class="fs-raw-label">templates.json</label>
+                    <textarea
+                        id="templates-config-raw"
+                        class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"
+                        spellcheck="false"
+                        placeholder="Loading templates.json..."
+                    ></textarea>
+                </div>
+                <div class="cmd-footer">
+                    <div class="quick-actions-row">
+                        <button class="cmd-btn secondary" id="btn-templates-config-reload" title="Re-fetch the current templates.json from this server, discarding any unsaved edits below">⟳ Reload from Server</button>
+                        <span id="templates-config-status" class="wdconfig-status"></span>
+                    </div>
+                    <div class="footer-buttons-right">
+                        <button class="cmd-btn send-it" id="btn-templates-config-apply" title="Validate as JSON and save this content to static/config/templates.json on the server">Apply</button>
                     </div>
                 </div>
             </div>

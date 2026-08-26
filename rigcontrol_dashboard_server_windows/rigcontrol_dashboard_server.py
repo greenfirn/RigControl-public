@@ -1255,28 +1255,34 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] Insert error: {e}")
             return None
-    def list_events(self, rig: str = None, limit: int = 200, title_q: str = None, content_q: str = None):
+    # Shared by list_events()/count_filtered() below so the WHERE clause used to fetch a page and
+    # the one used to count how many rows exist in total (for pagination's "of N" / total-pages
+    # figure) can never drift out of sync with each other.
+    def _build_where(self, rig: str = None, title_q: str = None, content_q: str = None):
+        where_clauses = []
+        params = []
+        if rig:
+            where_clauses.append("rig = ?")
+            params.append(rig)
+        if title_q:
+            where_clauses.append("title LIKE ?")
+            params.append(f"%{title_q}%")
+        if content_q:
+            where_clauses.append("(details LIKE ? OR reasons LIKE ?)")
+            params.append(f"%{content_q}%")
+            params.append(f"%{content_q}%")
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        return where_sql, params
+    def list_events(self, rig: str = None, limit: int = 200, offset: int = 0, title_q: str = None, content_q: str = None):
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            where_clauses = []
-            params = []
-            if rig:
-                where_clauses.append("rig = ?")
-                params.append(rig)
-            if title_q:
-                where_clauses.append("title LIKE ?")
-                params.append(f"%{title_q}%")
-            if content_q:
-                where_clauses.append("(details LIKE ? OR reasons LIKE ?)")
-                params.append(f"%{content_q}%")
-                params.append(f"%{content_q}%")
-            where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            where_sql, params = self._build_where(rig, title_q, content_q)
             cursor.execute(f'''
                 SELECT id, rig, algo, title, created_at FROM status_log_events
                 {where_sql}
-                ORDER BY id DESC LIMIT ?
-            ''', (*params, limit))
+                ORDER BY id DESC LIMIT ? OFFSET ?
+            ''', (*params, limit, offset))
             items = []
             for row in cursor.fetchall():
                 items.append({
@@ -1290,6 +1296,19 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] List error: {e}")
             return []
+    # Total rows matching the same rig/title_q/content_q filters as list_events() - i.e. how many
+    # exist across ALL pages, not just how many came back on this one (that's just len(items)).
+    def count_filtered(self, rig: str = None, title_q: str = None, content_q: str = None):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            where_sql, params = self._build_where(rig, title_q, content_q)
+            cursor.execute(f'SELECT COUNT(*) as cnt FROM status_log_events {where_sql}', params)
+            row = cursor.fetchone()
+            return row["cnt"] if row else 0
+        except Exception as e:
+            log(f"[StatusLogDB] Count error: {e}")
+            return 0
     def count_by_rig(self):
         try:
             conn = self._get_connection()
@@ -3074,10 +3093,14 @@ def delete_watchdog_profile(profile_id: str):
         log(f"[WD DELETE LOCAL ERROR] Error: {e}")
         raise HTTPException(500, f"Failed to delete watchdog profile: {e}")
 @router.get("/api/status-log")
-def get_status_log(rig: Optional[str] = None, limit: int = 200, title_q: Optional[str] = None, content_q: Optional[str] = None):
+def get_status_log(rig: Optional[str] = None, limit: int = 200, offset: int = 0, title_q: Optional[str] = None, content_q: Optional[str] = None):
     try:
-        items = local_status_log_db.list_events(rig=rig or None, limit=limit, title_q=title_q or None, content_q=content_q or None)
-        return items
+        items = local_status_log_db.list_events(rig=rig or None, limit=limit, offset=offset, title_q=title_q or None, content_q=content_q or None)
+        total = local_status_log_db.count_filtered(rig=rig or None, title_q=title_q or None, content_q=content_q or None)
+        # {items, total} instead of a bare array - the Status Log tab's Prev/Next pagination needs
+        # the TRUE count matching the current rig/search filters (not just len(items), which is
+        # capped at `limit`) to compute how many pages exist.
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         log(f"[STATUSLOG GET ERROR] Exception: {e}")
         return []
@@ -3821,6 +3844,44 @@ async def save_agent_conf_snapshot(payload: dict):
         log(f"[AgentConf] Error saving cache for {rig}: {e}")
         raise HTTPException(500, f"Failed to save agent conf snapshot: {e}")
     return {"ok": True, "rig": rig}
+@router.get("/api/templates-config")
+async def get_templates_config():
+    """Raw text of static/config/templates.json, for the Settings modal's Templates tab. Same
+    file the frontend already fetches directly on page load (TEMPLATES_CONFIG_URL in app.js) -
+    this route exists only so "Reload from Server" can force a fresh read (bypassing any browser
+    cache on the static mount) without a full page reload."""
+    path = STATIC_DIR / "config" / "templates.json"
+    if not path.exists():
+        raise HTTPException(404, "templates.json not found")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read templates.json: {e}")
+    return {"ok": True, "content": content}
+@router.post("/api/templates-config/save")
+async def save_templates_config(payload: dict):
+    """Writes the Settings modal's Templates tab content back to static/config/templates.json on
+    disk. Validates it's well-formed JSON first (a broken file here would silently break Flightsheet/
+    Overclock/Watchdog raw-content generation for every rig, since app.js re-fetches this file on
+    every page load) - a syntax error is rejected with the parser's own message instead of being
+    written."""
+    content = payload.get("content")
+    if content is None or not isinstance(content, str) or not content.strip():
+        raise HTTPException(400, "content is required")
+    try:
+        json.loads(content)
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, f"Not valid JSON: {e}")
+    path = STATIC_DIR / "config" / "templates.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save templates.json: {e}")
+    log(f"[Templates] Saved {path}")
+    return {"ok": True}
 @router.get("/sw.js")
 async def dashboard_service_worker():
     js = (
