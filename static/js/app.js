@@ -11455,6 +11455,12 @@ function populateStatusLogRigSelect() {
 }
 // ===== Backups Tab =====
 let selectedBackupFileIds = new Set();
+// Same save-on-mouseup / separate-restore pattern as STATUSLOG_LIST_WIDTH_KEY above - these 3
+// sizers were previously drag-only (in-memory, reset every reload); now persisted like every
+// other module sizer/handle in the app.
+const BACKUPS_HSIZER_WIDTH_KEY = "rigcontrol_backups_hsizer_width";
+const BACKUPS_TOP_HSIZER_WIDTH_KEY = "rigcontrol_backups_top_hsizer_width";
+const BACKUPS_VSIZER_HEIGHT_KEY = "rigcontrol_backups_vsizer_height";
 function initBackupsHSizer() {
     const bar = document.getElementById("backups-hsizer");
     const listEl = document.getElementById("backups-preview-list");
@@ -11477,6 +11483,7 @@ function initBackupsHSizer() {
             document.body.style.userSelect = "";
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
+            if (listEl.style.width) localStorage.setItem(BACKUPS_HSIZER_WIDTH_KEY, listEl.style.width);
         }
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
@@ -11504,6 +11511,7 @@ function initBackupsTopHSizer() {
             document.body.style.userSelect = "";
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
+            if (listPanel.style.width) localStorage.setItem(BACKUPS_TOP_HSIZER_WIDTH_KEY, listPanel.style.width);
         }
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
@@ -11531,10 +11539,31 @@ function initBackupsVSizer() {
             document.body.style.userSelect = "";
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
+            if (previewPanel.style.height) localStorage.setItem(BACKUPS_VSIZER_HEIGHT_KEY, previewPanel.style.height);
         }
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
     });
+}
+function restoreBackupsSizers() {
+    const listEl = document.getElementById("backups-preview-list");
+    const listPanel = document.getElementById("backups-list-panel") || document.querySelector("#backups-modal .backups-list-panel");
+    const previewPanel = document.getElementById("backups-preview-panel");
+    const savedListWidth = localStorage.getItem(BACKUPS_HSIZER_WIDTH_KEY);
+    if (listEl && savedListWidth) {
+        listEl.style.flex = "0 0 auto";
+        listEl.style.width = savedListWidth;
+    }
+    const savedTopWidth = localStorage.getItem(BACKUPS_TOP_HSIZER_WIDTH_KEY);
+    if (listPanel && savedTopWidth) {
+        listPanel.style.flex = "0 0 auto";
+        listPanel.style.width = savedTopWidth;
+    }
+    const savedPreviewHeight = localStorage.getItem(BACKUPS_VSIZER_HEIGHT_KEY);
+    if (previewPanel && savedPreviewHeight) {
+        previewPanel.style.flex = "0 0 auto";
+        previewPanel.style.height = savedPreviewHeight;
+    }
 }
 function openBackupsModal() {
     closeCmdModal();
@@ -11545,6 +11574,7 @@ function openBackupsModal() {
     initBackupsVSizer();
     initBackupsHSizer();
     initBackupsTopHSizer();
+    restoreBackupsSizers();
     loadBackupFiles();
 }
 function setBackupsStatus(msg, isError) {
@@ -12694,13 +12724,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupCmdModalSizeSaving();
     restoreLogsModalSize();
     setupLogsModalSizeSaving();
+    // Width-only persistence - these all use .dialog-resize-handle-right (width-drag only), so
+    // there's no height to save. statuslog-modal and backups-modal use the -corner handle
+    // (width+height) instead and are wired below via restoreResizableDialogSize/
+    // setupResizableDialogSizeSaving, same as raw-content-modal.
     const RESIZABLE_TAB_MODALS = [
         ["stats-modal", "rigcontrol_stats_modal_width"],
         ["wallet-modal", "rigcontrol_wallet_modal_width"],
         ["fs-modal", "rigcontrol_fs_modal_width"],
         ["oc-modal", "rigcontrol_oc_modal_width"],
         ["wdconfig-modal", "rigcontrol_wdconfig_modal_width"],
-        ["statuslog-modal", "rigcontrol_statuslog_modal_width"],
         ["refresh-modal", "rigcontrol_refresh_modal_width"],
     ];
     for (const [containerId, storageKey] of RESIZABLE_TAB_MODALS) {
@@ -12713,6 +12746,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     initRawContentTriggers();
     restoreResizableDialogSize("raw-content-modal", "rigcontrol_raw_content_modal_size");
     setupResizableDialogSizeSaving("raw-content-modal", "rigcontrol_raw_content_modal_size");
+    restoreResizableDialogSize("statuslog-modal", "rigcontrol_statuslog_modal_size");
+    setupResizableDialogSizeSaving("statuslog-modal", "rigcontrol_statuslog_modal_size");
+    restoreResizableDialogSize("backups-modal", "rigcontrol_backups_modal_size");
+    setupResizableDialogSizeSaving("backups-modal", "rigcontrol_backups_modal_size");
     setupFsPoolsDialogSizeSaving();
     setupFsMcDialogSizeSaving();
     initColorSchemeControls();
