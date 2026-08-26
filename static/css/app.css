@@ -1373,6 +1373,13 @@ h1 {
 .cmd-footer .cmd-btn {
     width: var(--cmd-btn-fixed-width);
 }
+/* Status Log's footer buttons have mixed-length labels ("< Prev"/"Next >" vs "Refresh"/"Delete"/
+   "Clear"), so the fixed width above (sized for Cancel/Save-style footers) made them a different
+   size than the same buttons elsewhere in the app - fs-modal/oc-modal/wdconfig-modal's buttons
+   all size naturally off the base .cmd-btn rule (min-width 44px, width auto), same as this. */
+#statuslog-modal .cmd-footer .cmd-btn {
+    width: auto;
+}
 #refresh-modal .footer-buttons-right .cmd-btn {
     width: auto;
     padding-left: 14px;
@@ -1895,6 +1902,28 @@ h1 {
 }
 #btn-statuslog-refresh:hover {
     background: var(--button-stats-load-hover-bg);
+}
+/* Without this, Delete fell back to the base .cmd-btn.danger rule (--text-danger), which isn't
+   wired into the theme editor - so unlike every other modal's Delete button (fs/oc/wallet/
+   wdconfig, all below), it wouldn't follow the "Delete / Danger" swatch. Same fix applied to
+   Backups' Delete for the same reason - it had the identical gap. */
+#btn-statuslog-delete-selected {
+    background-color: var(--button-danger-bg);
+    border-color: var(--button-danger-border);
+    color: var(--button-danger-text);
+}
+#btn-statuslog-delete-selected:hover {
+    background-color: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
+}
+#btn-backups-delete {
+    background-color: var(--button-danger-bg);
+    border-color: var(--button-danger-border);
+    color: var(--button-danger-text);
+}
+#btn-backups-delete:hover {
+    background-color: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
 }
 #btn-load-wdconfig {
     border-color: var(--button-stats-load-border);
