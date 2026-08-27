@@ -5872,17 +5872,24 @@ h1 {
     border-color: var(--text-accent);
 }
 .statuslog-severity-filter-list {
+    /* This row sits right above the modal's footer, near the bottom edge of #statuslog-modal
+       .cmd-dialog - which has overflow:hidden - so a downward-opening popup (top: 100%) gets
+       clipped off almost entirely. Opening upward instead keeps it inside the dialog's visible
+       area, since there's plenty of room above (the list body) between here and the dialog's
+       top edge. */
     position: absolute;
     z-index: 30;
-    top: 100%;
+    bottom: 100%;
     left: 0;
-    margin-top: 4px;
+    margin-bottom: 4px;
     min-width: 180px;
     background: var(--surface-modal-panel);
     border: 1px solid var(--border-modal);
     border-radius: 6px;
     padding: 8px 10px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    max-height: 60vh;
+    overflow-y: auto;
 }
 .statuslog-severity-filter-list.hidden {
     display: none;
@@ -5930,22 +5937,21 @@ h1 {
 .statuslog-severity-filter-clear:hover {
     text-decoration: underline;
 }
-/* Title search gets a smaller share of the row than before (was an even 50/50 split with
-   Content search) - the severity dropdown to its left eats into that space, and title queries
-   tend to be short anyway, so Content search picks up the difference. Each search input now
-   lives in a .statuslog-search-field wrapper alongside its own "Hide" exclude checkbox, so the
-   flex-basis moved from the inputs themselves onto the wrapper divs. */
+/* Title search and Content search get an even 50/50 split. Each search input now lives in a
+   .statuslog-search-field wrapper alongside its own "Hide" exclude checkbox, so the flex-basis
+   moved from the inputs themselves onto the wrapper divs. */
 .statuslog-search-field {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
 }
-#statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(1) {
-    flex: 1 1 auto;
-}
+#statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(1),
 #statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(2) {
-    flex: 2 1 auto;
+    /* flex-basis: 0 (not auto) - forces both to start from nothing and grow purely by the 1:1
+       flex-grow ratio, so they end up truly equal-width regardless of the input's own default
+       width or how much text/placeholder content it has. */
+    flex: 1 1 0;
 }
 .statuslog-search-field .fs-search {
     flex: 1 1 auto;
