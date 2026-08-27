@@ -43,12 +43,14 @@ DEFAULT_ALGO_SETTINGS = {
     "max_watts_total": 0.0,  # 0 disables the check
     "grace_checks": 3,
     "cooldown_seconds": 600,
+    "stop_after_fails": 5,  # this algo's own action count reaching this stops the WHOLE watchdog
+                            # service (not just this algo) - protects against endlessly restarting
+                            # things on a persistently unhealthy algo. 0 disables self-stopping.
     "check_interval_seconds": 60,
     "actions": dict(DEFAULT_ACTIONS),
     "custom_script": "",
 }
 DEFAULT_GLOBAL_SETTINGS = {
-    "stop_after_fails": 5,  # 0 disables this - the service never self-stops
     "mining_watchdog_enabled": True,  # False skips hashrate/watts monitoring entirely
     "mining_interval_seconds": 30,  # how often the mining watchdog re-checks health
     "log_watcher_enabled": False,
@@ -85,10 +87,15 @@ def _parse_log_watcher_term_scripts(text):
             continue
     return scripts
 def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
-    """Parses LOG_WATCHER_TERMS - ';'-separated rows of
-    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<slot>'. Each term's script
-    comes from term_scripts (keyed by row position), falling back to an inline base64 field
-    (old 6-field format) then legacy_script (oldest shared-script format)."""
+    """Parses LOG_WATCHER_TERMS - ';'-separated rows. Current format (8 fields) is
+    '<contains-csv>|<not-contains-csv>|<severity>|<actions-csv>|<slot>|<grace-checks>|<cooldown-seconds>|<stop-after-fails>'.
+    Older saved rows may have exactly 7 fields (pre-stop-after-fails, defaults to 0/disabled),
+    exactly 6 (oldest format, with an inline base64 script in slot 5 instead of grace/cooldown),
+    or 5-and-under (pre-grace/cooldown, no embedded script) - those are read with
+    grace_checks=1/cooldown_seconds=0/stop_after_fails=0, i.e. today's "act every time it
+    matches, never self-stop" behavior, so existing configs keep working unchanged until edited
+    and re-saved. Each term's script comes from term_scripts (keyed by row position), falling
+    back to the old inline base64 field, then legacy_script (oldest shared-script format)."""
     term_scripts = term_scripts or {}
     terms = []
     for idx, row in enumerate(raw_value.split(";")):
@@ -97,7 +104,12 @@ def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
             continue
         raw_parts = row.split("|")
         legacy_script_b64 = ""
-        if len(raw_parts) >= 6:
+        grace_raw, cooldown_raw, stop_after_raw = "", "", ""
+        if len(raw_parts) >= 8:
+            contains_raw, not_contains_raw, severity, actions_raw, slot_raw, grace_raw, cooldown_raw, stop_after_raw = raw_parts[:8]
+        elif len(raw_parts) == 7:
+            contains_raw, not_contains_raw, severity, actions_raw, slot_raw, grace_raw, cooldown_raw = raw_parts[:7]
+        elif len(raw_parts) == 6:
             contains_raw, not_contains_raw, severity, actions_raw, legacy_script_b64, slot_raw = raw_parts[:6]
         else:
             parts = list(raw_parts)
@@ -122,6 +134,18 @@ def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
         slot = slot_raw.strip().lower()
         if slot not in LOG_WATCHER_SLOT_LOG_PATHS:
             slot = "all"
+        try:
+            grace_checks = max(1, int(grace_raw))
+        except (TypeError, ValueError):
+            grace_checks = 1
+        try:
+            cooldown_seconds = max(0, int(cooldown_raw))
+        except (TypeError, ValueError):
+            cooldown_seconds = 0
+        try:
+            stop_after_fails = max(0, int(stop_after_raw))
+        except (TypeError, ValueError):
+            stop_after_fails = 0
         terms.append({
             "contains": contains,
             "not_contains": not_contains,
@@ -129,6 +153,9 @@ def _parse_log_watcher_terms(raw_value, legacy_script="", term_scripts=None):
             "actions": actions,
             "custom_script": custom_script,
             "slot": slot,
+            "grace_checks": grace_checks,
+            "cooldown_seconds": cooldown_seconds,
+            "stop_after_fails": stop_after_fails,
         })
     return terms
 def _log_watcher_term_matches(line_lower, term):
@@ -161,6 +188,7 @@ def _parse_block(body):
         "max_watts_total": num("MAX_WATTS_TOTAL", DEFAULT_ALGO_SETTINGS["max_watts_total"]),
         "grace_checks": max(1, int(num("GRACE_CHECKS", DEFAULT_ALGO_SETTINGS["grace_checks"], int))),
         "cooldown_seconds": max(0, int(num("COOLDOWN_SECONDS", DEFAULT_ALGO_SETTINGS["cooldown_seconds"], int))),
+        "stop_after_fails": max(0, int(num("STOP_AFTER_FAILS", DEFAULT_ALGO_SETTINGS["stop_after_fails"], int))),
         "check_interval_seconds": max(5, int(num("CHECK_INTERVAL_SECONDS", DEFAULT_ALGO_SETTINGS["check_interval_seconds"], int))),
         "actions": actions,
         "custom_script": custom_script,
@@ -193,12 +221,6 @@ def load_global_watchdog_settings(path):
     except Exception as e:
         log(f"[conf] Error reading {path} for global settings: {e}")
         return settings
-    m = re.search(r'^MINING_WATCHDOG_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$', text, re.MULTILINE)
-    if m:
-        try:
-            settings["stop_after_fails"] = max(0, int(m.group(1)))
-        except ValueError:
-            pass
     m = re.search(r'^MINING_WATCHDOG_ENABLED\s+"(\d)"\s*$', text, re.MULTILINE)
     if m:
         settings["mining_watchdog_enabled"] = m.group(1) == "1"
@@ -316,6 +338,24 @@ def publish_alert(rig, algo, reasons, actions, source="mining_watchdog"):
     except Exception as e:
         log(f"[mqtt] Error publishing alert: {e}")
 _log_watcher_offsets = {}
+# Per-term action-taken counts, keyed by the term's position in LOG_WATCHER_TERMS. In-memory
+# only (by design - resets to 0 on every watchdog service restart, not persisted across them);
+# mirrored out to LOG_WATCHER_COUNTS_PATH so the dashboard's Configs "Reload from Worker" flow
+# can read it back like any other file. Keying by index means reordering/adding/removing terms
+# while the service is running can misattribute a count to the wrong row until the next restart
+# - acceptable since these are just informational, not something actions are gated on.
+_log_watcher_term_state = {}
+LOG_WATCHER_COUNTS_PATH = "/run/rigcontrol/log_watcher_term_counts.json"
+def _write_log_watcher_counts():
+    counts = {str(idx): st["count"] for idx, st in _log_watcher_term_state.items()}
+    try:
+        os.makedirs(os.path.dirname(LOG_WATCHER_COUNTS_PATH), exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(LOG_WATCHER_COUNTS_PATH))
+        with os.fdopen(fd, "w") as f:
+            json.dump(counts, f)
+        os.replace(tmp_path, LOG_WATCHER_COUNTS_PATH)
+    except Exception as e:
+        log(f"[log-watcher] Error writing term counts to {LOG_WATCHER_COUNTS_PATH}: {e}")
 def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle, agent_service_names,
                                       custom_script_text=""):
     """Fires a term's restart/notify/reboot/script actions; always publishes to the Status Log."""
@@ -340,16 +380,28 @@ def trigger_log_watcher_term_actions(label, actions, line, restarted_this_cycle,
     if actions.get("ACTION_REBOOT_RIG"):
         reboot_rig()
 def run_log_watcher_cycle(global_settings):
-    """Tails each configured slot log; each term (its own contains/not-contains, slot
-    filter, and script) fires its own actions on a match and publishes to the Status Log."""
+    """Tails each configured slot log; each term (its own contains/not-contains, slot filter,
+    grace/cooldown, and script) fires its own actions and publishes to the Status Log once it's
+    matched grace_checks consecutive cycles in a row and cooldown_seconds has elapsed since it
+    last acted - same grace/cooldown shape as the mining watchdog's per-algo checks, just keyed
+    by term position instead of algo name. A term with grace_checks=1/cooldown_seconds=0 (the
+    default for rows saved before this existed) still acts on every single match, unchanged.
+    Returns None if a term's own stop_after_fails limit was hit and the watchdog service was
+    stopped (mirroring run_one_cycle()'s return-None-to-stop convention); otherwise returns
+    normally (return value not otherwise meaningful to the caller)."""
     if not global_settings.get("log_watcher_enabled"):
-        return
+        return True
     slots = global_settings.get("log_watcher_slots") or []
     terms = global_settings.get("log_watcher_terms") or []
     if not slots or not terms:
-        return
+        return True
     agent_service_names = load_agent_service_names()
     restarted_this_cycle = set()
+    # First pass: just figure out which terms matched *something* this cycle (and remember one
+    # matching line/slot per term for the log message) - actual grace/cooldown gating and action
+    # firing happens in the second pass below, once per term regardless of how many lines/slots
+    # matched it this cycle.
+    matched_this_cycle = {}
     for slot in slots:
         path = LOG_WATCHER_SLOT_LOG_PATHS.get(slot)
         if not path or not os.path.isfile(path):
@@ -370,19 +422,56 @@ def run_log_watcher_cycle(global_settings):
             if not line:
                 continue
             line_lower = line.lower()
-            for term in terms:
+            for idx, term in enumerate(terms):
                 term_slot = term.get("slot", "all")
                 if term_slot != "all" and term_slot != slot:
                     continue
                 if _log_watcher_term_matches(line_lower, term):
-                    label_text = ", ".join(term["contains"])
-                    severity_label = term["severity"].upper()
-                    log(f"[log-watcher] {slot}: [{severity_label}] matched \"{label_text}\" - {line}")
-                    trigger_log_watcher_term_actions(
-                        f"[{severity_label}] {label_text} ({slot})", term["actions"], line,
-                        restarted_this_cycle, agent_service_names, term.get("custom_script", ""),
-                    )
+                    matched_this_cycle[idx] = (line, slot)
                     break
+    if not matched_this_cycle and not _log_watcher_term_state:
+        return True
+    now = time.time()
+    counts_changed = False
+    for idx, term in enumerate(terms):
+        st = _log_watcher_term_state.setdefault(idx, {"consecutive": 0, "last_action_ts": 0.0, "count": 0})
+        if idx not in matched_this_cycle:
+            st["consecutive"] = 0
+            continue
+        st["consecutive"] += 1
+        grace_checks = term.get("grace_checks", 1)
+        if st["consecutive"] < grace_checks:
+            continue
+        cooldown_seconds = term.get("cooldown_seconds", 0)
+        since_last = now - st["last_action_ts"] if st["last_action_ts"] else cooldown_seconds + 1
+        if since_last < cooldown_seconds:
+            continue
+        line, slot = matched_this_cycle[idx]
+        label_text = ", ".join(term["contains"])
+        severity_label = term["severity"].upper()
+        log(f"[log-watcher] {slot}: [{severity_label}] matched \"{label_text}\" "
+            f"({st['consecutive']}/{grace_checks} checks) - {line}")
+        trigger_log_watcher_term_actions(
+            f"[{severity_label}] {label_text} ({slot})", term["actions"], line,
+            restarted_this_cycle, agent_service_names, term.get("custom_script", ""),
+        )
+        st["last_action_ts"] = now
+        st["consecutive"] = 0
+        st["count"] += 1
+        counts_changed = True
+        stop_after = term.get("stop_after_fails", 0)
+        if stop_after > 0 and st["count"] >= stop_after:
+            log(f"[log-watcher] '{label_text}' ({slot}) term: {st['count']} action(s)/notification(s) "
+                f"fired for this term - reached its configured limit of {stop_after}. Stopping the "
+                f"watchdog service itself rather than continuing to act on what looks like a "
+                f"persistently unhealthy rig - a human needs to look at this and restart the "
+                f"service manually once resolved.")
+            _write_log_watcher_counts()
+            stop_watchdog_service()
+            return None
+    if counts_changed:
+        _write_log_watcher_counts()
+    return True
 def algo_combined_hashrate(entry):
     cpu = entry.get("cpu_hashrate_hs")
     gpu = entry.get("gpu_hashrate_hs")
@@ -494,6 +583,21 @@ def evaluate_algo(algo, hashrate, total_gpu_watts, settings):
     if settings["max_watts_total"] > 0 and total_gpu_watts > settings["max_watts_total"]:
         reasons.append(f"GPU watts {total_gpu_watts:.1f}W > max {settings['max_watts_total']:.1f}W")
     return reasons
+# Per-algorithm action-taken counts, keyed by algo name (stable, unlike the log-watcher terms'
+# index keying - algos already have a natural unique key). In-memory only, resets to 0 on every
+# watchdog service restart, mirrored out to MINING_ALGO_COUNTS_PATH for the dashboard's
+# "Refresh Counts" button to read back - same idea as LOG_WATCHER_COUNTS_PATH above.
+_mining_algo_counts = {}
+MINING_ALGO_COUNTS_PATH = "/run/rigcontrol/mining_watchdog_algo_counts.json"
+def _write_mining_algo_counts():
+    try:
+        os.makedirs(os.path.dirname(MINING_ALGO_COUNTS_PATH), exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(MINING_ALGO_COUNTS_PATH))
+        with os.fdopen(fd, "w") as f:
+            json.dump(_mining_algo_counts, f)
+        os.replace(tmp_path, MINING_ALGO_COUNTS_PATH)
+    except Exception as e:
+        log(f"[mining] Error writing algo counts to {MINING_ALGO_COUNTS_PATH}: {e}")
 def trigger_actions(algo, settings, reasons, restarted_this_cycle, service_names=None):
     if service_names is None:
         service_names = {}
@@ -532,19 +636,18 @@ def format_conf_summary(conf):
         min_hr = f"{s['min_hashrate_hs']:.0f} H/s" if s["min_hashrate_hs"] > 0 else "off"
         min_w = f"{s['min_watts_total']:.1f}W" if s["min_watts_total"] > 0 else "off"
         max_w = f"{s['max_watts_total']:.1f}W" if s["max_watts_total"] > 0 else "off"
+        stop_after = s['stop_after_fails'] if s['stop_after_fails'] > 0 else "off"
         lines.append(
             f"  [{algo}] min_hashrate={min_hr} min_watts={min_w} max_watts={max_w} "
-            f"grace={s['grace_checks']} cooldown={s['cooldown_seconds']}s "
+            f"grace={s['grace_checks']} cooldown={s['cooldown_seconds']}s stop_after={stop_after} "
             f"interval={s['check_interval_seconds']}s actions=[{_format_actions(s['actions'])}]"
         )
     return "\n".join(lines)
 def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=None,
-                   global_alert_state=None, global_settings=None):
+                   global_settings=None):
     """Runs one mining health-check cycle - independent cadence from run_log_watcher_cycle()."""
     if last_conf_state is None:
         last_conf_state = {}
-    if global_alert_state is None:
-        global_alert_state = {"count": 0}
     conf = load_watchdog_conf(conf_path)
     if global_settings is None:
         global_settings = load_global_watchdog_settings(conf_path)
@@ -599,14 +702,15 @@ def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=
         trigger_actions(algo, settings, reasons, restarted_this_cycle, agent_service_names)
         last_action_ts[algo] = time.time()
         consecutive_fails[algo] = 0
-        stop_after = global_settings.get("stop_after_fails", 0)
-        global_alert_state["count"] = global_alert_state.get("count", 0) + 1
-        if stop_after > 0 and global_alert_state["count"] >= stop_after:
-            log(f"[GLOBAL] {global_alert_state['count']} total action(s)/notification(s) fired "
-                f"across all algorithms - reached the configured limit of {stop_after}. "
-                f"Stopping the watchdog service itself rather than continuing to restart "
-                f"things on what looks like a persistently unhealthy rig - a human needs "
-                f"to look at this and restart the service manually once resolved.")
+        _mining_algo_counts[algo] = _mining_algo_counts.get(algo, 0) + 1
+        _write_mining_algo_counts()
+        stop_after = settings.get("stop_after_fails", 0)
+        if stop_after > 0 and _mining_algo_counts[algo] >= stop_after:
+            log(f"['{algo}'] {_mining_algo_counts[algo]} action(s)/notification(s) fired for this "
+                f"algorithm - reached its configured limit of {stop_after}. Stopping the watchdog "
+                f"service itself rather than continuing to restart things on what looks like a "
+                f"persistently unhealthy rig - a human needs to look at this and restart the "
+                f"service manually once resolved.")
             stop_watchdog_service()
             return None
     for algo in healthy_algos:
@@ -615,10 +719,6 @@ def run_one_cycle(conf_path, consecutive_fails, last_action_ts, last_conf_state=
     if healthy_algos:
         ok_summary = ", ".join(f"{a}: {algo_totals[a]:.0f} H/s" for a in sorted(healthy_algos))
         log(f"[check] OK - {ok_summary}, GPU watts: {total_gpu_watts:.1f}W")
-    if not consecutive_fails and global_alert_state.get("count", 0) > 0:
-        log(f"[GLOBAL] All monitored algorithm(s) healthy - resetting the global "
-            f"action/notification count (was {global_alert_state['count']}, now 0)")
-        global_alert_state["count"] = 0
     return sleep_seconds
 MAIN_TICK_SECONDS = 5  # housekeeping tick - each subsystem still only actually runs on its own interval
 def main():
@@ -626,10 +726,13 @@ def main():
     ap.add_argument("--conf", default="/etc/rigcontrol/rigcontrol-watchdog.conf")
     args = ap.parse_args()
     log(f"Starting - conf={args.conf}")
+    _log_watcher_term_state.clear()
+    _write_log_watcher_counts()  # per-term action counts are in-memory only - zero them out on every start
+    _mining_algo_counts.clear()
+    _write_mining_algo_counts()  # same for per-algo mining watchdog action counts
     consecutive_fails = {}
     last_action_ts = {}
     last_conf_state = {}
-    global_alert_state = {"count": 0}
     next_mining_check_at = 0.0
     next_log_watcher_at = 0.0
     while True:
@@ -644,7 +747,7 @@ def main():
             try:
                 mining_interval = run_one_cycle(
                     args.conf, consecutive_fails, last_action_ts, last_conf_state,
-                    global_alert_state, global_settings,
+                    global_settings,
                 )
             except Exception as e:
                 log(f"[error] Unexpected error during mining check: {e}")
@@ -655,7 +758,9 @@ def main():
         if global_settings.get("log_watcher_enabled") and now >= next_log_watcher_at:
             log_watcher_interval = global_settings.get("log_watcher_interval_seconds", 10)
             try:
-                run_log_watcher_cycle(global_settings)
+                if run_log_watcher_cycle(global_settings) is None:
+                    log("[GLOBAL] Watchdog loop stopping itself now.")
+                    break
             except Exception as e:
                 log(f"[log-watcher] Unexpected error: {e}")
             next_log_watcher_at = time.time() + log_watcher_interval

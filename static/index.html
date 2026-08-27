@@ -263,23 +263,17 @@
                             </div>
                         </div>
                         <div class="settings-section">
-                            <div class="section-header">Per-Algorithm Thresholds <span class="wdconfig-section-header-hint">Grace Checks: fails before restart. Cooldown (s): time between restarts.</span></div>
+                            <div class="section-header">Per-Algorithm Thresholds <span class="wdconfig-section-header-hint">Grace Checks: fails before restart. Cooldown (s): time between restarts. Stop After Fails: acted this many times stops the watchdog service (0 disables).</span></div>
                         </div>
                         <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
                             <button class="cmd-btn" id="btn-wdconfig-add-row">+ Add Algorithm</button>
+                            <button class="cmd-btn secondary" id="btn-wdconfig-refresh-counts" title="Re-fetch each algorithm's Taken count from the selected worker - select exactly one worker in the main worker list first">↻ Refresh Counts</button>
                             <span class="wdconfig-hashrate-unit-toggle" title="Min Hashrate display unit - always saved as true H/s regardless of what's selected">
                                 <span class="wdconfig-unit-label wdconfig-hashrate-unit-label">MH/s</span>
                                 <button type="button" class="wdconfig-unit-btn" id="wdconfig-hashrate-unit-down" title="Smaller unit">▼</button>
                                 <button type="button" class="wdconfig-unit-btn" id="wdconfig-hashrate-unit-up" title="Larger unit">▲</button>
                             </span>
                             <span class="wdconfig-editing-algo-label" id="wdconfig-editing-algo-label"></span>
-                            <span class="wdconfig-global-stop-group" title="Stops the watchdog SERVICE itself (not just this worker's miners) once this many total actions/notifications have fired across every algorithm combined since it last started - protects against endlessly restarting things on a persistently unhealthy worker. Applies per worker. 0 disables this - the service never stops itself.">
-                                <span class="wdconfig-global-stop-label">Stop Watchdog After</span>
-                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-global-stop-down" title="Decrease">▼</button>
-                                <input type="number" id="wdconfig-global-stop-fails" min="0" step="1" value="5" class="wdconfig-global-stop-input" />
-                                <button type="button" class="wdconfig-unit-btn" id="wdconfig-global-stop-up" title="Increase">▲</button>
-                                <span class="wdconfig-global-stop-label">Fails</span>
-                            </span>
                         </div>
                         <div class="wdconfig-table-wrap">
                             <table class="wdconfig-table">
@@ -291,6 +285,8 @@
                                         <th title="Maximum acceptable combined GPU power draw (W) while this algo is active. 0 disables this check. Ignored by the CPU watchdog.">Max Watts</th>
                                         <th title="Consecutive failing checks required before a restart is triggered">Grace Checks</th>
                                         <th title="Minimum seconds between auto-restarts triggered by this algo">Cooldown (s)</th>
+                                        <th title="Stops the watchdog SERVICE itself (not just this worker's miners) once this algorithm has acted this many times since it last started - protects against endlessly restarting things on a persistently unhealthy algo. 0 disables this - the service never stops itself for this algo.">Stop After Fails</th>
+                                        <th title="Times this algorithm has actually acted since the worker's watchdog service last (re)started - click Refresh Counts above to update">Taken</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -315,9 +311,51 @@
                 <div class="wdconfig-main-tab-panel" data-tab-panel="logs">
                     <div class="wdconfig-logwatcher-panel" id="wdconfig-logwatcher-panel">
                         <div class="settings-section">
-                            <div class="section-header">Watch Terms</div>
+                            <div class="section-header">When Triggered <span class="wdconfig-editing-algo-label" id="wdconfig-logterm-when-triggered-label"></span></div>
+                            <div class="wdconfig-timing-triggers-row">
+                                <div class="wdconfig-actions-row">
+                                    <span class="wdconfig-action-group-label">Restart:</span>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-restart-cpu">
+                                        <span class="checkbox-text">CPU</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-restart-gpu">
+                                        <span class="checkbox-text">GPU</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-restart-fan">
+                                        <span class="checkbox-text">Fan</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-restart-aux">
+                                        <span class="checkbox-text">AUX</span>
+                                    </label>
+                                    <span class="wdconfig-action-group-label">Notify:</span>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-email-notify">
+                                        <span class="checkbox-text">Email</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-sms-notify">
+                                        <span class="checkbox-text">SMS</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-reboot-rig">
+                                        <span class="checkbox-text">Reboot</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="wdconfig-logterm-action-custom-script">
+                                        <span class="checkbox-text">Custom Script</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <div class="section-header">Watch Terms <span class="wdconfig-section-header-hint">Grace Checks: matching cycles before it acts. Cooldown (s): time between actions. Stop After Fails: acted this many times stops the watchdog service (0 disables). Taken: times it's actually acted since the worker's watchdog service last (re)started.</span></div>
                             <div class="cmd-btn-row wdconfig-table-btn-row" style="justify-content: flex-start;">
                                 <button class="cmd-btn" id="btn-wdconfig-logterm-add">+ Add Term</button>
+                                <button class="cmd-btn secondary" id="btn-wdconfig-logterm-refresh-counts" title="Re-fetch each term's Taken count from the selected worker - select exactly one worker in the main worker list first">↻ Refresh Counts</button>
                                 <span class="wdconfig-editing-algo-label" id="wdconfig-editing-logterm-label"></span>
                             </div>
                             <div class="wdconfig-table-wrap">
@@ -328,7 +366,10 @@
                                             <th title="Comma-separated list - line must contain ALL of these to match">Contains</th>
                                             <th title="Comma-separated list - line must contain NONE of these to match">Not Contains</th>
                                             <th>Severity</th>
-                                            <th>Actions <span class="wdconfig-section-header-hint">- restart / notify / custom script</span></th>
+                                            <th title="Consecutive matching Log Watcher cycles required before it acts">Grace Checks</th>
+                                            <th title="Minimum seconds between actions triggered by this term">Cooldown (s)</th>
+                                            <th title="Stops the watchdog SERVICE itself (not just this worker's miners) once this term has acted this many times since it last started - protects against endlessly acting on a persistently unhealthy worker. 0 disables this - the service never stops itself for this term.">Stop After Fails</th>
+                                            <th title="Times this term has actually acted since the worker's watchdog service last (re)started - click Refresh Counts above to update">Taken</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -338,7 +379,7 @@
                             </div>
                         </div>
                         <div class="settings-section">
-                            <div class="section-header">Custom Script <span class="wdconfig-editing-algo-label" id="wdconfig-logterm-script-selected-label"></span> <span class="wdconfig-section-header-hint">Runs for whichever term is selected above, when its "Script" action is checked.</span></div>
+                            <div class="section-header">Custom Script <span class="wdconfig-editing-algo-label" id="wdconfig-logterm-script-selected-label"></span> <span class="wdconfig-section-header-hint">Runs for whichever term is selected above, when "Custom Script" is checked in When Triggered.</span></div>
                             <textarea
                                 id="wdconfig-logwatcher-custom-script"
                                 class="wdconfig-script-textarea wdconfig-logwatcher-script-textarea"

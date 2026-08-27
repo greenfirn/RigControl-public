@@ -930,7 +930,7 @@ const HASHRATE_UNIT_MULTIPLIERS = {
 };
 let _lastStatsResp = null;
 let wdHashrateUnit = "MH/s";
-const WD_GLOBAL_STOP_FAILS_DEFAULT = 5;
+const WD_STOP_AFTER_FAILS_DEFAULT = 5; // per-algo/per-term default, matches DEFAULT_ALGO_SETTINGS on the backend
 const WD_LOG_WATCHER_SLOT_IDS = ["cpu", "gpu", "aux"];
 const WD_LOG_WATCHER_INTERVAL_DEFAULT = 10;
 const WD_MINING_INTERVAL_DEFAULT = 30;
@@ -946,9 +946,32 @@ const WD_LOG_TERM_ACTION_DEFS = [
     ["reboot", "ACTION_REBOOT_RIG", "Reboot"],
     ["script", "ACTION_CUSTOM_SCRIPT", "Script"],
 ];
+// Same action IDs/keys as WD_LOG_TERM_ACTION_DEFS above, just paired with the "When Triggered"
+// section's checkbox element ids instead of table-cell ones - the checkboxes moved out of the
+// per-row table cell into their own section (mirroring how Mining's "When Triggered" works),
+// edited for whichever term row is currently selected below.
+const WD_LOGTERM_ACTION_CHECKBOX_DEFS = [
+    ["wdconfig-logterm-action-restart-cpu", "ACTION_RESTART_CPU"],
+    ["wdconfig-logterm-action-restart-gpu", "ACTION_RESTART_GPU"],
+    ["wdconfig-logterm-action-restart-fan", "ACTION_RESTART_FAN"],
+    ["wdconfig-logterm-action-restart-aux", "ACTION_RESTART_AUX"],
+    ["wdconfig-logterm-action-email-notify", "ACTION_EMAIL_NOTIFY"],
+    ["wdconfig-logterm-action-sms-notify", "ACTION_SMS_NOTIFY"],
+    ["wdconfig-logterm-action-reboot-rig", "ACTION_REBOOT_RIG"],
+    ["wdconfig-logterm-action-custom-script", "ACTION_CUSTOM_SCRIPT"],
+];
 let wdLogTermRowIdCounter = 0;
 let selectedWdLogTermRowId = null;
 let wdLogTermScripts = new Map();
+// Actions for whichever term row isn't currently selected - the selected row's actions live in
+// the "When Triggered" checkboxes themselves and get saved back in here on selection change
+// (see saveWdLogTermScriptFromPanel()/loadWdLogTermScriptIntoPanel()).
+let wdLogTermActions = new Map();
+// Per-term "times actually acted" counts, read from the worker via Refresh Counts - keyed by
+// row id like the maps above, purely informational/display, never sent back to the worker.
+let wdLogTermTakenCounts = new Map();
+let pendingLogWatcherCountsFetchRig = null;
+let pendingMiningCountsFetchRig = null;
 let selectedStatusLogIds = new Set();
 let watchdogProfiles = [];
 let selectedWatchdogProfileId = null;
@@ -3784,6 +3807,44 @@ function handleCommandResponse(response) {
             if (statusEl) statusEl.textContent = `Loaded current config from ${r.rig}`;
         } else {
             if (statusEl) statusEl.textContent = `No existing config found on ${r.rig} (using defaults)`;
+        }
+        return;
+    }
+    if (pendingLogWatcherCountsFetchRig && r.rig === pendingLogWatcherCountsFetchRig) {
+        pendingLogWatcherCountsFetchRig = null;
+        const statusEl = document.getElementById("wdconfig-status");
+        if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
+            const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
+            try {
+                applyLogWatcherTermCounts(JSON.parse(raw));
+                if (statusEl) statusEl.textContent = `Term counts refreshed from ${r.rig}`;
+            } catch (e) {
+                console.error("Failed to parse log watcher term counts", e);
+                if (statusEl) statusEl.textContent = `Couldn't parse term counts from ${r.rig}`;
+            }
+        } else {
+            // No file yet usually just means the worker's watchdog service hasn't started its
+            // log watcher loop since it last (re)started - not necessarily an error.
+            if (statusEl) statusEl.textContent = `No term counts yet on ${r.rig} (watchdog may not have run a log-watcher cycle since it last started)`;
+        }
+        return;
+    }
+    if (pendingMiningCountsFetchRig && r.rig === pendingMiningCountsFetchRig) {
+        pendingMiningCountsFetchRig = null;
+        const statusEl = document.getElementById("wdconfig-status");
+        if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
+            const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
+            try {
+                applyMiningAlgoCounts(JSON.parse(raw));
+                if (statusEl) statusEl.textContent = `Algo counts refreshed from ${r.rig}`;
+            } catch (e) {
+                console.error("Failed to parse mining algo counts", e);
+                if (statusEl) statusEl.textContent = `Couldn't parse algo counts from ${r.rig}`;
+            }
+        } else {
+            // No file yet usually just means the worker's watchdog service hasn't taken any
+            // mining-health action since it last (re)started - not necessarily an error.
+            if (statusEl) statusEl.textContent = `No algo counts yet on ${r.rig} (watchdog hasn't acted on anything since it last started)`;
         }
         return;
     }
@@ -10578,13 +10639,6 @@ function stepWdHashrateUnit(direction) {
     if (newIdx < 0 || newIdx >= WD_HASHRATE_UNITS.length) return;
     setWdHashrateUnit(WD_HASHRATE_UNITS[newIdx]);
 }
-function stepWdGlobalStopFails(direction) {
-    const el = document.getElementById("wdconfig-global-stop-fails");
-    if (!el) return;
-    const next = Math.max(0, (Number(el.value) || 0) + direction);
-    el.value = next;
-    rebuildWdRawFromSettings();
-}
 function stepWdInterval(inputId, direction) {
     const el = document.getElementById(inputId);
     if (!el) return;
@@ -10593,7 +10647,7 @@ function stepWdInterval(inputId, direction) {
     rebuildWdRawFromSettings();
 }
 function addWdConfigRow(row, opts) {
-    const r = row || { algo: "", minHashrate: 1, minWatts: 20, maxWatts: 0, grace: 3, cooldown: 600 };
+    const r = row || { algo: "", minHashrate: 1, minWatts: 20, maxWatts: 0, grace: 3, cooldown: 600, stopAfterFails: WD_STOP_AFTER_FAILS_DEFAULT };
     const tbody = document.getElementById("wdconfig-rows");
     if (!tbody) return;
     const rowId = String(++wdRowIdCounter);
@@ -10613,6 +10667,8 @@ function addWdConfigRow(row, opts) {
         <td><input type="number" class="wdconfig-input" min="0" step="1" value="${r.maxWatts}" /></td>
         <td><input type="number" class="wdconfig-input" min="1" step="1" value="${r.grace}" /></td>
         <td><input type="number" class="wdconfig-input" min="0" step="1" value="${r.cooldown}" /></td>
+        <td><input type="number" class="wdconfig-input" min="0" step="1" value="${r.stopAfterFails ?? WD_STOP_AFTER_FAILS_DEFAULT}" title="Stops the watchdog SERVICE itself once this algorithm has acted this many times since it last started. 0 disables this - the service never stops itself for this algo." /></td>
+        <td class="wdconfig-taken" title="Times this algorithm has actually acted since the worker's watchdog service last (re)started - click Refresh Counts above to update">—</td>
         <td><button class="wdconfig-remove-row" title="Remove row">&times;</button></td>
     `;
     tr.querySelector(".wdconfig-remove-row").addEventListener("click", (ev) => {
@@ -10643,7 +10699,7 @@ function collectWdConfigRows() {
         const inputs = tr.querySelectorAll(".wdconfig-input");
         const algo = inputs[0].value.trim();
         if (!algo) continue;
-        const nums = [inputs[1].value, inputs[2].value, inputs[3].value, inputs[4].value, inputs[5].value]
+        const nums = [inputs[1].value, inputs[2].value, inputs[3].value, inputs[4].value, inputs[5].value, inputs[6].value]
             .map(v => Number(v));
         if (nums.some(n => Number.isNaN(n))) {
             alert(`Row "${algo}" has a non-numeric value - fix it before applying.`);
@@ -10656,6 +10712,7 @@ function collectWdConfigRows() {
             maxWatts: nums[2],
             grace: nums[3],
             cooldown: nums[4],
+            stopAfterFails: nums[5],
         });
     }
     return rows;
@@ -10678,24 +10735,40 @@ function saveWdLogTermScriptFromPanel() {
     if (!selectedWdLogTermRowId) return;
     const el = document.getElementById("wdconfig-logwatcher-custom-script");
     wdLogTermScripts.set(selectedWdLogTermRowId, el ? el.value : "");
+    const actions = {};
+    for (const [id, key] of WD_LOGTERM_ACTION_CHECKBOX_DEFS) {
+        actions[key] = !!document.getElementById(id)?.checked;
+    }
+    wdLogTermActions.set(selectedWdLogTermRowId, actions);
 }
 function loadWdLogTermScriptIntoPanel(rowId) {
     const el = document.getElementById("wdconfig-logwatcher-custom-script");
     if (el) el.value = wdLogTermScripts.get(rowId) || "";
+    const actions = wdLogTermActions.get(rowId) || {};
+    for (const [id, key] of WD_LOGTERM_ACTION_CHECKBOX_DEFS) {
+        const cb = document.getElementById(id);
+        if (cb) cb.checked = !!actions[key];
+    }
     updateWdLogTermScriptEnabled();
 }
 function updateWdLogTermScriptEnabled() {
     // Editable as soon as a term row is selected, independent of the "Script" action checkbox.
     const el = document.getElementById("wdconfig-logwatcher-custom-script");
-    if (!el) return;
-    el.disabled = !selectedWdLogTermRowId;
+    if (el) el.disabled = !selectedWdLogTermRowId;
+    // Same for the When Triggered checkboxes themselves - nothing to check/uncheck until a term is selected.
+    for (const [id] of WD_LOGTERM_ACTION_CHECKBOX_DEFS) {
+        const cb = document.getElementById(id);
+        if (cb) cb.disabled = !selectedWdLogTermRowId;
+    }
 }
 function updateWdEditingLogTermLabel() {
     const label = document.getElementById("wdconfig-editing-logterm-label");
     const scriptLabel = document.getElementById("wdconfig-logterm-script-selected-label");
+    const triggerLabel = document.getElementById("wdconfig-logterm-when-triggered-label");
     if (!selectedWdLogTermRowId) {
-        if (label) label.textContent = "— select a term row above to edit its script";
+        if (label) label.textContent = "— select a term row below to edit it";
         if (scriptLabel) scriptLabel.textContent = "";
+        if (triggerLabel) triggerLabel.textContent = "";
         return;
     }
     const tr = document.querySelector(`#wdconfig-logterm-rows .wdconfig-logterm-row[data-wd-log-term-row-id="${selectedWdLogTermRowId}"]`);
@@ -10704,6 +10777,7 @@ function updateWdEditingLogTermLabel() {
     const display = notContains ? `${contains || "unnamed term"} | ${notContains}` : (contains || "unnamed term");
     if (label) label.textContent = `— editing "${contains || "(unnamed term)"}"`;
     if (scriptLabel) scriptLabel.textContent = `(${display})`;
+    if (triggerLabel) triggerLabel.textContent = `(${display})`;
 }
 function selectWdLogTermRow(rowId) {
     if (rowId === selectedWdLogTermRowId) return;
@@ -10726,11 +10800,12 @@ function selectFirstWdLogTermRow() {
     }
 }
 function addWdLogTermRow(row, opts) {
-    const r = row || { contains: "", notContains: "", severity: "warn", actions: {}, customScript: "", slot: "gpu" };
+    const r = row || { contains: "", notContains: "", severity: "warn", actions: {}, customScript: "", slot: "gpu", grace: 1, cooldown: 600, stopAfterFails: WD_STOP_AFTER_FAILS_DEFAULT };
     const tbody = document.getElementById("wdconfig-logterm-rows");
     if (!tbody) return;
     const rowId = String(++wdLogTermRowIdCounter);
     wdLogTermScripts.set(rowId, r.customScript || "");
+    wdLogTermActions.set(rowId, r.actions || {});
     const tr = document.createElement("tr");
     tr.className = "wdconfig-logterm-row";
     tr.dataset.wdLogTermRowId = rowId;
@@ -10741,19 +10816,15 @@ function addWdLogTermRow(row, opts) {
     const severityOptions = WD_LOG_WATCHER_SEVERITIES
         .map(sev => `<option value="${sev}"${sev === r.severity ? " selected" : ""}>${WD_LOG_WATCHER_SEVERITY_LABELS[sev]}</option>`)
         .join("");
-    const actionsHtml = WD_LOG_TERM_ACTION_DEFS
-        .map(([slug, key, label]) => `
-            <label class="checkbox-label wdconfig-logterm-action-label" title="${label}">
-                <input type="checkbox" class="wdconfig-logterm-action" data-action-key="${key}"${r.actions && r.actions[key] ? " checked" : ""}>
-                <span class="checkbox-text">${label}</span>
-            </label>`)
-        .join("");
     tr.innerHTML = `
         <td><select class="wdconfig-logterm-slot" title="Which worker log this term scans - All checks every enabled Watch Slot above">${slotOptions}</select></td>
         <td><input type="text" class="wdconfig-input wdconfig-logterm-contains" value="${escapeHtml(r.contains)}" placeholder="e.g. error, timeout" autocomplete="off" title="Comma-separated list - line must contain ALL of these to match" /></td>
         <td><input type="text" class="wdconfig-input wdconfig-logterm-notcontains" value="${escapeHtml(r.notContains)}" placeholder="e.g. debug" autocomplete="off" title="Comma-separated list - line must contain NONE of these to match" /></td>
         <td><select class="wdconfig-severity-select" data-severity="${r.severity}">${severityOptions}</select></td>
-        <td><div class="wdconfig-logterm-actions">${actionsHtml}</div></td>
+        <td><input type="number" class="wdconfig-input wdconfig-logterm-grace" min="1" step="1" value="${r.grace || 1}" title="Consecutive matching Log Watcher cycles required before it acts" /></td>
+        <td><input type="number" class="wdconfig-input wdconfig-logterm-cooldown" min="0" step="1" value="${r.cooldown || 0}" title="Minimum seconds between actions triggered by this term" /></td>
+        <td><input type="number" class="wdconfig-input wdconfig-logterm-stop-after" min="0" step="1" value="${r.stopAfterFails ?? WD_STOP_AFTER_FAILS_DEFAULT}" title="Stops the watchdog SERVICE itself once this term has acted this many times since it last started. 0 disables this - the service never stops itself for this term." /></td>
+        <td class="wdconfig-logterm-taken" title="Times this term has actually acted since the worker's watchdog service last (re)started - click Refresh Counts above to update">${wdLogTermTakenCounts.has(rowId) ? wdLogTermTakenCounts.get(rowId) : "—"}</td>
         <td><button class="wdconfig-remove-row" title="Remove term">&times;</button></td>
     `;
     const slotSelect = tr.querySelector(".wdconfig-logterm-slot");
@@ -10771,15 +10842,12 @@ function addWdLogTermRow(row, opts) {
     severitySelect.addEventListener("change", () => {
         severitySelect.dataset.severity = severitySelect.value;
     });
-    tr.querySelectorAll(".wdconfig-logterm-action").forEach(cb => {
-        cb.addEventListener("change", () => {
-            if (rowId === selectedWdLogTermRowId) updateWdLogTermScriptEnabled();
-        });
-    });
     tr.querySelector(".wdconfig-remove-row").addEventListener("click", (ev) => {
         ev.stopPropagation();
         const wasSelected = rowId === selectedWdLogTermRowId;
         wdLogTermScripts.delete(rowId);
+        wdLogTermActions.delete(rowId);
+        wdLogTermTakenCounts.delete(rowId);
         tr.remove();
         if (wasSelected) {
             selectedWdLogTermRowId = null;
@@ -10800,15 +10868,20 @@ function collectWdLogTermRows() {
         const notContains = tr.querySelector(".wdconfig-logterm-notcontains")?.value.trim() || "";
         const severity = tr.querySelector(".wdconfig-severity-select")?.value || "warn";
         const slot = tr.querySelector(".wdconfig-logterm-slot")?.value || "all";
-        const actions = {};
-        tr.querySelectorAll(".wdconfig-logterm-action").forEach(cb => {
-            actions[cb.dataset.actionKey] = cb.checked;
-        });
+        const grace = Math.max(1, Number(tr.querySelector(".wdconfig-logterm-grace")?.value) || 1);
+        const cooldown = Math.max(0, Number(tr.querySelector(".wdconfig-logterm-cooldown")?.value) || 0);
+        const stopAfterFails = Math.max(0, Number(tr.querySelector(".wdconfig-logterm-stop-after")?.value) || 0);
         const rowId = tr.dataset.wdLogTermRowId;
+        // The selected row's actions live in the "When Triggered" checkboxes right now, not
+        // saved back into wdLogTermActions until selection changes - read from there instead so
+        // Send it/rebuild always reflects what's actually checked on screen.
+        const actions = rowId === selectedWdLogTermRowId
+            ? Object.fromEntries(WD_LOGTERM_ACTION_CHECKBOX_DEFS.map(([id, key]) => [key, !!document.getElementById(id)?.checked]))
+            : (wdLogTermActions.get(rowId) || {});
         const customScript = rowId === selectedWdLogTermRowId
             ? (document.getElementById("wdconfig-logwatcher-custom-script")?.value || "")
             : (wdLogTermScripts.get(rowId) || "");
-        rows.push({ contains, notContains, severity, actions, customScript, slot });
+        rows.push({ contains, notContains, severity, actions, customScript, slot, grace, cooldown, stopAfterFails });
     }
     return rows;
 }
@@ -10862,6 +10935,10 @@ function renderWatchdogProfiles() {
         const raw = p.Value || "";
         const miningOn = extractWdListRawValue(raw, "MINING_WATCHDOG_ENABLED") === "1";
         const logsOn = extractWdListRawValue(raw, "LOG_WATCHER_ENABLED") === "1";
+        const miningInterval = extractWdListRawValue(raw, "MINING_INTERVAL_SECONDS");
+        const logsInterval = extractWdListRawValue(raw, "LOG_WATCHER_INTERVAL_SECONDS");
+        const miningDisplay = miningOn ? `${miningInterval || WD_MINING_INTERVAL_DEFAULT}s` : "—";
+        const logsDisplay = logsOn ? `${logsInterval || WD_LOG_WATCHER_INTERVAL_DEFAULT}s` : "—";
         const slotsRaw = extractWdListRawValue(raw, "LOG_WATCHER_SLOTS");
         const slotsDisplay = slotsRaw
             ? slotsRaw.split(",").filter(Boolean).map(s => s.toUpperCase()).join(", ")
@@ -10875,8 +10952,8 @@ function renderWatchdogProfiles() {
                 <span class="fs-item-col fs-item-col-name">${escapeHtml(p.WatchdogProfileId)}</span>
                 <span class="fs-item-col fs-item-col-applyto" title="${escapeHtml(applyToDisplay)}">${escapeHtml(applyToDisplay)}</span>
                 <span class="fs-item-col fs-item-col-slots" title="${escapeHtml(slotsDisplay)}">${escapeHtml(slotsDisplay)}</span>
-                <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog ${miningOn ? "enabled" : "disabled"}">${miningOn ? "✓" : "—"}</span>
-                <span class="fs-item-col fs-item-col-logs" title="Log Watcher ${logsOn ? "enabled" : "disabled"}">${logsOn ? "✓" : "—"}</span>
+                <span class="fs-item-col fs-item-col-mining" title="Mining Watchdog ${miningOn ? `enabled, checks every ${miningInterval || WD_MINING_INTERVAL_DEFAULT}s` : "disabled"}">${miningDisplay}</span>
+                <span class="fs-item-col fs-item-col-logs" title="Log Watcher ${logsOn ? `enabled, scans every ${logsInterval || WD_LOG_WATCHER_INTERVAL_DEFAULT}s` : "disabled"}">${logsDisplay}</span>
                 <span class="fs-item-col fs-item-col-algo" title="${escapeHtml(algoDisplay)}">${escapeHtml(algoDisplay)}</span>
             </div>
         `;
@@ -10892,6 +10969,10 @@ function renderWatchdogProfiles() {
             row.classList.add("selected");
             selectedWatchdogProfileId = p.WatchdogProfileId;
             document.getElementById("wdconfig-name").value = p.WatchdogProfileId;
+        });
+        row.addEventListener("dblclick", () => {
+            selectedWatchdogProfileId = p.WatchdogProfileId;
+            loadSelectedWatchdogProfile();
         });
         list.appendChild(row);
     }
@@ -11087,6 +11168,8 @@ function clearWdConfigFields() {
     const logTermTbody = document.getElementById("wdconfig-logterm-rows");
     if (logTermTbody) logTermTbody.innerHTML = "";
     wdLogTermScripts.clear();
+    wdLogTermActions.clear();
+    wdLogTermTakenCounts.clear();
     selectedWdLogTermRowId = null;
     updateWdEditingLogTermLabel();
     updateWdLogTermScriptEnabled();
@@ -11112,8 +11195,6 @@ function resetWdSettingsToDefaults() {
     const script = document.getElementById("wdconfig-custom-script");
     if (script) script.value = "";
     updateWdCustomScriptEnabled();
-    const globalStopInput = document.getElementById("wdconfig-global-stop-fails");
-    if (globalStopInput) globalStopInput.value = WD_GLOBAL_STOP_FAILS_DEFAULT;
     const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
     if (miningEnabledEl) miningEnabledEl.checked = false;
     const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
@@ -11125,6 +11206,8 @@ function resetWdSettingsToDefaults() {
     const logTermTbody = document.getElementById("wdconfig-logterm-rows");
     if (logTermTbody) logTermTbody.innerHTML = "";
     wdLogTermScripts.clear();
+    wdLogTermActions.clear();
+    wdLogTermTakenCounts.clear();
     selectedWdLogTermRowId = null;
     updateWdEditingLogTermLabel();
     updateWdLogTermScriptEnabled();
@@ -11137,8 +11220,6 @@ function updateWdCustomScriptEnabled() {
 }
 function buildWdConfigRawFromSettings() {
     saveWdPanelStateToSelectedRow();
-    const globalStopEl = document.getElementById("wdconfig-global-stop-fails");
-    const globalStopFails = globalStopEl ? Math.max(0, Number(globalStopEl.value) || 0) : WD_GLOBAL_STOP_FAILS_DEFAULT;
     const miningEnabled = document.getElementById("wdconfig-mining-enabled")?.checked ?? true;
     const miningIntervalEl = document.getElementById("wdconfig-mining-interval");
     const miningInterval = miningIntervalEl ? Math.max(5, Number(miningIntervalEl.value) || 60) : 60;
@@ -11156,7 +11237,7 @@ function buildWdConfigRawFromSettings() {
                 .filter(([, v]) => v)
                 .map(([k]) => k)
                 .join(",");
-            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}|${t.slot || "all"}`;
+            return `${t.contains}|${t.notContains}|${t.severity}|${actionKeys}|${t.slot || "all"}|${t.grace || 1}|${t.cooldown || 0}|${t.stopAfterFails || 0}`;
         })
         .join(";");
     const lines = [
@@ -11169,7 +11250,6 @@ function buildWdConfigRawFromSettings() {
         "# LOG_WATCHER_TERM_SCRIPT_BEGIN/END block per term (in the same order as the",
         "# terms listed in LOG_WATCHER_TERMS above) - click its row above to edit it.",
         "",
-        `MINING_WATCHDOG_STOP_AFTER_FAILS "${globalStopFails}"`,
         `MINING_WATCHDOG_ENABLED "${miningEnabled ? "1" : "0"}"`,
         `MINING_INTERVAL_SECONDS "${miningInterval}"`,
         `LOG_WATCHER_ENABLED "${logWatcherEnabled ? "1" : "0"}"`,
@@ -11197,6 +11277,7 @@ function buildWdConfigRawFromSettings() {
         lines.push(`MAX_WATTS_TOTAL "${inputs[3].value}"`);
         lines.push(`GRACE_CHECKS "${inputs[4].value}"`);
         lines.push(`COOLDOWN_SECONDS "${inputs[5].value}"`);
+        lines.push(`STOP_AFTER_FAILS "${inputs[6].value}"`);
         for (const [id, key] of WD_ACTION_RAW_KEYS) {
             lines.push(`${key} "${settings.actions[id] ? "1" : "0"}"`);
         }
@@ -11261,6 +11342,7 @@ function parseWdAlgoBlock(blockText) {
         maxWatts: Number(kv.MAX_WATTS_TOTAL) || 0,
         grace: Number(kv.GRACE_CHECKS) || 1,
         cooldown: Number(kv.COOLDOWN_SECONDS) || 0,
+        stopAfterFails: kv.STOP_AFTER_FAILS !== undefined ? Math.max(0, Number(kv.STOP_AFTER_FAILS) || 0) : WD_STOP_AFTER_FAILS_DEFAULT,
         settings: {
             actions,
             customScript,
@@ -11276,11 +11358,6 @@ function populateWdSettingsFromRaw(rawText) {
     if (!rawText || !rawText.trim()) {
         selectFirstWdRow();
         return;
-    }
-    const globalStopEl = document.getElementById("wdconfig-global-stop-fails");
-    if (globalStopEl) {
-        const gm = rawText.match(/^MINING_WATCHDOG_STOP_AFTER_FAILS\s+"(-?\d+)"\s*$/m);
-        if (gm) globalStopEl.value = Math.max(0, Number(gm[1]) || 0);
     }
     const miningEnabledEl = document.getElementById("wdconfig-mining-enabled");
     if (miningEnabledEl) {
@@ -11306,6 +11383,8 @@ function populateWdSettingsFromRaw(rawText) {
     const legacySharedScriptMatch = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
     const legacySharedScript = legacySharedScriptMatch ? legacySharedScriptMatch[1] : "";
     wdLogTermScripts.clear();
+    wdLogTermActions.clear();
+    wdLogTermTakenCounts.clear();
     selectedWdLogTermRowId = null;
     // Each term's script is a LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block, index = its position in LOG_WATCHER_TERMS.
     const termScriptBlocks = new Map();
@@ -11317,8 +11396,14 @@ function populateWdSettingsFromRaw(rawText) {
         termsMatch[1].split(";").forEach((entry, entryIdx) => {
             if (!entry.trim()) return;
             const rawParts = entry.split("|");
-            let contains, notContains, severityRaw, actionsRaw, slotRaw, legacyScriptB64 = "";
-            if (rawParts.length >= 6) {
+            let contains, notContains, severityRaw, actionsRaw, slotRaw, legacyScriptB64 = "", graceRaw = "", cooldownRaw = "", stopAfterRaw = "";
+            if (rawParts.length >= 8) {
+                // Current format: contains|notContains|severity|actions|slot|grace|cooldown|stopAfterFails
+                [contains, notContains, severityRaw, actionsRaw, slotRaw, graceRaw, cooldownRaw, stopAfterRaw] = rawParts;
+            } else if (rawParts.length === 7) {
+                // Older format (pre-stop-after-fails): contains|notContains|severity|actions|slot|grace|cooldown
+                [contains, notContains, severityRaw, actionsRaw, slotRaw, graceRaw, cooldownRaw] = rawParts;
+            } else if (rawParts.length === 6) {
                 // Older format (briefly shipped): contains|notContains|severity|actions|scriptB64|slot
                 [contains, notContains, severityRaw, actionsRaw, legacyScriptB64, slotRaw] = rawParts;
             } else {
@@ -11336,6 +11421,9 @@ function populateWdSettingsFromRaw(rawText) {
                 ? termScriptBlocks.get(entryIdx)
                 : (legacyScriptB64 ? b64DecodeUtf8(legacyScriptB64) : legacySharedScript);
             const slot = WD_LOG_WATCHER_SLOT_IDS.includes((slotRaw || "").trim()) ? slotRaw.trim() : "all";
+            const grace = Math.max(1, Number(graceRaw) || 1);
+            const cooldown = Math.max(0, Number(cooldownRaw) || 0);
+            const stopAfterFails = Math.max(0, Number(stopAfterRaw) || 0);
             addWdLogTermRow({
                 contains,
                 notContains,
@@ -11343,6 +11431,9 @@ function populateWdSettingsFromRaw(rawText) {
                 actions,
                 customScript,
                 slot,
+                grace,
+                cooldown,
+                stopAfterFails,
             }, { skipSelect: true, skipRebuild: true });
         });
     }
@@ -11366,6 +11457,7 @@ function populateWdSettingsFromRaw(rawText) {
                 maxWatts: parsed.maxWatts,
                 grace: parsed.grace,
                 cooldown: parsed.cooldown,
+                stopAfterFails: parsed.stopAfterFails,
             }, { skipRebuild: true, skipSelect: true, settings: parsed.settings });
         }
         selectFirstWdRow();
@@ -11459,6 +11551,71 @@ function autoLoadWdConfigForSelectedRig() {
         if (pendingWdConfigFetchRig === rig) pendingWdConfigFetchRig = null;
         if (statusEl) statusEl.textContent = "";
         alert(`Failed to load current config from ${rig}`);
+    });
+}
+// Matches watchdog/rigcontrol_watchdog.py's LOG_WATCHER_COUNTS_PATH - the in-memory-only per-term
+// action-taken counts get mirrored out there so this "Refresh Counts" flow can read them back
+// the same way Reload reads the conf file itself, just targeting a different file.
+const LOG_WATCHER_TERM_COUNTS_PATH = "/run/rigcontrol/log_watcher_term_counts.json";
+function applyLogWatcherTermCounts(countsObj) {
+    // Counts are keyed by term position (see _write_log_watcher_counts() on the worker), which
+    // lines up with DOM row order here since collectWdLogTermRows() builds LOG_WATCHER_TERMS in
+    // that same order - adding/removing/reordering rows without re-sending first can throw this
+    // off until the next Send it, same caveat as noted server-side.
+    const rows = Array.from(document.querySelectorAll("#wdconfig-logterm-rows .wdconfig-logterm-row"));
+    rows.forEach((tr, idx) => {
+        const count = countsObj[String(idx)];
+        if (count === undefined) return;
+        wdLogTermTakenCounts.set(tr.dataset.wdLogTermRowId, count);
+        const cell = tr.querySelector(".wdconfig-logterm-taken");
+        if (cell) cell.textContent = count;
+    });
+}
+// Matches watchdog/rigcontrol_watchdog.py's MINING_ALGO_COUNTS_PATH - same idea as the log
+// watcher counts above, but keyed by algo name (a stable natural key) instead of row position.
+const MINING_ALGO_COUNTS_PATH = "/run/rigcontrol/mining_watchdog_algo_counts.json";
+function applyMiningAlgoCounts(countsObj) {
+    // Backend keys are whatever case the algo showed up as in telemetry (usually lowercase);
+    // match case-insensitively against whatever the user typed in the Algorithm field.
+    const lowerCounts = {};
+    for (const [k, v] of Object.entries(countsObj)) lowerCounts[k.toLowerCase()] = v;
+    document.querySelectorAll("#wdconfig-rows .wdconfig-row").forEach(tr => {
+        const algo = tr.querySelector(".wdconfig-algo")?.value.trim().toLowerCase();
+        const cell = tr.querySelector(".wdconfig-taken");
+        if (!algo || !cell) return;
+        if (lowerCounts[algo] !== undefined) cell.textContent = lowerCounts[algo];
+    });
+}
+function refreshMiningAlgoCounts() {
+    const statusEl = document.getElementById("wdconfig-status");
+    if (selectedRigs.size !== 1) {
+        if (statusEl) statusEl.textContent = "Select exactly one worker to refresh algo counts";
+        return;
+    }
+    const [rig] = selectedRigs;
+    pendingMiningCountsFetchRig = rig;
+    if (statusEl) statusEl.textContent = `Fetching algo counts from ${rig}…`;
+    sendCommandToSelectedRigs(`cat ${MINING_ALGO_COUNTS_PATH}`).catch(err => {
+        console.error("Failed to request mining algo counts", err);
+        if (pendingMiningCountsFetchRig === rig) pendingMiningCountsFetchRig = null;
+        if (statusEl) statusEl.textContent = "";
+        alert(`Failed to fetch algo counts from ${rig}`);
+    });
+}
+function refreshLogWatcherTermCounts() {
+    const statusEl = document.getElementById("wdconfig-status");
+    if (selectedRigs.size !== 1) {
+        if (statusEl) statusEl.textContent = "Select exactly one worker to refresh term counts";
+        return;
+    }
+    const [rig] = selectedRigs;
+    pendingLogWatcherCountsFetchRig = rig;
+    if (statusEl) statusEl.textContent = `Fetching term counts from ${rig}…`;
+    sendCommandToSelectedRigs(`cat ${LOG_WATCHER_TERM_COUNTS_PATH}`).catch(err => {
+        console.error("Failed to request log watcher term counts", err);
+        if (pendingLogWatcherCountsFetchRig === rig) pendingLogWatcherCountsFetchRig = null;
+        if (statusEl) statusEl.textContent = "";
+        alert(`Failed to fetch term counts from ${rig}`);
     });
 }
 const AGENTCONF_RAW_HEIGHT_KEY = "rigcontrol_agentconf_raw_height";
@@ -13739,6 +13896,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("stats-days-input")?.addEventListener("input", updateStatsStartDateFromDays);
     document.getElementById("btn-wdconfig-add-row")?.addEventListener("click", () => addWdConfigRow());
     document.getElementById("btn-wdconfig-logterm-add")?.addEventListener("click", () => addWdLogTermRow());
+    document.getElementById("btn-wdconfig-logterm-refresh-counts")?.addEventListener("click", refreshLogWatcherTermCounts);
+    document.getElementById("btn-wdconfig-refresh-counts")?.addEventListener("click", refreshMiningAlgoCounts);
     document.getElementById("wdconfig-logwatcher-panel")?.addEventListener("input", (e) => {
         if (e.target && e.target.id === "wdconfig-logwatcher-custom-script") {
             rebuildWdRawFromSettings();
@@ -13840,17 +13999,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("wdconfig-hashrate-unit-up")?.addEventListener("click", () => stepWdHashrateUnit(1));
     document.getElementById("wdconfig-hashrate-unit-down")?.addEventListener("click", () => stepWdHashrateUnit(-1));
-    document.getElementById("wdconfig-global-stop-up")?.addEventListener("click", () => stepWdGlobalStopFails(1));
-    document.getElementById("wdconfig-global-stop-down")?.addEventListener("click", () => stepWdGlobalStopFails(-1));
     document.getElementById("wdconfig-mining-interval-up")?.addEventListener("click", () => stepWdInterval("wdconfig-mining-interval", 1));
     document.getElementById("wdconfig-mining-interval-down")?.addEventListener("click", () => stepWdInterval("wdconfig-mining-interval", -1));
     document.getElementById("wdconfig-logwatcher-interval-up")?.addEventListener("click", () => stepWdInterval("wdconfig-logwatcher-interval", 1));
     document.getElementById("wdconfig-logwatcher-interval-down")?.addEventListener("click", () => stepWdInterval("wdconfig-logwatcher-interval", -1));
-    document.getElementById("wdconfig-global-stop-fails")?.addEventListener("input", () => {
-        const el = document.getElementById("wdconfig-global-stop-fails");
-        if (el && Number(el.value) < 0) el.value = 0;
-        rebuildWdRawFromSettings();
-    });
     document.getElementById("wdconfig-mining-interval")?.addEventListener("input", () => {
         const el = document.getElementById("wdconfig-mining-interval");
         if (el && Number(el.value) < 5) el.value = 5;

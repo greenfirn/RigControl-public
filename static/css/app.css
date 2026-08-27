@@ -5554,24 +5554,29 @@ h1 {
 .wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(3) .wdconfig-input,
 .wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(4) .wdconfig-input,
 .wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(5) .wdconfig-input,
-.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(6) .wdconfig-input {
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(6) .wdconfig-input,
+.wdconfig-table:not(.wdconfig-logterm-table) td:nth-child(7) .wdconfig-input {
     max-width: 77px;
 }
 .wdconfig-logterm-table td .wdconfig-input {
     max-width: none;
     min-width: 90px;
 }
-.wdconfig-logterm-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px 8px;
-    align-items: center;
+/* Grace/Cooldown/Stop After Fails are plain number inputs like Mining's own Grace Checks/
+   Cooldown (s) columns - narrow like those, not stretched wide like Contains/Not Contains above.
+   Actions moved out of this table entirely into the "When Triggered" section (mirrors Mining's
+   layout), so there's no per-row actions cell/checkbox styling needed here anymore. */
+.wdconfig-logterm-table td .wdconfig-logterm-grace,
+.wdconfig-logterm-table td .wdconfig-logterm-cooldown,
+.wdconfig-logterm-table td .wdconfig-logterm-stop-after {
+    min-width: 0;
+    max-width: 77px;
 }
-.wdconfig-logterm-action-label {
+.wdconfig-logterm-taken,
+.wdconfig-taken {
+    text-align: center;
+    color: var(--text-muted);
     white-space: nowrap;
-}
-.wdconfig-logterm-action-label .checkbox-text {
-    font-size: var(--font-size-table);
 }
 .oc-table td:nth-child(1) .oc-algo {
     min-width: 90px;
@@ -5632,39 +5637,6 @@ h1 {
     color: var(--text-secondary);
     letter-spacing: normal;
     margin-left: 6px;
-}
-.wdconfig-global-stop-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: auto;
-}
-.wdconfig-global-stop-label {
-    text-transform: none;
-    font-weight: 400;
-    font-size: var(--font-size-label);
-    color: var(--text-secondary);
-    letter-spacing: normal;
-    white-space: nowrap;
-}
-.wdconfig-global-stop-input {
-    width: 40px;
-    box-sizing: border-box;
-    padding: 3px 3px;
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: 3px;
-    color: var(--text-primary);
-    font-size: var(--font-size-input-compact);
-    text-align: center;
-}
-.wdconfig-global-stop-input::-webkit-inner-spin-button,
-.wdconfig-global-stop-input::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-.wdconfig-global-stop-input[type="number"] {
-    -moz-appearance: textfield;
 }
 .wdconfig-section-header-hint {
     text-transform: none;
