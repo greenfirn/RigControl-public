@@ -11604,14 +11604,19 @@ function autoLoadConfForSelectedRig() {
     const statusEl = document.getElementById("agentconf-status");
     const confType = selectedConfEditType;
     const confLabel = LOGS_TYPE_LABELS[confType] || confType;
-    if (selectedRigs.size !== 1) {
-        if (statusEl) statusEl.textContent = `Select exactly one worker to load/edit its ${confLabel}`;
+    // Reload only ever reads from one worker. The "Apply to" picker can supply that worker too
+    // (so it doubles as a selector here), but only when it names exactly one - otherwise fall
+    // back to the main worker list.
+    const targetRigs = agentconfApplyToRigs.size > 0 ? agentconfApplyToRigs : selectedRigs;
+    if (targetRigs.size !== 1) {
+        if (statusEl) statusEl.textContent = `Select exactly one worker (main list or Apply to picker) to load/edit its ${confLabel}`;
         return;
     }
-    const [rig] = selectedRigs;
+    const [rig] = targetRigs;
     pendingAgentConfFetchRig = rig;
     if (statusEl) statusEl.textContent = `Loading current ${confLabel} from ${rig}…`;
     const catCmd = LOGS_COMMAND_BUILDERS[confType]?.() || `cat ${CONF_EDIT_TYPES[confType]?.path() ?? ""}`;
+    cmdModalRigOverride = [rig];
     sendCommandToSelectedRigs(catCmd).catch(err => {
         console.error(`Failed to request current ${confLabel}`, err);
         if (pendingAgentConfFetchRig === rig) pendingAgentConfFetchRig = null;
