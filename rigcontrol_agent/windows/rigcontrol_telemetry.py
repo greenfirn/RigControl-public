@@ -1667,15 +1667,24 @@ def collect_keryxd_stats():
     accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
     submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
     count_re = submit_block_re if log_style == "blocks" else accepted_re
-    share_state = _log_event_state.setdefault(log_path, {"offset": 0, "accepted_shares": 0})
+    share_state = _log_event_state.setdefault(
+        log_path, {"offset": 0, "accepted_shares": 0, "lifetime_accepted_shares": 0}
+    )
     new_text = _read_new_log_bytes(log_path, share_state)
     if new_text is None:
         return _build_miner_result("error", "keryxd", error=f"could not read log file '{log_path}'")
     if share_state.get("reset"):
+        # keryxd's own log file resets on every keryxd restart (crash, manual, watchdog-
+        # triggered, or host reboot) - fold whatever this session already counted into a
+        # lifetime accumulator before zeroing, so the reported total keeps climbing across
+        # keryxd restarts instead of dropping back to 0. Only resets if the RigControl agent
+        # process itself restarts (lifetime_accepted_shares lives in the same in-memory
+        # _log_event_state as everything else here).
+        share_state["lifetime_accepted_shares"] += share_state["accepted_shares"]
         share_state["accepted_shares"] = 0
     for match in count_re.finditer(new_text):
         share_state["accepted_shares"] += int(match.group(1))
-    accepted_shares = share_state["accepted_shares"]
+    accepted_shares = share_state["lifetime_accepted_shares"] + share_state["accepted_shares"]
     return _build_miner_result(
         "ok", "keryxd",
         algorithms=[_build_algo_entry("keryxd-node", hashrate_hs=accepted_shares)],
