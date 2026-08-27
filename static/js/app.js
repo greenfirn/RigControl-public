@@ -4966,6 +4966,10 @@ function setActionOutput(text) {
     row.textContent = text;
     prependActionOutputRow(row);
 }
+function clearActionOutput() {
+    const el = document.getElementById("action-output");
+    if (el) el.innerHTML = "";
+}
 function showStatusLogLink(evt) {
     if (!evt) return;
     const row = document.createElement("div");
@@ -14234,6 +14238,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             actionBox.classList.add("collapsed");
         });
     }
+    document.getElementById("btn-action-output-clear")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        clearActionOutput();
+    });
     setActionMode(currentActionMode);
     await loadConfig();
     syncTelemetryColumnsToServer();

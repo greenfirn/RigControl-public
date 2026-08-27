@@ -834,9 +834,28 @@ h1 {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     box-sizing: border-box;
     padding: 0;
     border-bottom: 1px solid var(--border-header);
+}
+.action-output-clear-btn {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    line-height: 18px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--font-size-hint-sm);
+    cursor: pointer;
+}
+.action-output-clear-btn:hover {
+    background: var(--button-danger-bg);
+    border-color: var(--button-danger-border);
+    color: var(--button-danger-text);
 }
 .action-output {
     width: var(--action-output-width, 100%);
