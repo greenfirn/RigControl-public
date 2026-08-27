@@ -2,11 +2,9 @@ sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
-# Power limit for GPU reset (default 150W, can be overridden by service)
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
 PODMAN_READY=false
-# Number of times to check for no running containers
 : "${IDLE_CONFIRM_LOOPS:=3}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
@@ -29,6 +27,7 @@ readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[init] BASE_DIR=$BASE_DIR"
 mkdir -p "$BASE_DIR"
+# Rig config (must be set by service)
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
@@ -40,7 +39,7 @@ if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 fi
-# MINER_CONF: path to miner.conf (default /etc/rigcontrol/miner.conf).
+# Miner config (with default location)
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 [[ -f "$MINER_CONF" ]] || {
     echo "Missing miner.conf: $MINER_CONF"
@@ -64,7 +63,6 @@ else
     echo "$(date): Exiting... TARGET_NAME in conf should be podman"
 	exit 1
 fi
-# API_CONF: path to api.conf (default /etc/rigcontrol/api.conf).
 : "${API_CONF:=/etc/rigcontrol/api.conf}"
 PORTS_CONF="$API_CONF"
 unset API_PORT API_HOST

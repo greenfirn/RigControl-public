@@ -29,7 +29,6 @@ fi
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
 PODMAN_READY=false
-# Number of times to check for no running child containers inside podman
 : "${IDLE_CONFIRM_LOOPS:=7}"
 : "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
 : "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks

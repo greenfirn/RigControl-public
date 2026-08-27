@@ -55,7 +55,7 @@ DEFAULT_GLOBAL_SETTINGS = {
     "log_watcher_enabled": False,
     "log_watcher_interval_seconds": 10,  # how often the log watcher re-scans its log(s)
     "log_watcher_slots": [],  # e.g. ["cpu", "gpu", "aux"]
-    "log_watcher_terms": [],  # e.g. [("Found a block on", "important"), ("error", "critical")]
+    "log_watcher_terms": [],  # parsed from LOG_WATCHER_TERMS; each entry is a dict (contains/not_contains/severity/actions/custom_script/slot)
     "log_watcher_custom_script": "",  # legacy shared-script fallback (pre-per-term profiles)
 }
 LOG_WATCHER_SEVERITIES = ("good", "warn", "important", "critical")

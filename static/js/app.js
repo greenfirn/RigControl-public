@@ -6515,6 +6515,11 @@ function collectFlightsheetEntries() {
         { key: "RAW_COMMAND", gpu: 0, value: cmd }
     ];
 }
+// Apply To picker for Flightsheets - the "-Workers-"/"-Select All-"/"-Clear Selected-" dropdown
+// pattern that Overclock/Watchdog/Stats/Configs's own Apply To all follow. Flightsheet raw content
+// is JSON, so the selection round-trips as a real apply_to_workers array key in that body (see
+// syncFsRawAfterApplyToChange()/extractFsApplyToFromRaw() below) instead of the leading
+// "# APPLY_TO=..." comment-line hack Overclock/Watchdog need for their plain-shell-script raw content.
 let fsApplyToRigs = new Set();
 function isFsApplyToDropdownOpen() {
     const list = document.getElementById("fs-apply-to-list");
@@ -13749,11 +13754,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("statuslog-search-title")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("statuslog-search-content")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("statuslog-search-title-exclude")?.addEventListener("change", () => {
-        statuslogPage = 0;
+        statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
         loadStatusLogList();
     });
     document.getElementById("statuslog-search-content-exclude")?.addEventListener("change", () => {
-        statuslogPage = 0;
+        statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
         loadStatusLogList();
     });
     document.getElementById("btn-statuslog-prev-page")?.addEventListener("click", () => {

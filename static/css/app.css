@@ -4914,9 +4914,9 @@ h1 {
 .wdconfig-main-tab-panel.hidden {
     display: none;
 }
-/* Settings modal's own main tab bar (General / Agent Conf / Advanced Server Settings) -
-   same visual design as .wdconfig-main-tab-* above, kept as separate classes rather than
-   reused directly so each modal's tab markup stays self-descriptive. */
+/* Settings modal's own main tab bar (General / Configs / Templates / Backups / Advanced Server
+   Settings) - same visual design as .wdconfig-main-tab-* above, kept as separate classes rather
+   than reused directly so each modal's tab markup stays self-descriptive. */
 .settings-main-tabs {
     display: flex;
     gap: 6px;

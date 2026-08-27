@@ -94,7 +94,6 @@ NON_MINER_PROCESS_EXCLUSIONS = {
     "lolminergui",
 }
 def detect_running_miners():
-    """Detect which miners are currently running on Windows"""
     running_miners = {}
     if platform.system() != "Windows":
         for proc in psutil.process_iter(['name']):
@@ -150,7 +149,6 @@ def detect_running_miners():
         print(f"Error detecting miners with psutil: {e}")
     return list(running_miners.keys())
 def collect_miner_stats_based_on_processes():
-    """Collect stats only for miners that are actually running"""
     detected_miners = detect_running_miners()
     miner_stats = {}
     miner_collectors = {
@@ -206,7 +204,6 @@ def collect_miner_stats_based_on_processes():
         pass
     return miner_stats
 def collect_service_uptime(service_name):
-    """Get service status and uptime for Windows"""
     try:
         result = subprocess.run(f"sc query {service_name}", shell=True, capture_output=True, text=True)
         if result.returncode != 0:
@@ -241,7 +238,6 @@ def collect_service_uptime(service_name):
     except:
         return {"state": "unknown", "uptime_seconds": 0}
 def collect_docker_containers():
-    """Check for Docker containers on Windows"""
     containers = []
     try:
         result = subprocess.run("docker ps --format \"{{.Names}}|{{.Image}}|{{.ID}}|{{.Status}}\"",
@@ -428,7 +424,6 @@ def detect_board_partner(gpu_name, pnp_device_id=None, power_watts=0):
         return "NVIDIA"
     return board_partner
 def collect_gpu_stats():
-    """Collect GPU statistics for any NVIDIA GPU - Complete metrics"""
     gpus = []
     if platform.system() != "Windows":
         return []
@@ -516,7 +511,6 @@ def collect_gpu_stats():
         print(f"Error collecting GPU stats: {e}")
     return gpus
 def has_nvidia_gpu():
-    """Check if NVIDIA GPU is present on Windows"""
     if platform.system() != "Windows":
         return False
     try:
@@ -736,7 +730,6 @@ def collect_cpu_temp():
     _cpu_temp_debug("All 6 methods failed - returning None. If method 1/4/6 all report 'no ACPI thermal zone data', install and run LibreHardwareMonitor with its WMI/'Remote Web Server' option enabled so method 3 can pick it up.")
     return None
 def collect_cpu_usage():
-    """Get CPU usage percentage"""
     return psutil.cpu_percent(interval=0.1)
 def collect_load():
     """Get load averages in Linux format (load1, load5, load15)"""
@@ -752,7 +745,6 @@ def collect_load():
         "15m": load_rounded
     }
 def collect_memory():
-    """Get memory usage"""
     mem = psutil.virtual_memory()
     return {
         "total_mb": mem.total // (1024 * 1024),
@@ -1247,7 +1239,6 @@ def collect_xmrig_stats():
         algorithms=algorithms,
     )
 def collect_trex_stats():
-    """Collect T-Rex miner stats"""
     host = os.environ.get("TREX_API_HOST", "127.0.0.1")
     port = int(os.environ.get("TREX_API_PORT", "4067"))
     url = f"http://{host}:{port}/summary"
@@ -1294,7 +1285,6 @@ def collect_trex_stats():
         gpus=gpu_entries,
     )
 def collect_nbminer_stats():
-    """Collect NBminer stats"""
     host = os.environ.get("NBMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("NBMINER_API_PORT", "22333"))
     url = f"http://{host}:{port}/api/v1/status"
@@ -1763,7 +1753,6 @@ def collect_custom_log_miner_stats():
         )],
     )
 def collect_full_stats():
-    """Collect all system and miner statistics"""
     gpu_present = has_nvidia_gpu()
     gpu_list = collect_gpu_stats() if gpu_present else []
     stats = {

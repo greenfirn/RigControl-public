@@ -304,7 +304,6 @@ def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None)
         log(f"[StatsDB] Error persisting stats config to conf: {e}")
 # SYSTEM STATS COLLECTION (Fallback if telemetry not available)
 def collect_basic_stats():
-    """Collect basic system stats as fallback"""
     stats = {
         "rig": RIG_NAME,
         "timestamp": int(time.time()),
@@ -353,7 +352,6 @@ def collect_full_stats():
 _last_telemetry_pull_ts = 0.0
 _telemetry_pull_lock = threading.Lock()
 def publish_status(reason="request"):
-    """Publish status to MQTT"""
     global _last_telemetry_pull_ts
     if not _telemetry_pull_lock.acquire(blocking=False):
         log(f"[Telemetry] Pull already in progress - skipping ({reason})")
@@ -385,7 +383,6 @@ def publish_status(reason="request"):
     finally:
         _telemetry_pull_lock.release()
 def publish_check():
-    """Publish check response"""
     payload = {
         "rig": RIG_NAME,
         "type": "check",
@@ -592,7 +589,6 @@ def stats_db_periodic_loop():
             log(f"[StatsDB] Periodic collection error: {e}")
 # MQTT CALLBACKS
 def on_connect(client, userdata, flags, rc):
-    """MQTT connection callback"""
     if rc == 0:
         log("MQTT connected successfully")
         client.subscribe(CMD_TOPIC_ALL)
@@ -616,7 +612,6 @@ def on_connect(client, userdata, flags, rc):
         if rc == 5:
             log("Authentication failed - check username/password")
 def on_message(client, userdata, msg):
-    """MQTT message callback"""
     topic = msg.topic
     payload = msg.payload.decode(errors="ignore")
     log(f"Message received on {topic}")
@@ -634,7 +629,6 @@ def on_message(client, userdata, msg):
         return
     log(f"Ignoring message on unexpected topic: {topic}")
 def on_disconnect(client, userdata, rc):
-    """MQTT disconnect callback"""
     if rc != 0:
         log(f"Unexpected MQTT disconnection (code: {rc}), reconnecting...")
     else:

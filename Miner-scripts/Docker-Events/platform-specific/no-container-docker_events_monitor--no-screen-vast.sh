@@ -2,11 +2,10 @@ sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 shopt -s inherit_errexit
-# Power limit for GPU reset (default 150W, can be overridden by service)
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
-# Number of times to check for no running containers
 : "${IDLE_CONFIRM_LOOPS:=3}"
+# Global list of ignored images
 IGNORED_IMAGES=(
     "vastai/test:bandwidth-test-nvidia"
     "vastai/test:speedtest"
@@ -33,6 +32,7 @@ readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[init] BASE_DIR=$BASE_DIR"
 mkdir -p "$BASE_DIR"
+# Rig config (must be set by service)
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
@@ -44,7 +44,7 @@ if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 fi
-# MINER_CONF: path to miner.conf (default /etc/rigcontrol/miner.conf).
+# Miner config (with default location)
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 [[ -f "$MINER_CONF" ]] || {
     echo "Missing miner.conf: $MINER_CONF"
@@ -60,7 +60,6 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-# API_CONF: path to api.conf (default /etc/rigcontrol/api.conf).
 : "${API_CONF:=/etc/rigcontrol/api.conf}"
 PORTS_CONF="$API_CONF"
 unset API_PORT API_HOST
@@ -231,10 +230,8 @@ is_docker_running() {
     docker ps > /dev/null 2>&1
     return $?
 }
-# Returns: 0 (true) if image should be ignored, 1 (false) if not
 should_ignore_image() {
     local image="$1"
-    # Exact match against IGNORED_IMAGES, matching vast.sh's own filter.
     for ignored_image in "${IGNORED_IMAGES[@]}"; do
         if [[ "$image" == "$ignored_image" ]]; then
             return 0

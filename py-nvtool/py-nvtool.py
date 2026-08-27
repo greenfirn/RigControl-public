@@ -832,24 +832,7 @@ class struct_c_nvmlUnit_t(Structure):
     pass # opaque handle
 c_nvmlUnit_t = POINTER(struct_c_nvmlUnit_t)
 class _PrintableStructure(Structure):
-    """
-    Abstract class that produces nicer __str__ output than ctypes.Structure.
-    e.g. instead of:
-      >>> print str(obj)
-      <class_name object at 0x7fdf82fef9e0>
-    this class will print
-      class_name(field_name: formatted_value, field_name: formatted_value)
-
-    _fmt_ dictionary of <str _field_ name> -> <str format>
-    e.g. class that has _field_ 'hex_value', c_uint could be formatted with
-      _fmt_ = {"hex_value" : "%08X"}
-    to produce nicer output.
-    Default fomratting string for all fields can be set with key "<default>" like:
-      _fmt_ = {"<default>" : "%d MHz"} # e.g all values are numbers in MHz.
-    If not set it's assumed to be just "%s"
-
-    Exact format of returned str from this class is subject to change in the future.
-    """
+    """Produces nicer __str__ output than ctypes.Structure; _fmt_ maps field names to format strings."""
     _fmt_ = {}
     def __str__(self):
         result = []
@@ -1000,16 +983,6 @@ class nvmlClkMonStatus_t(Structure):
                 ("clkMonList", nvmlClkMonFaultInfo_t)
     ]
 # On Windows with the WDDM driver, usedGpuMemory is reported as None
-# Code that processes this structure should check for None, I.E.
-#
-# if (info.usedGpuMemory == None):
-#     # TODO handle the error
-#     pass
-# else:
-#    print("Using %d MiB of memory" % (info.usedGpuMemory / 1024 / 1024))
-# endif
-#
-# See NVML documentation for more information
 class c_nvmlProcessInfo_v2_t(_PrintableStructure):
     _fields_ = [
         ('pid', c_uint),
@@ -1659,14 +1632,7 @@ class c_nvmlConfComputeGpuAttestationReport_t(Structure):
                ]
 ## string/bytes conversion for ease of use
 def convertStrBytes(func):
-    '''
-    In python 3, strings are unicode instead of bytes, and need to be converted for ctypes
-    Args from caller: (1, 'string', <__main__.c_nvmlDevice_t at 0xFFFFFFFF>)
-    Args passed to function: (1, b'string', <__main__.c_nvmlDevice_t at 0xFFFFFFFF)>
-    ----
-    Returned from function: b'returned string'
-    Returned to caller: 'returned string'
-    '''
+    '''In python 3, strings are unicode instead of bytes, and need to be converted for ctypes'''
     @wraps(func)
     def wrapper(*args, **kwargs):
         # encoding a str returns bytes in python 2 and 3
@@ -4215,7 +4181,6 @@ def nvmlDeviceSetPowerManagementLimit_v2(device, powerScope, powerLimit, version
 # Copyright (C) 2024 Pascal Akermann
 def PrintInfo(handle):
   try:
-    #print(f"  BUS ID: {}")
     print(f"  NAME: {nvmlDeviceGetName(handle)}")
     print(f"  VBIOS: {nvmlDeviceGetVbiosVersion(handle)}")
     memory = nvmlDeviceGetMemoryInfo(handle)
