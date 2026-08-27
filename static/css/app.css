@@ -5946,8 +5946,11 @@ h1 {
     gap: 6px;
     min-width: 0;
 }
-#statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(1),
-#statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(2) {
+/* Was :nth-of-type(1)/(2) - but nth-of-type counts by tag name, not class, and the severity
+   filter group (also a <div>) sits before these two, shifting the count off by one so the
+   Content field (the real 3rd div) never matched either rule and fell back to its unstretched
+   default size. Targeting the class directly avoids that trap. */
+#statuslog-modal .statuslog-search-row .statuslog-search-field {
     /* flex-basis: 0 (not auto) - forces both to start from nothing and grow purely by the 1:1
        flex-grow ratio, so they end up truly equal-width regardless of the input's own default
        width or how much text/placeholder content it has. */
@@ -6000,11 +6003,6 @@ h1 {
     margin-top: 2px;
 }
 #statuslog-modal .fs-editor-panel {
-    /* relative so .dialog-resize-handle-corner below anchors to the textarea's own corner instead
-       of the whole .cmd-dialog's - same reasoning/pattern as #raw-content-modal .raw-content-slot
-       (see its comment above): the dialog's own corner sits below the search row and footer,
-       nowhere near the textarea, which is a confusing place for a "resize this" handle to be. */
-    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -6012,20 +6010,22 @@ h1 {
     height: 100%;
     min-height: 0;
 }
-/* No offset needed (unlike raw-content-slot's 12px) - .fs-editor-panel has no padding of its own
-   and the textarea already fills it edge-to-edge, so the handle's default right:0/bottom:0 already
-   lands right on the textarea's visible corner. */
+/* Whole-dialog width resizing now lives on .dialog-resize-handle-right at the top of .cmd-dialog
+   (matches the other modals' "side" sizer) - the corner handle that used to sit here resized the
+   entire dialog too (confusing, since visually it looked like it only affected the textarea), so
+   it's gone. In its place, the textarea gets the browser's own native vertical-only resize grip,
+   scoped to just this element's height. */
 .statuslog-details {
     flex: 1;
     width: 100%;
     height: 100%;
-    min-height: 0;
+    min-height: 80px;
     box-sizing: border-box;
     padding: 10px;
     font-size: var(--font-size-output);
     font-family: inherit;
     line-height: 1.5;
-    resize: none;
+    resize: vertical;
     background: var(--surface-app);
     border: 1px solid var(--action-output-border);
     border-radius: 3px;
