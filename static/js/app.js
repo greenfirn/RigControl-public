@@ -690,7 +690,6 @@ const TAB_ICON_DEFAULTS = {
     "overclocking": "\u26A1",
     "watchdog": "\uD83D\uDC15",
     "statuslog": "\uD83D\uDCDC",
-    "backups": "\uD83D\uDDC4\uFE0F",
     "settings": "\u2699\uFE0F",
 };
 const TOOLBAR_CUSTOM_ICONS_STORAGE_KEY = "rigcontrol_toolbar_custom_icons";
@@ -5339,6 +5338,28 @@ function setupRefreshTimerEventListeners() {
     document.getElementById("btn-refresh-save")?.addEventListener("click", saveRefreshSettings);
     document.getElementById("btn-save-advanced-server-settings")?.addEventListener("click", saveAdvancedServerSettings);
     document.getElementById("btn-apply-stats-settings")?.addEventListener("click", applyStatsSettingsToSelectedRigs);
+    document.getElementById("btn-stats-apply-to-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleStatsApplyToDropdown();
+    });
+    document.getElementById("stats-apply-to-workers-option")?.addEventListener("click", () => {
+        statsApplyToRigs.clear();
+        updateStatsApplyToToggleLabel();
+        closeStatsApplyToDropdown();
+        updateStatsSettingsTargetCount();
+    });
+    document.getElementById("stats-apply-to-select-all-btn")?.addEventListener("click", () => {
+        selectAllStatsApplyTo();
+    });
+    document.getElementById("stats-apply-to-clear-btn")?.addEventListener("click", () => {
+        clearStatsApplyToSelection();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("stats-apply-to-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeStatsApplyToDropdown();
+        }
+    });
     document.getElementById("refresh-interval")?.addEventListener("input", validateRefreshInterval);
     document.getElementById("offline-ping-interval")?.addEventListener("input", validateOfflineInterval);
     document.getElementById("offline-threshold")?.addEventListener("input", validateOfflineThreshold);
@@ -5461,8 +5482,6 @@ function initViewTabs() {
                 openOverclocksModal();
             } else if (tab.dataset.tabPanel === "watchdog") {
                 openWdConfigModal();
-            } else if (tab.dataset.tabPanel === "backups") {
-                openBackupsModal();
             } else {
                 switchViewTab(tab.dataset.tabPanel);
             }
@@ -5515,12 +5534,12 @@ function switchSettingsMainTab(tabName) {
     document.querySelectorAll("#refresh-modal .settings-main-tab-panel").forEach((panel) => {
         panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
     });
-    // general-settings-status/agentconf-status/templates-config-status all live in the shared
-    // modal-level .cmd-header now (alongside the "(N workers selected)" text), not inside their
-    // own tab-panel, so a leftover message from one tab would otherwise stay visible after
-    // switching to another - clear all three up front; whichever tab we're switching into
+    // general-settings-status/agentconf-status/templates-config-status/backups-status all live in
+    // the shared modal-level .cmd-header now (alongside the "(N workers selected)" text), not
+    // inside their own tab-panel, so a leftover message from one tab would otherwise stay visible
+    // after switching to another - clear all four up front; whichever tab we're switching into
     // re-sets its own below if relevant.
-    ["general-settings-status", "agentconf-status", "templates-config-status"].forEach((id) => {
+    ["general-settings-status", "agentconf-status", "templates-config-status", "backups-status"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.textContent = "";
     });
@@ -5550,6 +5569,18 @@ function switchSettingsMainTab(tabName) {
             rawEl.dataset.loaded = "1";
             loadTemplatesConfigTab();
         }
+    }
+    if (tabName === "backups") {
+        // Unlike Agent Conf/Templates above, Backups always re-fetches the file list on open -
+        // matches its old behavior as a standalone tab (clicking it always refreshed), and there's
+        // no in-progress edit here that a refresh could silently clobber.
+        const previewEl = document.getElementById("backups-preview-textarea");
+        if (previewEl) previewEl.value = "";
+        initBackupsVSizer();
+        initBackupsHSizer();
+        initBackupsTopHSizer();
+        restoreBackupsSizers();
+        loadBackupFiles();
     }
 }
 function initColorSchemeTabs() {
@@ -5614,15 +5645,88 @@ function openRefreshModal() {
     switchViewTab("settings");
     switchSettingsMainTab("general");
 }
+// Apply To picker for the Stats DB settings footer - same "-Workers-"/"-Select All-"/
+// "-Clear Selected-" popup pattern as Flightsheets/Overclock/Watchdog's Apply To (see
+// fsApplyToRigs and friends), but standalone rather than tied to a saved profile's raw text.
+// Empty selection defers to whatever's checked in the main worker list, same as "-Workers-"
+// there.
+let statsApplyToRigs = new Set();
+function isStatsApplyToDropdownOpen() {
+    const list = document.getElementById("stats-apply-to-list");
+    return !!list && !list.classList.contains("hidden");
+}
+function openStatsApplyToDropdown() {
+    populateStatsApplyToWorkerList();
+    document.getElementById("stats-apply-to-list")?.classList.remove("hidden");
+}
+function closeStatsApplyToDropdown() {
+    document.getElementById("stats-apply-to-list")?.classList.add("hidden");
+}
+function toggleStatsApplyToDropdown() {
+    if (isStatsApplyToDropdownOpen()) closeStatsApplyToDropdown();
+    else openStatsApplyToDropdown();
+}
+function updateStatsApplyToToggleLabel() {
+    const btn = document.getElementById("btn-stats-apply-to-toggle");
+    if (!btn) return;
+    if (statsApplyToRigs.size === 0) btn.textContent = "Workers";
+    else if (statsApplyToRigs.size === 1) btn.textContent = Array.from(statsApplyToRigs)[0];
+    else btn.textContent = `${statsApplyToRigs.size} workers`;
+}
+function updateStatsApplyToWorkersOptionCheckedState() {
+    const opt = document.getElementById("stats-apply-to-workers-option");
+    if (opt) opt.classList.toggle("fs-apply-to-active", statsApplyToRigs.size === 0);
+}
+function populateStatsApplyToWorkerList() {
+    const container = document.getElementById("stats-apply-to-workers");
+    if (!container) return;
+    container.innerHTML = "";
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs").sort();
+    rigNames.forEach((name) => {
+        const row = document.createElement("label");
+        row.className = "fs-apply-to-worker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = statsApplyToRigs.has(name);
+        cb.addEventListener("change", () => {
+            if (cb.checked) statsApplyToRigs.add(name);
+            else statsApplyToRigs.delete(name);
+            updateStatsApplyToToggleLabel();
+            updateStatsApplyToWorkersOptionCheckedState();
+            updateStatsSettingsTargetCount();
+        });
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(span);
+        container.appendChild(row);
+    });
+    updateStatsApplyToWorkersOptionCheckedState();
+}
+function clearStatsApplyToSelection() {
+    statsApplyToRigs.clear();
+    updateStatsApplyToToggleLabel();
+    populateStatsApplyToWorkerList();
+    updateStatsSettingsTargetCount();
+}
+function selectAllStatsApplyTo() {
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
+    statsApplyToRigs = new Set(rigNames);
+    updateStatsApplyToToggleLabel();
+    populateStatsApplyToWorkerList();
+    updateStatsSettingsTargetCount();
+}
 function updateStatsSettingsTargetCount() {
-    const count = selectedRigs.size;
+    // statsApplyToRigs takes priority when non-empty (explicit picker choice), same "-Workers-"
+    // fallback-to-main-list convention as fs/oc/wd Apply To.
+    const count = statsApplyToRigs.size > 0 ? statsApplyToRigs.size : selectedRigs.size;
     const countEl = document.getElementById("stats-settings-target-count");
     const labelEl = document.getElementById("stats-settings-target-label");
     if (countEl) countEl.textContent = count;
     if (labelEl) labelEl.textContent = count === 1 ? "worker" : "workers";
 }
 async function applyStatsSettingsToSelectedRigs() {
-    const rigs = Array.from(selectedRigs);
+    const rigs = statsApplyToRigs.size > 0 ? Array.from(statsApplyToRigs) : Array.from(selectedRigs);
     updateStatsSettingsTargetCount();
     if (rigs.length === 0) {
         alert("No workers selected");
@@ -6484,6 +6588,13 @@ function setFsApplyToRigs(names) {
 }
 function clearFsApplyToSelection() {
     fsApplyToRigs.clear();
+    updateFsApplyToToggleLabel();
+    populateFsApplyToWorkerList();
+    syncFsRawAfterApplyToChange();
+}
+function selectAllFsApplyTo() {
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
+    fsApplyToRigs = new Set(rigNames);
     updateFsApplyToToggleLabel();
     populateFsApplyToWorkerList();
     syncFsRawAfterApplyToChange();
@@ -9233,6 +9344,13 @@ function clearOcApplyToSelection() {
     populateOcApplyToWorkerList();
     syncOcRawAfterApplyToChange();
 }
+function selectAllOcApplyTo() {
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
+    ocApplyToRigs = new Set(rigNames);
+    updateOcApplyToToggleLabel();
+    populateOcApplyToWorkerList();
+    syncOcRawAfterApplyToChange();
+}
 // Overclock raw content is a plain shell script (heredoc), not JSON like flightsheets, so "apply to"
 // has nowhere structured to live - it's persisted as a leading "# APPLY_TO=..." comment line placed
 // BEFORE the "tee ... <<'EOF'" line, so it never ends up inside the installed gpu_apply_ocs.sh
@@ -10285,6 +10403,13 @@ function setWdApplyToRigs(names) {
 }
 function clearWdApplyToSelection() {
     wdApplyToRigs.clear();
+    updateWdApplyToToggleLabel();
+    populateWdApplyToWorkerList();
+    syncWdRawAfterApplyToChange();
+}
+function selectAllWdApplyTo() {
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
+    wdApplyToRigs = new Set(rigNames);
     updateWdApplyToToggleLabel();
     populateWdApplyToWorkerList();
     syncWdRawAfterApplyToChange();
@@ -11385,6 +11510,72 @@ function unwrapConfEditCommand(text) {
     if (closeIdx === -1) return text || "";
     return text.slice(bodyStart, closeIdx) + "\n";
 }
+// Apply To picker for the Configs tab footer - same pattern as statsApplyToRigs above (which see
+// for the full rationale). Wired into sendItConfEdit() via cmdModalRigOverride, same mechanism
+// Flightsheets/Overclock/Watchdog's Apply To already uses for their own "Send it!".
+let agentconfApplyToRigs = new Set();
+function isAgentconfApplyToDropdownOpen() {
+    const list = document.getElementById("agentconf-apply-to-list");
+    return !!list && !list.classList.contains("hidden");
+}
+function openAgentconfApplyToDropdown() {
+    populateAgentconfApplyToWorkerList();
+    document.getElementById("agentconf-apply-to-list")?.classList.remove("hidden");
+}
+function closeAgentconfApplyToDropdown() {
+    document.getElementById("agentconf-apply-to-list")?.classList.add("hidden");
+}
+function toggleAgentconfApplyToDropdown() {
+    if (isAgentconfApplyToDropdownOpen()) closeAgentconfApplyToDropdown();
+    else openAgentconfApplyToDropdown();
+}
+function updateAgentconfApplyToToggleLabel() {
+    const btn = document.getElementById("btn-agentconf-apply-to-toggle");
+    if (!btn) return;
+    if (agentconfApplyToRigs.size === 0) btn.textContent = "Workers";
+    else if (agentconfApplyToRigs.size === 1) btn.textContent = Array.from(agentconfApplyToRigs)[0];
+    else btn.textContent = `${agentconfApplyToRigs.size} workers`;
+}
+function updateAgentconfApplyToWorkersOptionCheckedState() {
+    const opt = document.getElementById("agentconf-apply-to-workers-option");
+    if (opt) opt.classList.toggle("fs-apply-to-active", agentconfApplyToRigs.size === 0);
+}
+function populateAgentconfApplyToWorkerList() {
+    const container = document.getElementById("agentconf-apply-to-workers");
+    if (!container) return;
+    container.innerHTML = "";
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs").sort();
+    rigNames.forEach((name) => {
+        const row = document.createElement("label");
+        row.className = "fs-apply-to-worker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = agentconfApplyToRigs.has(name);
+        cb.addEventListener("change", () => {
+            if (cb.checked) agentconfApplyToRigs.add(name);
+            else agentconfApplyToRigs.delete(name);
+            updateAgentconfApplyToToggleLabel();
+            updateAgentconfApplyToWorkersOptionCheckedState();
+        });
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(span);
+        container.appendChild(row);
+    });
+    updateAgentconfApplyToWorkersOptionCheckedState();
+}
+function clearAgentconfApplyToSelection() {
+    agentconfApplyToRigs.clear();
+    updateAgentconfApplyToToggleLabel();
+    populateAgentconfApplyToWorkerList();
+}
+function selectAllAgentconfApplyTo() {
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
+    agentconfApplyToRigs = new Set(rigNames);
+    updateAgentconfApplyToToggleLabel();
+    populateAgentconfApplyToWorkerList();
+}
 // Refreshes the Conf tab's chrome (path label, Clear button visibility) to match whatever's
 // currently selected in the type dropdown - called on dropdown change and whenever the tab is opened.
 function updateConfEditTypeUi() {
@@ -11436,20 +11627,27 @@ function buildConfEditCommand() {
 function sendItConfEdit() {
     const confType = selectedConfEditType;
     const confLabel = LOGS_TYPE_LABELS[confType] || confType;
-    if (selectedRigs.size !== 1) {
-        alert(`Select exactly one worker to write its ${confLabel}`);
+    // agentconfApplyToRigs (the "Apply to" picker) lets this write go to several workers at once,
+    // same as Flightsheets/Overclock/Watchdog's Apply To - same content to each. Reload still only
+    // ever reads from a single worker (see autoLoadConfForSelectedRig()), so with the picker empty
+    // this keeps the original single-worker requirement: nothing here silently reads from one rig
+    // and writes to several without the picker being used on purpose.
+    const overrideRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : null;
+    if (!overrideRigs && selectedRigs.size !== 1) {
+        alert(`Select exactly one worker (or use the "Apply to" picker below to target several) to write its ${confLabel}`);
         return;
     }
-    const [rig] = selectedRigs;
+    const targetLabel = overrideRigs ? overrideRigs.join(", ") : Array.from(selectedRigs)[0];
     const command = buildConfEditCommand();
     const input = document.getElementById("cmd-input");
     const statusEl = document.getElementById("agentconf-status");
+    cmdModalRigOverride = overrideRigs;
     if (document.getElementById("confirm-agentconf")?.checked) {
         if (input) input.value = command;
         openCmdModal();
     } else {
         sendCommandToSelectedRigs(command).then(() => {
-            if (statusEl) statusEl.textContent = `Sent to ${rig}`;
+            if (statusEl) statusEl.textContent = `Sent to ${targetLabel}`;
         }).catch(err => {
             console.error(`Failed to send ${confLabel}`, err);
             alert(`Failed to send ${confLabel}`);
@@ -11672,32 +11870,27 @@ function restoreBackupsSizers() {
         previewPanel.style.height = savedPreviewHeight;
     }
 }
+// Backups now lives as a Settings sub-tab (see switchSettingsMainTab()'s "backups" branch for
+// the actual sizer-init/list-load work) rather than its own top-level view-tab - this is kept
+// as a stable entry point in case anything wants to jump straight there.
 function openBackupsModal() {
     closeCmdModal();
-    switchViewTab("backups");
-    setBackupsStatus("");
-    const previewEl = document.getElementById("backups-preview-textarea");
-    if (previewEl) previewEl.value = "";
-    initBackupsVSizer();
-    initBackupsHSizer();
-    initBackupsTopHSizer();
-    restoreBackupsSizers();
-    loadBackupFiles();
+    switchViewTab("settings");
+    switchSettingsMainTab("backups");
 }
 function setBackupsStatus(msg, isError) {
     const el = document.getElementById("backups-status");
     if (isError) {
-        if (el) {
-            el.textContent = "";
-            el.classList.remove("error", "ok");
-        }
+        if (el) el.textContent = "";
         if (msg) alert(msg);
         return;
     }
+    // Plain muted text like every other title-bar status - no red/green color-coding (that used
+    // to come from toggling .ok/.error classes here, back when this had its own standalone
+    // dialog; left in place after the move to a shared Settings tab it would've been the only
+    // status span still changing color, which read as inconsistent next to the rest).
     if (!el) return;
     el.textContent = msg || "";
-    el.classList.remove("error");
-    el.classList.toggle("ok", !!msg);
 }
 function formatBackupBytes(n) {
     if (n === null || n === undefined) return "-";
@@ -13017,13 +13210,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     restoreLogsModalSize();
     setupLogsModalSizeSaving();
     // Width-only persistence - these all use .dialog-resize-handle-right (width-drag only), so
-    // there's no height to save. backups-modal still uses the -corner handle (width+height)
-    // instead and is wired below via restoreResizableDialogSize/setupResizableDialogSizeSaving,
-    // same as raw-content-modal. statuslog-modal used to as well, but its corner handle actually
-    // resized the *whole dialog* despite visually sitting on the details textarea - confusing -
-    // so it's now .dialog-resize-handle-right (width only) like the rest of this list, and the
-    // textarea gets its own native vertical-resize grip instead (see .statuslog-details in
-    // app.css).
+    // there's no height to save. refresh-modal covers Backups too now that it's a Settings
+    // sub-tab rather than its own dialog. raw-content-modal still uses the -corner handle
+    // (width+height) instead and is wired below via restoreResizableDialogSize/
+    // setupResizableDialogSizeSaving. statuslog-modal used to as well, but its corner handle
+    // actually resized the *whole dialog* despite visually sitting on the details textarea -
+    // confusing - so it's now .dialog-resize-handle-right (width only) like the rest of this
+    // list, and the textarea gets its own native vertical-resize grip instead (see
+    // .statuslog-details in app.css).
     const RESIZABLE_TAB_MODALS = [
         ["stats-modal", "rigcontrol_stats_modal_width"],
         ["wallet-modal", "rigcontrol_wallet_modal_width"],
@@ -13043,8 +13237,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     initRawContentTriggers();
     restoreResizableDialogSize("raw-content-modal", "rigcontrol_raw_content_modal_size");
     setupResizableDialogSizeSaving("raw-content-modal", "rigcontrol_raw_content_modal_size");
-    restoreResizableDialogSize("backups-modal", "rigcontrol_backups_modal_size");
-    setupResizableDialogSizeSaving("backups-modal", "rigcontrol_backups_modal_size");
     setupFsPoolsDialogSizeSaving();
     setupFsMcDialogSizeSaving();
     initColorSchemeControls();
@@ -13201,6 +13393,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateFsApplyToToggleLabel();
         closeFsApplyToDropdown();
         syncFsRawAfterApplyToChange();
+    });
+    document.getElementById("fs-apply-to-select-all-btn")?.addEventListener("click", () => {
+        selectAllFsApplyTo();
     });
     document.getElementById("fs-apply-to-clear-btn")?.addEventListener("click", () => {
         clearFsApplyToSelection();
@@ -13484,6 +13679,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeOcApplyToDropdown();
         syncOcRawAfterApplyToChange();
     });
+    document.getElementById("oc-apply-to-select-all-btn")?.addEventListener("click", () => {
+        selectAllOcApplyTo();
+    });
     document.getElementById("oc-apply-to-clear-btn")?.addEventListener("click", () => {
         clearOcApplyToSelection();
     });
@@ -13686,6 +13884,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeWdApplyToDropdown();
         syncWdRawAfterApplyToChange();
     });
+    document.getElementById("wd-apply-to-select-all-btn")?.addEventListener("click", () => {
+        selectAllWdApplyTo();
+    });
     document.getElementById("wd-apply-to-clear-btn")?.addEventListener("click", () => {
         clearWdApplyToSelection();
     });
@@ -13713,6 +13914,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-agentconf-reload")?.addEventListener("click", autoLoadConfForSelectedRig);
     document.getElementById("btn-agentconf-clear")?.addEventListener("click", loadDefaultConfEditTemplate);
     document.getElementById("btn-agentconf-apply")?.addEventListener("click", sendItConfEdit);
+    document.getElementById("btn-agentconf-apply-to-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleAgentconfApplyToDropdown();
+    });
+    document.getElementById("agentconf-apply-to-workers-option")?.addEventListener("click", () => {
+        agentconfApplyToRigs.clear();
+        updateAgentconfApplyToToggleLabel();
+        closeAgentconfApplyToDropdown();
+    });
+    document.getElementById("agentconf-apply-to-select-all-btn")?.addEventListener("click", () => {
+        selectAllAgentconfApplyTo();
+    });
+    document.getElementById("agentconf-apply-to-clear-btn")?.addEventListener("click", () => {
+        clearAgentconfApplyToSelection();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("agentconf-apply-to-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeAgentconfApplyToDropdown();
+        }
+    });
     document.getElementById("agentconf-raw")?.addEventListener("input", resizeAgentConfRaw);
     document.getElementById("agentconf-raw")?.addEventListener("mouseup", saveAgentConfRawHeight);
     restoreAgentConfRawHeight();

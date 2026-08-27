@@ -393,9 +393,10 @@
                         </div>
                         <div class="field-group fs-apply-to-group" id="wd-apply-to-wrap">
                             <label>Apply to</label>
-                            <button type="button" class="fs-apply-to-toggle" id="btn-wd-apply-to-toggle" title="Choose which worker(s) this watchdog config sends to when sent. Defaults to whatever's checked in the main worker list.">Workers</button>
+                            <button type="button" class="fs-apply-to-toggle" id="btn-wd-apply-to-toggle" title="Choose which worker(s) this watchdog config sends to when sent. Defaults to whatever's selected in the main worker list.">Workers</button>
                             <div class="fs-apply-to-list hidden" id="wd-apply-to-list">
-                                <div class="fs-apply-to-item fs-apply-to-special" id="wd-apply-to-workers-option" title="Use whatever is checked in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="wd-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="wd-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
                                 <div class="fs-apply-to-item fs-apply-to-special" id="wd-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
                                 <div class="fs-apply-to-sep"></div>
                                 <div class="fs-apply-to-workers" id="wd-apply-to-workers"></div>
@@ -1802,9 +1803,10 @@ nvidia-smi
                         </div>
                         <div class="field-group fs-apply-to-group" id="fs-apply-to-wrap">
                             <label>Apply to</label>
-                            <button type="button" class="fs-apply-to-toggle" id="btn-fs-apply-to-toggle" title="Choose which worker(s) this flightsheet sends to when saved. Defaults to whatever's checked in the main worker list.">Workers</button>
+                            <button type="button" class="fs-apply-to-toggle" id="btn-fs-apply-to-toggle" title="Choose which worker(s) this flightsheet sends to when sent. Defaults to whatever's selected in the main worker list.">Workers</button>
                             <div class="fs-apply-to-list hidden" id="fs-apply-to-list">
-                                <div class="fs-apply-to-item fs-apply-to-special" id="fs-apply-to-workers-option" title="Use whatever is checked in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="fs-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="fs-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
                                 <div class="fs-apply-to-item fs-apply-to-special" id="fs-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
                                 <div class="fs-apply-to-sep"></div>
                                 <div class="fs-apply-to-workers" id="fs-apply-to-workers"></div>
@@ -1920,9 +1922,10 @@ nvidia-smi
                         </div>
                         <div class="field-group fs-apply-to-group" id="oc-apply-to-wrap">
                             <label>Apply to</label>
-                            <button type="button" class="fs-apply-to-toggle" id="btn-oc-apply-to-toggle" title="Choose which worker(s) this overclock profile sends to when sent/saved. Defaults to whatever's checked in the main worker list.">Workers</button>
+                            <button type="button" class="fs-apply-to-toggle" id="btn-oc-apply-to-toggle" title="Choose which worker(s) this overclock profile sends to when sent. Defaults to whatever's selected in the main worker list.">Workers</button>
                             <div class="fs-apply-to-list hidden" id="oc-apply-to-list">
-                                <div class="fs-apply-to-item fs-apply-to-special" id="oc-apply-to-workers-option" title="Use whatever is checked in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="oc-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="oc-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
                                 <div class="fs-apply-to-item fs-apply-to-special" id="oc-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
                                 <div class="fs-apply-to-sep"></div>
                                 <div class="fs-apply-to-workers" id="oc-apply-to-workers"></div>
@@ -2302,6 +2305,16 @@ nvidia-smi
                     </div>
                 </div>
                 <div class="footer-buttons-right">
+                    <div class="field-group fs-apply-to-group" id="stats-apply-to-wrap">
+                        <button type="button" class="fs-apply-to-toggle" id="btn-stats-apply-to-toggle" title="Choose which worker(s) to apply these stats settings to. Defaults to whatever's selected in the main worker list.">Workers</button>
+                        <div class="fs-apply-to-list hidden" id="stats-apply-to-list">
+                            <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                            <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
+                            <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
+                            <div class="fs-apply-to-sep"></div>
+                            <div class="fs-apply-to-workers" id="stats-apply-to-workers"></div>
+                        </div>
+                    </div>
                     <button class="cmd-btn ok" id="btn-refresh-save">Apply Notifications</button>
                     <button class="cmd-btn secondary" id="btn-apply-stats-settings" title="Apply to selected workers">Apply Stats</button>
                 </div>
@@ -2336,6 +2349,16 @@ nvidia-smi
                         <button class="cmd-btn secondary" id="btn-agentconf-reload" title="Re-fetch the current file from the selected worker">⟳ Reload from Worker</button>
                     </div>
                     <div class="footer-buttons-right">
+                        <div class="field-group fs-apply-to-group" id="agentconf-apply-to-wrap">
+                            <button type="button" class="fs-apply-to-toggle" id="btn-agentconf-apply-to-toggle" title="Choose which worker(s) to write this file to. Defaults to whatever's selected in the main worker list.">Workers</button>
+                            <div class="fs-apply-to-list hidden" id="agentconf-apply-to-list">
+                                <div class="fs-apply-to-item fs-apply-to-special" id="agentconf-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="agentconf-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="agentconf-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
+                                <div class="fs-apply-to-sep"></div>
+                                <div class="fs-apply-to-workers" id="agentconf-apply-to-workers"></div>
+                            </div>
+                        </div>
                         <label class="checkbox-label" title="Restart the relevant service on the worker after writing, so the change takes effect immediately instead of waiting on a live-reload (which for agent.conf only covers a subset of settings anyway).">
                             <input type="checkbox" id="agentconf-restart-after-apply" checked>
                             <span class="checkbox-text">Restart after apply</span>
