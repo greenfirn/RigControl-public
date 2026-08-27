@@ -1052,6 +1052,12 @@ h1 {
     background: var(--button-hover-bg);
 }
 .fs-apply-to-list {
+    /* The 5 Apply-To toggles (Flightsheets/Overclock/Watchdog/Stats/Configs) sit in different
+       spots within their dialog - fs/oc/wd are in a top toolbar row, stats/agentconf are in a
+       bottom footer row - so a fixed direction clips against whichever dialog edge that widget
+       isn't near. Defaults to opening downward here; positionApplyToDropdown() in app.js adds
+       .open-upward when there isn't enough room below (same idea as the Status Log severity
+       filter popup, just picked dynamically instead of hardcoded). */
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
@@ -1064,6 +1070,10 @@ h1 {
     padding: 4px;
     z-index: 20;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.fs-apply-to-list.open-upward {
+    top: auto;
+    bottom: calc(100% + 6px);
 }
 .fs-apply-to-list.hidden {
     display: none;

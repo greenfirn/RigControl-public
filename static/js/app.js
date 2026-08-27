@@ -5544,22 +5544,15 @@ function switchSettingsMainTab(tabName) {
         if (el) el.textContent = "";
     });
     if (tabName === "agentconf") {
-        // Opening the tab no longer auto-reloads from the worker - the note above the dropdown
-        // says Reload/edit/Send is a manual sequence, and silently overwriting an in-progress
-        // edit just from switching tabs away and back (e.g. to check Templates, then back here)
-        // was surprising. lastSyncedAgentConfRig is still updated here so a genuine rig-selection
-        // change made WHILE this tab is open still auto-reloads via syncOpenModulesToSelection()
-        // below - that's a different, expected case (you picked a different rig to edit).
+        // Opening the tab no longer auto-reloads from the worker - Reload/edit/Send is a manual
+        // sequence (the Reload button itself says what it does), and silently overwriting an
+        // in-progress edit just from switching tabs away and back (e.g. to check Templates, then
+        // back here) was surprising. lastSyncedAgentConfRig is still updated here so a genuine
+        // rig-selection change made WHILE this tab is open still auto-reloads via
+        // syncOpenModulesToSelection() below - that's a different, expected case (you picked a
+        // different rig to edit).
         lastSyncedAgentConfRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
         updateConfEditTypeUi();
-        const statusEl = document.getElementById("agentconf-status");
-        const rawEl = document.getElementById("agentconf-raw");
-        if (statusEl && !rawEl?.value) {
-            const confLabel = LOGS_TYPE_LABELS[selectedConfEditType] || selectedConfEditType;
-            statusEl.textContent = selectedRigs.size === 1
-                ? `Click Reload to load current ${confLabel} from ${Array.from(selectedRigs)[0]}`
-                : `Select exactly one worker, then click Reload to load its ${confLabel}`;
-        }
     }
     if (tabName === "templates") {
         const rawEl = document.getElementById("templates-config-raw");
@@ -5650,6 +5643,20 @@ function openRefreshModal() {
 // fsApplyToRigs and friends), but standalone rather than tied to a saved profile's raw text.
 // Empty selection defers to whatever's checked in the main worker list, same as "-Workers-"
 // there.
+// Shared by all 5 Apply-To pickers (Flightsheets/Overclock/Watchdog/Stats/Configs). They sit in
+// different spots within their dialog - fs/oc/wd are in a top toolbar row, stats/agentconf are
+// in a bottom footer row - so a fixed popup direction clips against whichever dialog edge that
+// particular widget isn't near. Flips to .open-upward only when there isn't enough room below.
+function positionApplyToDropdown(toggleId, listId) {
+    const toggle = document.getElementById(toggleId);
+    const list = document.getElementById(listId);
+    if (!toggle || !list) return;
+    const toggleRect = toggle.getBoundingClientRect();
+    const neededHeight = Math.min(list.scrollHeight || 280, 280);
+    const spaceBelow = window.innerHeight - toggleRect.bottom;
+    const spaceAbove = toggleRect.top;
+    list.classList.toggle("open-upward", spaceBelow < neededHeight && spaceAbove > spaceBelow);
+}
 let statsApplyToRigs = new Set();
 function isStatsApplyToDropdownOpen() {
     const list = document.getElementById("stats-apply-to-list");
@@ -5658,6 +5665,7 @@ function isStatsApplyToDropdownOpen() {
 function openStatsApplyToDropdown() {
     populateStatsApplyToWorkerList();
     document.getElementById("stats-apply-to-list")?.classList.remove("hidden");
+    positionApplyToDropdown("btn-stats-apply-to-toggle", "stats-apply-to-list");
 }
 function closeStatsApplyToDropdown() {
     document.getElementById("stats-apply-to-list")?.classList.add("hidden");
@@ -6528,6 +6536,7 @@ function isFsApplyToDropdownOpen() {
 function openFsApplyToDropdown() {
     populateFsApplyToWorkerList();
     document.getElementById("fs-apply-to-list")?.classList.remove("hidden");
+    positionApplyToDropdown("btn-fs-apply-to-toggle", "fs-apply-to-list");
 }
 function closeFsApplyToDropdown() {
     document.getElementById("fs-apply-to-list")?.classList.add("hidden");
@@ -9280,6 +9289,7 @@ function isOcApplyToDropdownOpen() {
 function openOcApplyToDropdown() {
     populateOcApplyToWorkerList();
     document.getElementById("oc-apply-to-list")?.classList.remove("hidden");
+    positionApplyToDropdown("btn-oc-apply-to-toggle", "oc-apply-to-list");
 }
 function closeOcApplyToDropdown() {
     document.getElementById("oc-apply-to-list")?.classList.add("hidden");
@@ -10343,6 +10353,7 @@ function isWdApplyToDropdownOpen() {
 function openWdApplyToDropdown() {
     populateWdApplyToWorkerList();
     document.getElementById("wd-apply-to-list")?.classList.remove("hidden");
+    positionApplyToDropdown("btn-wd-apply-to-toggle", "wd-apply-to-list");
 }
 function closeWdApplyToDropdown() {
     document.getElementById("wd-apply-to-list")?.classList.add("hidden");
@@ -11526,6 +11537,7 @@ function isAgentconfApplyToDropdownOpen() {
 function openAgentconfApplyToDropdown() {
     populateAgentconfApplyToWorkerList();
     document.getElementById("agentconf-apply-to-list")?.classList.remove("hidden");
+    positionApplyToDropdown("btn-agentconf-apply-to-toggle", "agentconf-apply-to-list");
 }
 function closeAgentconfApplyToDropdown() {
     document.getElementById("agentconf-apply-to-list")?.classList.add("hidden");
@@ -13947,7 +13959,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("settings-conf-type-select")?.addEventListener("change", (e) => {
         selectedConfEditType = e.target.value;
         updateConfEditTypeUi();
-        autoLoadConfForSelectedRig();
+        const targetRigs = agentconfApplyToRigs.size > 0 ? agentconfApplyToRigs : selectedRigs;
+        if (targetRigs.size === 1) {
+            autoLoadConfForSelectedRig();
+        } else {
+            // No single worker to auto-reload from - clear rather than leave the previous
+            // type's content sitting under the new type's path/placeholder.
+            const rawEl = document.getElementById("agentconf-raw");
+            if (rawEl) rawEl.value = "";
+            pendingAgentConfFetchRig = null;
+        }
     });
     updateConfEditTypeUi();
     document.getElementById("btn-templates-config-reload")?.addEventListener("click", loadTemplatesConfigTab);
