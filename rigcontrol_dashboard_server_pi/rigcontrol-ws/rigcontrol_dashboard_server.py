@@ -775,31 +775,39 @@ class LocalStatusLogDB:
     # Shared by list_events()/count_filtered() below so the WHERE clause used to fetch a page and
     # the one used to count how many rows exist in total (for pagination's "of N" / total-pages
     # figure) can never drift out of sync with each other.
-    def _build_where(self, rig: str = None, title_q: str = None, content_q: str = None, severity: str = None):
+    def _build_where(self, rig: str = None, title_q: str = None, content_q: str = None, title_q_exclude: bool = False, content_q_exclude: bool = False, severity_include=None, severity_exclude=None):
         where_clauses = []
         params = []
         if rig:
             where_clauses.append("rig = ?")
             params.append(rig)
         if title_q:
-            where_clauses.append("title LIKE ?")
+            where_clauses.append("title NOT LIKE ?" if title_q_exclude else "title LIKE ?")
             params.append(f"%{title_q}%")
         if content_q:
-            where_clauses.append("(details LIKE ? OR reasons LIKE ?)")
+            where_clauses.append("NOT (details LIKE ? OR reasons LIKE ?)" if content_q_exclude else "(details LIKE ? OR reasons LIKE ?)")
             params.append(f"%{content_q}%")
             params.append(f"%{content_q}%")
-        if severity:
-            # Same "[GOOD]"/"[WARN]"/"[IMPORTANT]"/"[CRITICAL]" title tag severity_flags_by_rig()
-            # and the client's renderStatusLogList() regex both key off - not a real column.
-            where_clauses.append("title LIKE ?")
-            params.append(f"%[{severity}]%")
+        # Same "[GOOD]"/"[WARN]"/"[IMPORTANT]"/"[CRITICAL]" title tag severity_flags_by_rig()
+        # and the client's renderStatusLogList() regex both key off - not a real column.
+        # severity_include: only rows tagged with one of these show up at all (OR'd together).
+        # severity_exclude: rows tagged with any of these are hidden regardless of include - lets
+        # someone e.g. "show everything except GOOD" without having to list the other three.
+        if severity_include:
+            or_clauses = " OR ".join(["title LIKE ?"] * len(severity_include))
+            where_clauses.append(f"({or_clauses})")
+            params.extend(f"%[{s}]%" for s in severity_include)
+        if severity_exclude:
+            for s in severity_exclude:
+                where_clauses.append("title NOT LIKE ?")
+                params.append(f"%[{s}]%")
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         return where_sql, params
-    def list_events(self, rig: str = None, limit: int = 200, offset: int = 0, title_q: str = None, content_q: str = None, severity: str = None):
+    def list_events(self, rig: str = None, limit: int = 200, offset: int = 0, title_q: str = None, content_q: str = None, title_q_exclude: bool = False, content_q_exclude: bool = False, severity_include=None, severity_exclude=None):
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            where_sql, params = self._build_where(rig, title_q, content_q, severity)
+            where_sql, params = self._build_where(rig, title_q, content_q, title_q_exclude, content_q_exclude, severity_include, severity_exclude)
             cursor.execute(f'''
                 SELECT id, rig, algo, title, created_at FROM status_log_events
                 {where_sql}
@@ -820,11 +828,11 @@ class LocalStatusLogDB:
             return []
     # Total rows matching the same rig/title_q/content_q/severity filters as list_events() - i.e.
     # how many exist across ALL pages, not just how many came back on this one (len(items)).
-    def count_filtered(self, rig: str = None, title_q: str = None, content_q: str = None, severity: str = None):
+    def count_filtered(self, rig: str = None, title_q: str = None, content_q: str = None, title_q_exclude: bool = False, content_q_exclude: bool = False, severity_include=None, severity_exclude=None):
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            where_sql, params = self._build_where(rig, title_q, content_q, severity)
+            where_sql, params = self._build_where(rig, title_q, content_q, title_q_exclude, content_q_exclude, severity_include, severity_exclude)
             cursor.execute(f'SELECT COUNT(*) as cnt FROM status_log_events {where_sql}', params)
             row = cursor.fetchone()
             return row["cnt"] if row else 0
@@ -1621,14 +1629,6 @@ def _status_log_restore(items: List[Dict[str, Any]], missing_only: bool = False)
     return inserted
 def _templates_file_path():
     return STATIC_DIR / "config" / "templates.json"
-def _agentconf_cache_file_path():
-    """The dashboard's own local record of what each rig's rigcontrol-agent.conf last looked
-    like - NOT the live file (that only ever lives on the rig itself, fetched on demand by the
-    Settings modal's Agent Conf tab). This is a rolling snapshot, one entry per rig name, saved
-    whenever a rig's conf is loaded or written to from the dashboard, purely so it has
-    something to include in DB Backups - a rig going offline for good shouldn't mean losing
-    the last known-good agent conf you configured for it."""
-    return BASE_DIR / "rigcontrol_agentconf_cache.json"
 class _JsonFileStub:
     def __init__(self, path):
         self._path = path
@@ -1813,27 +1813,6 @@ BACKUP_TARGETS = [
         "restore_fn": lambda items, missing_only=False: _json_file_restore(_templates_file_path(), items, missing_only),
         "wipe_fn": lambda: _json_file_wipe(_templates_file_path()),
         "dynamo_table": "RigControlTemplates",
-        "key_schema": [
-            {"AttributeName": "FileId", "KeyType": "HASH"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "FileId", "AttributeType": "S"},
-        ],
-    },
-    {
-        # Last-known-good rigcontrol-agent.conf per rig, saved locally whenever the Settings
-        # modal's Agent Conf tab loads or applies one (see /api/agent-conf/save) - not the live
-        # file itself, which only ever lives on the rig. Same whole-file-as-one-blob pattern as
-        # server_config/templates above, just with a per-rig dict as that blob's content instead
-        # of a single flat config.
-        "id": "agentconf",
-        "label": "Agent Conf",
-        "file_name": "rigcontrol_agentconf_cache.json",
-        "local_db": lambda: _JsonFileStub(_agentconf_cache_file_path()),
-        "scan_fn": lambda: _json_file_scan(_agentconf_cache_file_path()),
-        "restore_fn": lambda items, missing_only=False: _json_file_restore(_agentconf_cache_file_path(), items, missing_only),
-        "wipe_fn": lambda: _json_file_wipe(_agentconf_cache_file_path()),
-        "dynamo_table": "RigControlAgentConf",
         "key_schema": [
             {"AttributeName": "FileId", "KeyType": "HASH"},
         ],
@@ -3091,10 +3070,14 @@ def delete_watchdog_profile(profile_id: str):
         log(f"[WD DELETE LOCAL ERROR] Error: {e}")
         raise HTTPException(500, f"Failed to delete watchdog profile: {e}")
 @router.get("/api/status-log")
-def get_status_log(rig: Optional[str] = None, limit: int = 200, offset: int = 0, title_q: Optional[str] = None, content_q: Optional[str] = None, severity: Optional[str] = None):
+def get_status_log(rig: Optional[str] = None, limit: int = 200, offset: int = 0, title_q: Optional[str] = None, content_q: Optional[str] = None, title_q_exclude: Optional[str] = None, content_q_exclude: Optional[str] = None, severity_include: Optional[str] = None, severity_exclude: Optional[str] = None):
     try:
-        items = local_status_log_db.list_events(rig=rig or None, limit=limit, offset=offset, title_q=title_q or None, content_q=content_q or None, severity=severity or None)
-        total = local_status_log_db.count_filtered(rig=rig or None, title_q=title_q or None, content_q=content_q or None, severity=severity or None)
+        sev_inc = [s for s in (severity_include or "").split(",") if s]
+        sev_exc = [s for s in (severity_exclude or "").split(",") if s]
+        title_exc = bool(title_q_exclude)
+        content_exc = bool(content_q_exclude)
+        items = local_status_log_db.list_events(rig=rig or None, limit=limit, offset=offset, title_q=title_q or None, content_q=content_q or None, title_q_exclude=title_exc, content_q_exclude=content_exc, severity_include=sev_inc, severity_exclude=sev_exc)
+        total = local_status_log_db.count_filtered(rig=rig or None, title_q=title_q or None, content_q=content_q or None, title_q_exclude=title_exc, content_q_exclude=content_exc, severity_include=sev_inc, severity_exclude=sev_exc)
         # {items, total} instead of a bare array - the Status Log tab's Prev/Next pagination needs
         # the TRUE count matching the current rig/search filters (not just len(items), which is
         # capped at `limit`) to compute how many pages exist.
@@ -3824,37 +3807,6 @@ async def import_access_keys(file: UploadFile = File(...)):
     except Exception as e:
         log(f"[Backups] Error saving uploaded accessKeys.csv: {e}")
         raise HTTPException(500, f"Failed to save accessKeys.csv: {e}")
-@router.post("/api/agent-conf/save")
-async def save_agent_conf_snapshot(payload: dict):
-    """Called by the Settings modal's Agent Conf tab whenever it successfully loads or writes
-    a rig's rigcontrol-agent.conf, so the dashboard keeps a local last-known-good copy for that
-    rig - purely for DB Backups (see the "agentconf" BACKUP_TARGETS entry); has no effect on
-    the live rig or on what the Agent Conf tab shows next time (that still always re-fetches
-    from the rig itself)."""
-    rig = (payload.get("rig") or "").strip()
-    content = payload.get("content")
-    if not rig:
-        raise HTTPException(400, "rig is required")
-    if content is None:
-        raise HTTPException(400, "content is required")
-    path = _agentconf_cache_file_path()
-    data = {}
-    if path.exists():
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception as e:
-            log(f"[AgentConf] Error reading existing cache, starting fresh: {e}")
-            data = {}
-    data[rig] = {"content": content, "saved_at": int(time.time())}
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        log(f"[AgentConf] Error saving cache for {rig}: {e}")
-        raise HTTPException(500, f"Failed to save agent conf snapshot: {e}")
-    return {"ok": True, "rig": rig}
 @router.get("/api/templates-config")
 async def get_templates_config():
     """Raw text of static/config/templates.json, for the Settings modal's Templates tab. Same

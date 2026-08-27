@@ -12053,6 +12053,40 @@ function openStatusLogForRig(rigName) {
 // if that default is ever changed there without a matching edit here.
 const STATUSLOG_QUERY_LIMIT = 200;
 let statuslogPage = 0; // 0-indexed - reset to 0 whenever the rig/search filters change
+const STATUSLOG_SEVERITY_LABELS = { GOOD: "Good", WARN: "Warn", IMPORTANT: "Important", CRITICAL: "Critical" };
+// Reads the severity filter checkbox list's current state - "Show" checkboxes are OR'd together
+// (only entries matching one of those severities show up at all), "Hide" checkboxes are
+// subtracted regardless of Show state (see .statuslog-severity-checkbox click handler below for
+// why the two are mutually exclusive per severity).
+function getStatusLogSeverityFilters() {
+    const include = [];
+    const exclude = [];
+    document.querySelectorAll(".statuslog-severity-checkbox").forEach((cb) => {
+        if (!cb.checked) return;
+        if (cb.dataset.mode === "include") include.push(cb.dataset.severity);
+        else if (cb.dataset.mode === "exclude") exclude.push(cb.dataset.severity);
+    });
+    return { include, exclude };
+}
+function updateStatusLogSeverityToggleLabel() {
+    const btn = document.getElementById("btn-statuslog-severity-toggle");
+    if (!btn) return;
+    const { include, exclude } = getStatusLogSeverityFilters();
+    if (!include.length && !exclude.length) {
+        btn.textContent = "All Severities";
+        return;
+    }
+    const parts = [];
+    if (include.length) parts.push(include.map((s) => STATUSLOG_SEVERITY_LABELS[s] || s).join(", "));
+    if (exclude.length) parts.push(`Hide: ${exclude.map((s) => STATUSLOG_SEVERITY_LABELS[s] || s).join(", ")}`);
+    btn.textContent = parts.join(" · ");
+}
+function closeStatusLogSeverityDropdown() {
+    document.getElementById("statuslog-severity-filter-list")?.classList.add("hidden");
+}
+function toggleStatusLogSeverityDropdown() {
+    document.getElementById("statuslog-severity-filter-list")?.classList.toggle("hidden");
+}
 async function loadStatusLogList(autoSelectId) {
     const list = document.getElementById("statuslog-list");
     const statusEl = document.getElementById("statuslog-status");
@@ -12060,16 +12094,25 @@ async function loadStatusLogList(autoSelectId) {
     const rig = rigSel ? rigSel.value : "";
     const titleQ = document.getElementById("statuslog-search-title")?.value.trim() || "";
     const contentQ = document.getElementById("statuslog-search-content")?.value.trim() || "";
-    const severity = document.getElementById("statuslog-severity-filter")?.value || "";
+    const titleExclude = document.getElementById("statuslog-search-title-exclude")?.checked || false;
+    const contentExclude = document.getElementById("statuslog-search-content-exclude")?.checked || false;
+    const { include: sevInclude, exclude: sevExclude } = getStatusLogSeverityFilters();
     if (statusEl) statusEl.textContent = "Loading...";
     try {
         const params = new URLSearchParams();
         params.set("limit", String(STATUSLOG_QUERY_LIMIT));
         params.set("offset", String(statuslogPage * STATUSLOG_QUERY_LIMIT));
         if (rig) params.set("rig", rig);
-        if (titleQ) params.set("title_q", titleQ);
-        if (contentQ) params.set("content_q", contentQ);
-        if (severity) params.set("severity", severity);
+        if (titleQ) {
+            params.set("title_q", titleQ);
+            if (titleExclude) params.set("title_q_exclude", "1");
+        }
+        if (contentQ) {
+            params.set("content_q", contentQ);
+            if (contentExclude) params.set("content_q_exclude", "1");
+        }
+        if (sevInclude.length) params.set("severity_include", sevInclude.join(","));
+        if (sevExclude.length) params.set("severity_exclude", sevExclude.join(","));
         const res = await fetch(`${API}/api/status-log?${params.toString()}`);
         if (!res.ok) {
             if (statusEl) statusEl.textContent = "Failed to load";
@@ -13501,6 +13544,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
     document.getElementById("statuslog-search-title")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("statuslog-search-content")?.addEventListener("input", debounceStatuslogSearch);
+    document.getElementById("statuslog-search-title-exclude")?.addEventListener("change", () => {
+        statuslogPage = 0;
+        loadStatusLogList();
+    });
+    document.getElementById("statuslog-search-content-exclude")?.addEventListener("change", () => {
+        statuslogPage = 0;
+        loadStatusLogList();
+    });
     document.getElementById("btn-statuslog-prev-page")?.addEventListener("click", () => {
         if (statuslogPage > 0) {
             statuslogPage--;
@@ -13532,9 +13583,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         statuslogPage = 0; // switching rigs should start back at page 1 of that rig's results
         loadStatusLogList();
     });
-    document.getElementById("statuslog-severity-filter")?.addEventListener("change", () => {
-        statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
+    document.getElementById("btn-statuslog-severity-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleStatusLogSeverityDropdown();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("statuslog-severity-filter-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeStatusLogSeverityDropdown();
+        }
+    });
+    document.querySelectorAll(".statuslog-severity-checkbox").forEach((cb) => {
+        cb.addEventListener("change", () => {
+            if (cb.checked) {
+                // Include and Hide are mutually exclusive per severity - checking one clears
+                // the other for that same row instead of leaving both checked (which would be
+                // a contradiction: "only show CRITICAL" + "hide CRITICAL").
+                const otherMode = cb.dataset.mode === "include" ? "exclude" : "include";
+                const other = document.querySelector(
+                    `.statuslog-severity-checkbox[data-severity="${cb.dataset.severity}"][data-mode="${otherMode}"]`
+                );
+                if (other) other.checked = false;
+            }
+            updateStatusLogSeverityToggleLabel();
+            statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
+            loadStatusLogList();
+        });
+    });
+    document.getElementById("btn-statuslog-severity-clear")?.addEventListener("click", () => {
+        document.querySelectorAll(".statuslog-severity-checkbox").forEach((cb) => { cb.checked = false; });
+        updateStatusLogSeverityToggleLabel();
+        statuslogPage = 0;
         loadStatusLogList();
+        closeStatusLogSeverityDropdown();
     });
     document.getElementById("wdconfig-hashrate-unit-up")?.addEventListener("click", () => stepWdHashrateUnit(1));
     document.getElementById("wdconfig-hashrate-unit-down")?.addEventListener("click", () => stepWdHashrateUnit(-1));

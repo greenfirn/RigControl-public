@@ -5847,9 +5847,17 @@ h1 {
     flex: 0 0 auto;
     padding: 0 12px 12px;
 }
-#statuslog-modal .statuslog-search-row #statuslog-severity-filter {
+.statuslog-severity-filter-group {
+    position: relative;
+    flex: 0 0 auto;
+}
+.statuslog-severity-filter-toggle {
     flex: 0 0 auto;
     width: auto;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 6px 8px;
     border: 1px solid var(--input-border);
     background: var(--input-bg);
@@ -5857,18 +5865,104 @@ h1 {
     box-sizing: border-box;
     font-size: var(--font-size-input);
     border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
 }
-#statuslog-modal .statuslog-search-row #statuslog-severity-filter:focus {
+.statuslog-severity-filter-toggle:hover {
     border-color: var(--text-accent);
+}
+.statuslog-severity-filter-list {
+    position: absolute;
+    z-index: 30;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    min-width: 180px;
+    background: var(--surface-modal-panel);
+    border: 1px solid var(--border-modal);
+    border-radius: 6px;
+    padding: 8px 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.statuslog-severity-filter-list.hidden {
+    display: none;
+}
+.statuslog-severity-filter-header {
+    display: grid;
+    grid-template-columns: 20px 20px 1fr;
+    gap: 8px;
+    font-size: var(--font-size-label);
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.statuslog-severity-filter-col {
+    text-align: center;
+}
+.statuslog-severity-filter-row {
+    display: grid;
+    grid-template-columns: 20px 20px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: var(--font-size-input);
+}
+.statuslog-severity-filter-row input {
+    justify-self: center;
+    cursor: pointer;
+}
+.statuslog-severity-filter-sep {
+    height: 1px;
+    background: var(--border-modal);
+    margin: 6px 0;
+}
+.statuslog-severity-filter-clear {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-accent);
+    font-size: var(--font-size-input);
+    cursor: pointer;
+    padding: 3px 0;
+    text-align: left;
+}
+.statuslog-severity-filter-clear:hover {
+    text-decoration: underline;
 }
 /* Title search gets a smaller share of the row than before (was an even 50/50 split with
    Content search) - the severity dropdown to its left eats into that space, and title queries
-   tend to be short anyway, so Content search picks up the difference. */
-#statuslog-modal .statuslog-search-row #statuslog-search-title {
+   tend to be short anyway, so Content search picks up the difference. Each search input now
+   lives in a .statuslog-search-field wrapper alongside its own "Hide" exclude checkbox, so the
+   flex-basis moved from the inputs themselves onto the wrapper divs. */
+.statuslog-search-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+#statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(1) {
     flex: 1 1 auto;
 }
-#statuslog-modal .statuslog-search-row #statuslog-search-content {
+#statuslog-modal .statuslog-search-row .statuslog-search-field:nth-of-type(2) {
     flex: 2 1 auto;
+}
+.statuslog-search-field .fs-search {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.statuslog-search-exclude-label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: var(--font-size-label);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.statuslog-search-exclude-label input {
+    cursor: pointer;
 }
 #statuslog-modal .statuslog-search-row .fs-search {
     width: auto;

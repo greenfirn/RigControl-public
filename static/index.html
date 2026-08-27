@@ -2025,29 +2025,65 @@ nvidia-smi
                 </div>
             </div>
             <div class="statuslog-search-row">
-                <select id="statuslog-severity-filter" title="Filter by severity">
-                    <option value="">All Severities</option>
-                    <option value="GOOD">Good</option>
-                    <option value="WARN">Warn</option>
-                    <option value="IMPORTANT">Important</option>
-                    <option value="CRITICAL">Critical</option>
-                </select>
-                <input
-                    type="text"
-                    id="statuslog-search-title"
-                    class="fs-search"
-                    placeholder="Search titles..."
-                    autocomplete="off"
-                    title="Search entries by title text (server-side)"
-                />
-                <input
-                    type="text"
-                    id="statuslog-search-content"
-                    class="fs-search"
-                    placeholder="Search contents..."
-                    autocomplete="off"
-                    title="Search entries by full details/content text (server-side)"
-                />
+                <div class="statuslog-severity-filter-group" id="statuslog-severity-filter-wrap">
+                    <button type="button" class="statuslog-severity-filter-toggle" id="btn-statuslog-severity-toggle" title="Filter by severity">All Severities</button>
+                    <div class="statuslog-severity-filter-list hidden" id="statuslog-severity-filter-list">
+                        <div class="statuslog-severity-filter-header">
+                            <span class="statuslog-severity-filter-col">Show</span>
+                            <span class="statuslog-severity-filter-col">Hide</span>
+                        </div>
+                        <label class="statuslog-severity-filter-row">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="GOOD" data-mode="include">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="GOOD" data-mode="exclude">
+                            <span>Good</span>
+                        </label>
+                        <label class="statuslog-severity-filter-row">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="WARN" data-mode="include">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="WARN" data-mode="exclude">
+                            <span>Warn</span>
+                        </label>
+                        <label class="statuslog-severity-filter-row">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="IMPORTANT" data-mode="include">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="IMPORTANT" data-mode="exclude">
+                            <span>Important</span>
+                        </label>
+                        <label class="statuslog-severity-filter-row">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="CRITICAL" data-mode="include">
+                            <input type="checkbox" class="statuslog-severity-checkbox" data-severity="CRITICAL" data-mode="exclude">
+                            <span>Critical</span>
+                        </label>
+                        <div class="statuslog-severity-filter-sep"></div>
+                        <button type="button" class="statuslog-severity-filter-clear" id="btn-statuslog-severity-clear">Clear filters</button>
+                    </div>
+                </div>
+                <div class="statuslog-search-field">
+                    <input
+                        type="text"
+                        id="statuslog-search-title"
+                        class="fs-search"
+                        placeholder="Search titles..."
+                        autocomplete="off"
+                        title="Search entries by title text (server-side)"
+                    />
+                    <label class="statuslog-search-exclude-label" title="When checked, hides entries matching this title search instead of showing only matches">
+                        <input type="checkbox" id="statuslog-search-title-exclude">
+                        Hide
+                    </label>
+                </div>
+                <div class="statuslog-search-field">
+                    <input
+                        type="text"
+                        id="statuslog-search-content"
+                        class="fs-search"
+                        placeholder="Search contents..."
+                        autocomplete="off"
+                        title="Search entries by full details/content text (server-side)"
+                    />
+                    <label class="statuslog-search-exclude-label" title="When checked, hides entries matching this content search instead of showing only matches">
+                        <input type="checkbox" id="statuslog-search-content-exclude">
+                        Hide
+                    </label>
+                </div>
             </div>
             <div class="cmd-footer">
                 <div class="cmd-btn-row">
