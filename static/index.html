@@ -61,7 +61,6 @@
         <span class="view-tab" data-tab-panel="overclocking"><span class="view-tab-icon" id="view-tab-icon-overclocking">&#9889;</span><span class="view-tab-text">Overclocking</span></span>
         <span class="view-tab" data-tab-panel="watchdog"><span class="view-tab-icon" id="view-tab-icon-watchdog">&#128054;</span><span class="view-tab-text">Watchdog</span></span>
         <span class="view-tab" data-tab-panel="statuslog"><span class="view-tab-icon" id="view-tab-icon-statuslog">&#128220;</span><span class="view-tab-text">Status Log</span></span>
-        <span class="view-tab" data-tab-panel="backups"><span class="view-tab-icon" id="view-tab-icon-backups">&#128452;&#65039;</span><span class="view-tab-text">Backups</span></span>
         <span class="view-tab" data-tab-panel="settings"><span class="view-tab-icon" id="view-tab-icon-settings">&#9881;&#65039;</span><span class="view-tab-text">Settings</span></span>
     </div>
     </div>
@@ -765,11 +764,6 @@
                             <label for="tab-icon-input-statuslog">Status Log</label>
                             <input type="text" id="tab-icon-input-statuslog" class="toolbar-icon-input" value="&#128220;" title="Icon shown before the Status Log tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
                             <img class="toolbar-icon-input-preview" id="tab-icon-preview-statuslog" alt="">
-                        </span>
-                        <span class="toolbar-icon-field">
-                            <label for="tab-icon-input-backups">Backups</label>
-                            <input type="text" id="tab-icon-input-backups" class="toolbar-icon-input" value="&#128452;&#65039;" title="Icon shown before the Backups tab's text - the text itself can't be changed here. Use the icon picker above, click into this field first, then Apply.">
-                            <img class="toolbar-icon-input-preview" id="tab-icon-preview-backups" alt="">
                         </span>
                         <span class="toolbar-icon-field">
                             <label for="tab-icon-input-settings">Settings</label>
@@ -2096,74 +2090,6 @@ nvidia-smi
             </div>
         </div>
     </div>
-    <div class="view-tab-panel hidden" id="backups-modal" data-tab-panel="backups">
-        <div class="cmd-dialog">
-            <div class="dialog-resize-handle-corner" title="Drag to resize width and height"></div>
-            <div class="cmd-header">
-                <span class="cmd-target">Backups</span>
-                <span id="backups-status" class="wdconfig-status"></span>
-            </div>
-            <div class="cmd-body backups-body">
-                <div class="backups-top-row">
-                    <div class="backups-list-panel">
-                        <div class="backups-list-header">
-                            <label class="backups-select-all">
-                                <input type="checkbox" id="backups-select-all">
-                            </label>
-                            <span>File</span>
-                            <span>Items</span>
-                            <span>Size</span>
-                        </div>
-                        <div id="backups-list" class="fs-list"></div>
-                    </div>
-                    <div class="backups-top-hsizer" id="backups-top-hsizer" title="Drag to resize"></div>
-                    <div class="backups-actions">
-                        <div class="cmd-btn-row backups-actions-row">
-                            <button class="cmd-btn ok" id="btn-backups-backup" title="Push the selected file(s)' local rows up to their DynamoDB table">Backup</button>
-                            <button class="cmd-btn cancel" id="btn-backups-restore" title="Pull the selected file(s)' DynamoDB table down and replace the local data">Restore</button>
-                            <button class="cmd-btn danger" id="btn-backups-delete" title="Permanently delete the selected file(s)' data - uses the Local/DynamoDB toggle below to pick which side gets wiped">Delete</button>
-                            <label class="backups-missing-only-label" title="When restoring, keep existing local rows and only add rows that don't already exist - otherwise Restore replaces local data with what's in DynamoDB">
-                                <input type="checkbox" id="backups-restore-missing-only">
-                                Import missing entries only
-                            </label>
-                        </div>
-                        <div class="cmd-btn-row backups-actions-row">
-                            <button class="cmd-btn secondary" id="btn-backups-preview">Preview Items</button>
-                            <span class="backups-preview-source-toggle">
-                                <label class="backups-radio-label">
-                                    <input type="radio" name="backups-preview-source" id="backups-preview-source-local" value="local" checked>
-                                    Local
-                                </label>
-                                <label class="backups-radio-label">
-                                    <input type="radio" name="backups-preview-source" id="backups-preview-source-dynamo" value="dynamo">
-                                    DynamoDB
-                                </label>
-                            </span>
-                        </div>
-                        <div class="cmd-btn-row backups-actions-row">
-                            <button class="cmd-btn secondary" id="btn-backups-check-config">Check Config</button>
-                            <button class="cmd-btn secondary" id="btn-backups-test-connection">Test DB Connection</button>
-                            <button class="cmd-btn secondary" id="btn-backups-import-keys">Import Access Keys</button>
-                            <input type="file" id="backups-accesskeys-file-input" accept=".csv" style="display:none">
-                        </div>
-                        <div class="input-help backups-accesskeys-hint">Create an AWS IAM user with DynamoDB read/write/execute access, export its accessKeys.csv, then import it here.</div>
-                    </div>
-                </div>
-                <div class="backups-vsizer" id="backups-vsizer" title="Drag to resize the preview area"></div>
-                <div class="backups-preview-panel" id="backups-preview-panel">
-                    <div id="backups-preview-list" class="fs-list backups-preview-list"></div>
-                    <div class="backups-hsizer" id="backups-hsizer" title="Drag to resize"></div>
-                    <textarea
-                        id="backups-preview-textarea"
-                        class="fs-pools-textarea backups-preview-textarea"
-                        readonly
-                        spellcheck="false"
-                        placeholder="Select file(s) above, click Preview Items, then click an item on the left to see its raw contents here."
-                    ></textarea>
-                </div>
-            </div>
-        </div>
-    </div>
     <div class="view-tab-panel hidden" id="refresh-modal" data-tab-panel="settings">
         <div class="cmd-dialog">
             <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
@@ -2174,12 +2100,14 @@ nvidia-smi
                 <span id="general-settings-status" class="wdconfig-status"></span>
                 <span id="agentconf-status" class="wdconfig-status"></span>
                 <span id="templates-config-status" class="wdconfig-status"></span>
+                <span id="backups-status" class="wdconfig-status"></span>
             </div>
             <div class="cmd-body">
             <div class="settings-main-tabs" id="settings-main-tabs">
                 <button type="button" class="settings-main-tab-btn active" id="settings-main-tab-btn-general" data-tab-panel="general">General</button>
-                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Conf</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Configs</button>
                 <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-templates" data-tab-panel="templates">Templates</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-backups" data-tab-panel="backups">Backups</button>
                 <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-advanced" data-tab-panel="advanced">Advanced Server Settings</button>
             </div>
             <div class="settings-main-tab-panel" data-tab-panel="general">
@@ -2270,7 +2198,7 @@ nvidia-smi
               </div>
               <div class="settings-col">
                 <div class="settings-section">
-                    <div class="section-header">Notification Settings</div>
+                    <div class="section-header">Notification</div>
                     <div class="settings-row-horizontal notif-row settings-row-narrow">
                         <div class="notif-item">
                             <label class="checkbox-label">
@@ -2317,7 +2245,7 @@ nvidia-smi
                 </div>
                 <div class="settings-section">
                     <div class="section-header">
-                        Stats DB Settings
+                        Stats Database
                     </div>
                     <div class="settings-row-horizontal settings-row-narrow stats-settings-row">
                         <label class="checkbox-label" title="Stats DB Enabled">
@@ -2440,6 +2368,67 @@ nvidia-smi
                     </div>
                     <div class="footer-buttons-right">
                         <button class="cmd-btn send-it" id="btn-templates-config-apply" title="Validate as JSON and save this content to static/config/templates.json on the server">Apply</button>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-main-tab-panel hidden" data-tab-panel="backups">
+                <div id="backups-modal" class="backups-body">
+                    <div class="backups-top-row">
+                        <div class="backups-list-panel">
+                            <div class="backups-list-header">
+                                <label class="backups-select-all">
+                                    <input type="checkbox" id="backups-select-all">
+                                </label>
+                                <span>File</span>
+                                <span>Items</span>
+                                <span>Size</span>
+                            </div>
+                            <div id="backups-list" class="fs-list"></div>
+                        </div>
+                        <div class="backups-top-hsizer" id="backups-top-hsizer" title="Drag to resize"></div>
+                        <div class="backups-actions">
+                            <div class="cmd-btn-row backups-actions-row">
+                                <button class="cmd-btn ok" id="btn-backups-backup" title="Push the selected file(s)' local rows up to their DynamoDB table">Backup</button>
+                                <button class="cmd-btn cancel" id="btn-backups-restore" title="Pull the selected file(s)' DynamoDB table down and replace the local data">Restore</button>
+                                <button class="cmd-btn danger" id="btn-backups-delete" title="Permanently delete the selected file(s)' data - uses the Local/DynamoDB toggle below to pick which side gets wiped">Delete</button>
+                                <label class="backups-missing-only-label" title="When restoring, keep existing local rows and only add rows that don't already exist - otherwise Restore replaces local data with what's in DynamoDB">
+                                    <input type="checkbox" id="backups-restore-missing-only">
+                                    Import missing entries only
+                                </label>
+                            </div>
+                            <div class="cmd-btn-row backups-actions-row">
+                                <button class="cmd-btn secondary" id="btn-backups-preview">Preview Items</button>
+                                <span class="backups-preview-source-toggle">
+                                    <label class="backups-radio-label">
+                                        <input type="radio" name="backups-preview-source" id="backups-preview-source-local" value="local" checked>
+                                        Local
+                                    </label>
+                                    <label class="backups-radio-label">
+                                        <input type="radio" name="backups-preview-source" id="backups-preview-source-dynamo" value="dynamo">
+                                        DynamoDB
+                                    </label>
+                                </span>
+                            </div>
+                            <div class="cmd-btn-row backups-actions-row">
+                                <button class="cmd-btn secondary" id="btn-backups-check-config">Check Config</button>
+                                <button class="cmd-btn secondary" id="btn-backups-test-connection">Test DB Connection</button>
+                                <button class="cmd-btn secondary" id="btn-backups-import-keys">Import Access Keys</button>
+                                <input type="file" id="backups-accesskeys-file-input" accept=".csv" style="display:none">
+                            </div>
+                            <div class="input-help backups-accesskeys-hint">Create an AWS IAM user with DynamoDB read/write/execute access, export its accessKeys.csv, then import it here.</div>
+                        </div>
+                    </div>
+                    <div class="backups-vsizer" id="backups-vsizer" title="Drag to resize the preview area"></div>
+                    <div class="backups-preview-panel" id="backups-preview-panel">
+                        <div id="backups-preview-list" class="fs-list backups-preview-list"></div>
+                        <div class="backups-hsizer" id="backups-hsizer" title="Drag to resize"></div>
+                        <textarea
+                            id="backups-preview-textarea"
+                            class="fs-pools-textarea backups-preview-textarea"
+                            readonly
+                            spellcheck="false"
+                            placeholder="Select file(s) above, click Preview Items, then click an item on the left to see its raw contents here."
+                        ></textarea>
                     </div>
                 </div>
             </div>
