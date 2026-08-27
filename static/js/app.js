@@ -3519,15 +3519,17 @@ function fmtUptime(sec) {
     return `${m}m`;
 }
 // Every save/load/delete/clear/etc title-bar status span (Wallets, Flightsheets, Overclock,
-// Watchdog, Send Cmd, Backups, Status Log, Logs, Settings' Conf/Templates/General tabs) should
-// show a local-time timestamp after its message. Rather than touching every one of the 70+
-// call sites that do `someStatusEl.textContent = "..."` throughout the file, redefine
+// Watchdog, Send Cmd, Backups, Status Log, Settings' Conf/Templates/General tabs) should
+// show a local-time timestamp after its message (Logs/Config's status is excluded - it fires too
+// often, e.g. on every auto-refresh tick, for a timestamp there to be useful). Rather than
+// touching every one of the 70+ call sites that do `someStatusEl.textContent = "..."` throughout
+// the file, redefine
 // `.textContent` on just these elements so any assignment - existing or future - automatically
 // gets " H:MM:SS AM/PM" appended for you. The getter still returns exactly what's on screen
 // (timestamp included), so nothing reading it back sees anything unexpected.
 const STATUS_TIMESTAMP_IDS = [
     "fs-status", "oc-status", "wdconfig-status", "wallet-status",
-    "saved-cmd-status", "backups-status", "logs-status", "statuslog-status",
+    "saved-cmd-status", "backups-status", "statuslog-status",
     "agentconf-status", "templates-config-status", "general-settings-status",
     "stats-status",
 ];
