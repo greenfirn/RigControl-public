@@ -11609,7 +11609,6 @@ function autoLoadConfForSelectedRig() {
     // back to the main worker list.
     const targetRigs = agentconfApplyToRigs.size > 0 ? agentconfApplyToRigs : selectedRigs;
     if (targetRigs.size !== 1) {
-        if (statusEl) statusEl.textContent = `Select exactly one worker (main list or Apply to picker) to load/edit its ${confLabel}`;
         return;
     }
     const [rig] = targetRigs;
@@ -13153,9 +13152,6 @@ function syncOpenModulesToSelection() {
             }
         } else {
             lastSyncedAgentConfRig = null;
-            const statusEl = document.getElementById("agentconf-status");
-            const confLabel = LOGS_TYPE_LABELS[selectedConfEditType] || selectedConfEditType;
-            if (statusEl) statusEl.textContent = `Select exactly one worker to load/edit its ${confLabel}`;
         }
     }
     const statsModal = document.getElementById("stats-modal");
