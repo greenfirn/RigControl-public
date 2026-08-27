@@ -2783,6 +2783,14 @@ h1 {
     align-items: center;
     gap: 8px;
 }
+/* .fs-apply-to-group is normally a form-grid field (flex:1 1 0; min-width:130px, see
+   .field-group) - here it sits in a flat button row instead, so it needs to size to its own
+   content like the buttons on either side of it rather than stretching to fill space. */
+#stats-apply-to-wrap,
+#agentconf-apply-to-wrap {
+    flex: 0 0 auto;
+    min-width: 0;
+}
 #btn-refresh-save {
     /* Fully matches Apply Stats below now (border, text, bg, and hover-bg) - they're a paired
        row of buttons, so styling one differently from the other read as inconsistent/buggy.
@@ -6221,30 +6229,20 @@ h1 {
     background: var(--text-accent);
     opacity: 0.35;
 }
-#backups-modal .cmd-dialog {
-    width: 80%;
-    max-width: 95vw;
-    min-width: 620px;
+/* Backups used to be its own standalone dialog (fixed 78vh height, 80%/620px-min width) - now
+   it's a Settings sub-tab living inside #refresh-modal .cmd-dialog, which is width:fit-content/
+   height:auto (sized to whichever tab is active, see app.css's #refresh-modal rules). The
+   min-width below still makes the fit-content dialog grow wide enough to fit the list+preview
+   side-by-side layout when this tab is open, and the explicit height gives the list/preview
+   panels below a bounded flex context to scroll within instead of the whole Settings dialog
+   ballooning to an enormous height. */
+#backups-modal {
+    display: flex;
+    flex-direction: column;
+    min-width: 590px;
+    height: 62vh;
     min-height: 360px;
-    height: 78vh;
-    max-height: 95vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--surface-modal);
-    border: 1px solid var(--border-modal);
-    border-radius: 5px;
-    overflow: hidden;
-    margin: 0 auto;
-    position: relative;
-}
-#backups-modal .backups-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    padding: 12px;
     gap: 10px;
-    background: var(--surface-modal);
     overflow: hidden;
 }
 #backups-modal .backups-top-row {
@@ -6413,8 +6411,6 @@ h1 {
     align-self: stretch;
     text-align: left;
 }
-#backups-status.error { color: var(--text-danger); }
-#backups-status.ok { color: var(--text-success); }
 #backups-modal .backups-preview-panel {
     display: flex;
     flex: 0 0 220px;
