@@ -7075,6 +7075,27 @@ function styledFsPoolUrlIfScheme(bareUrl, sslOn, hasScheme) {
     if (!hasScheme) return bareUrl;
     return (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bareUrl;
 }
+// If the Miner Configuration POOL override wraps %URL% in an explicit scheme (e.g.
+// "stratum+tcp://%URL%"), that's a deliberate, one-time instruction that every pool address
+// needs that same scheme - not just the one substituted into %URL% itself, since custom miners
+// can reference backup pools via %URL%[1], %URL%[2], etc. This is applied ONCE here, to
+// pool_urls itself, so ARGS resolution (resolve_url_indexed rig-side) can keep substituting
+// %URL%[N] as a plain, unwrapped lookup - the scheme is already baked into the stored address
+// by the time that substitution runs, so it's never added twice. Returns true/false for the
+// scheme to force onto every pool, or null if the override doesn't specify one (nothing changes).
+function forcedSchemeFromPoolToken(token) {
+    const t = (token || "").trim();
+    if (/^stratum\+ssl:\/\/.*%URL%/i.test(t)) return true;
+    if (/^stratum\+tcp:\/\/.*%URL%/i.test(t)) return false;
+    return null;
+}
+// Unlike styledFsPoolUrlIfScheme, this can ADD a scheme to a bare address - used only for the
+// forced-from-token case above, where writing the scheme into the override is explicit
+// permission to apply it across the whole pool set.
+function applyForcedPoolScheme(full, sslOn) {
+    const bare = bareFsPoolUrl(full);
+    return bare ? (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bare : full;
+}
 const FS_POOL_ADDRESS_RE = /(?:stratum\+ssl:\/\/|stratum\+tcp:\/\/|ssl:\/\/|tcp:\/\/)?((?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3}):(\d{2,5})\b/g;
 // Like extractPoolAddressesFromText, but returns each match's full original text (including
 // any stratum+tcp://\/stratum+ssl:// prefix it had, verbatim) instead of just the bare
@@ -7471,22 +7492,21 @@ function buildRigGpuItemObject(values, stash) {
         poolUrls = [values.POOL || "", ...originalExtras];
     }
     poolUrls = poolUrls.map((u) => (u || "").trim()).filter((u) => u !== "");
+    // pool_ssl is derived informationally from the primary pool's own scheme - it's what drives
+    // the separate --tls-style flag for miners whose CLI can't accept an inline scheme (xmrig,
+    // wildrig-multi, gminer, srbminer). pool_urls[0] itself is left exactly as stored, scheme
+    // and all, same as every other entry: miners that DO accept an inline scheme (trex,
+    // teamredminer, rigel, lolminer, bzminer, onezerominer) read it straight from pool_urls, so
+    // stripping it here would silently drop SSL for the primary pool on those miner types.
     let poolSsl = false;
-    let poolUrl = poolUrls[0] || "";
-    // A literal override like "stratum+tcp://%URL%" or "stratum+ssl://%URL%" (Miner Configuration's
-    // POOL field) is a template, not a resolved address yet - the %URL% token gets substituted
-    // rig-side later, so its scheme prefix must stay exactly as typed here rather than being
-    // stripped off as if this were already a real host:port address.
+    const poolUrl = poolUrls[0] || "";
     if (!poolUrl.includes("%URL%")) {
         if (poolUrl.startsWith("stratum+ssl://")) {
             poolSsl = true;
-            poolUrl = poolUrl.slice("stratum+ssl://".length);
         } else if (poolUrl.startsWith("stratum+tcp://")) {
             poolSsl = false;
-            poolUrl = poolUrl.slice("stratum+tcp://".length);
         }
     }
-    if (poolUrls.length > 0) poolUrls[0] = poolUrl;
     let resolvedMinerUrl;
     if (hasLiteralPoolOverride) {
         // An explicit literal pool override was set via the Miner Configuration modal's POOL
@@ -8849,6 +8869,19 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     })();
     fsPrimaryPoolUrl = fsExtraPoolUrls.length > 0 ? values.POOL : "";
     fsPoolUrlsExplicitlySet = false;
+    // Keep loaded flightsheets consistent with what Save now produces: if the loaded POOL
+    // override wraps %URL% in an explicit scheme, apply that scheme across every pool.
+    {
+        const sslOn = forcedSchemeFromPoolToken(fsPoolUrlToken);
+        if (sslOn !== null) {
+            if (fsExtraPoolUrls.length > 0) {
+                fsPrimaryPoolUrl = applyForcedPoolScheme(fsPrimaryPoolUrl, sslOn);
+                fsExtraPoolUrls = fsExtraPoolUrls.map((u) => applyForcedPoolScheme(u, sslOn));
+            } else {
+                values.POOL = applyForcedPoolScheme(values.POOL, sslOn);
+            }
+        }
+    }
     updateManagePoolsBtnLabel();
     if (jsonItem.miner !== "custom") {
         values.ARGS = injectMinerTlsFlag(values.MINER, jsonItem.pool_ssl === true, values.ARGS);
@@ -13669,9 +13702,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     // fs-mc-pool-token mirrors miner_config.url, not pool_urls, so it needs its own listener.
     document.getElementById("fs-mc-pool-token")?.addEventListener("input", (e) => {
         fsPoolUrlToken = e.target.value;
-        // This field only affects miner_config.url (a pure %URL% substitution template) - it
-        // never touches pool_urls or the main page's Pool field.
         const poolEl = document.getElementById("fs-field-pool");
+        const sslOn = forcedSchemeFromPoolToken(fsPoolUrlToken);
+        if (sslOn !== null) {
+            if (fsExtraPoolUrls.length > 0) {
+                fsPrimaryPoolUrl = applyForcedPoolScheme(fsPrimaryPoolUrl, sslOn);
+                fsExtraPoolUrls = fsExtraPoolUrls.map((u) => applyForcedPoolScheme(u, sslOn));
+                refreshFsPoolFieldDisplay();
+            } else if (poolEl) {
+                poolEl.value = applyForcedPoolScheme(poolEl.value, sslOn);
+            }
+        }
         if (poolEl) updateRawFromFieldChange(poolEl);
     });
     document.getElementById("fs-field-miner")?.addEventListener("input", () => {

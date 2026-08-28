@@ -398,7 +398,15 @@ POOL_URLS=$(resolve_pass "$POOL_URLS")
 if [[ "$POOL" == *"%URL%"* ]]; then
     _pool_url_list=()
     mapfile -t _pool_url_list < <(get_pool_url_list)
-    POOL="${POOL//%URL%/${_pool_url_list[0]:-}}"
+    _primary_pool_url="${_pool_url_list[0]:-}"
+    # Strip any scheme off the primary address before substituting it into %URL% here - the
+    # surrounding template text (e.g. "stratum+ssl://%URL%") already supplies whatever scheme
+    # it wants, so using an already-schemed pool_urls[0] would double it up
+    # (stratum+ssl://stratum+ssl://host:port). %URL%[N] below is unaffected - it substitutes
+    # pool_urls[N] as-is, scheme and all, since there's no surrounding template wrapping it.
+    _primary_pool_url="${_primary_pool_url#stratum+ssl://}"
+    _primary_pool_url="${_primary_pool_url#stratum+tcp://}"
+    POOL="${POOL//%URL%/${_primary_pool_url}}"
 fi
 ALGO=$(get_rig_conf "ALGO" "0")
 ALGO=$(resolve_worker_name "$ALGO")
