@@ -6729,9 +6729,11 @@ function extractFsPoolListDisplay(rawText) {
         const sslOn = !isCustom && jsonItem.pool_ssl === true;
         if (Array.isArray(jsonItem.pool_urls) && jsonItem.pool_urls.length > 0) {
             return jsonItem.pool_urls
-                .map((u) => bareFsPoolUrl(u || ""))
-                .filter((u) => u !== "")
-                .map((u) => styledFsPoolUrl(u, sslOn))
+                .filter((u) => (u || "") !== "")
+                .map((u) => {
+                    const hasScheme = /^stratum\+(ssl|tcp):\/\//i.test(u || "");
+                    return styledFsPoolUrlIfScheme(bareFsPoolUrl(u || ""), sslOn, hasScheme);
+                })
                 .join(" ");
         }
         const values = fsFieldsFromRigGpuJsonItem(jsonItem);
@@ -7035,15 +7037,13 @@ async function saveFlightsheetFromDialog() {
         alert(`Error saving flightsheet: ${err.message}`);
     }
 }
+// fsPrimaryPoolUrl/fsExtraPoolUrls are stored verbatim, exactly as typed (with whatever
+// scheme, or lack of one, each individual line had) - Manage Pools Save never adds, strips,
+// or reflows scheme onto these based on a single set-wide flag. Each entry's own scheme
+// presence is checked fresh, per entry, wherever it matters (e.g. the SSL checkbox flip).
 let fsExtraPoolUrls = [];
 let fsPoolUrlsExplicitlySet = false;
 let fsPrimaryPoolUrl = "";
-// Whether the pool text last entered (via Manage Pools Save or a paste into the Pool field)
-// included an explicit stratum+tcp://\/stratum+ssl:// scheme. Whether to add/keep a scheme is
-// entirely the user's call, for every miner - RigControl only flips an EXISTING tcp<->ssl scheme
-// to match the SSL checkbox, it never adds one to an address that didn't have one, and never
-// strips one the user explicitly typed.
-let fsPoolsHaveScheme = false;
 let fsBzminerOcJsonUserConfig = "";
 let fsSrbminerOriginalUserConfig = "";
 let fsXmrigHugepages = "";
@@ -7064,10 +7064,6 @@ function bareFsPoolUrl(url) {
         .replace(/^stratum\+ssl:\/\//, "")
         .replace(/^stratum\+tcp:\/\//, "");
 }
-function styledFsPoolUrl(bareUrl, sslOn) {
-    if (!bareUrl) return "";
-    return sslOn ? "stratum+ssl://" + bareUrl : bareUrl;
-}
 // Whether an address gets a stratum+tcp://\/stratum+ssl:// scheme at all is entirely up to the
 // user, for every miner (some, like keryx-miner-supr, require an explicit scheme even for plain
 // TCP; most standard miners expect bare host:port). RigControl never invents a scheme that wasn't
@@ -7080,6 +7076,24 @@ function styledFsPoolUrlIfScheme(bareUrl, sslOn, hasScheme) {
     return (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bareUrl;
 }
 const FS_POOL_ADDRESS_RE = /(?:stratum\+ssl:\/\/|stratum\+tcp:\/\/|ssl:\/\/|tcp:\/\/)?((?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3}):(\d{2,5})\b/g;
+// Like extractPoolAddressesFromText, but returns each match's full original text (including
+// any stratum+tcp://\/stratum+ssl:// prefix it had, verbatim) instead of just the bare
+// host:port - used wherever pasted/typed pool text should pass through unmodified.
+function extractPoolLinesFromText(text) {
+    if (!text) return [];
+    const seen = new Set();
+    const found = [];
+    let m;
+    FS_POOL_ADDRESS_RE.lastIndex = 0;
+    while ((m = FS_POOL_ADDRESS_RE.exec(text)) !== null) {
+        const addr = `${m[1]}:${m[2]}`;
+        if (!seen.has(addr)) {
+            seen.add(addr);
+            found.push(m[0]);
+        }
+    }
+    return found;
+}
 function extractPoolAddressesFromText(text) {
     if (!text) return [];
     const seen = new Set();
@@ -7103,43 +7117,44 @@ function updateManagePoolsBtnLabel() {
         ? `Add/edit backup pools for failover (${count} backup pool${count === 1 ? "" : "s"} configured)`
         : "Add/edit backup pools for failover";
 }
-function buildFsPoolCmdPreview(minerName, bareUrls, sslOn, hasScheme) {
-    const bare = bareUrls.length > 0 ? bareUrls : [""];
-    // Same address (with or without scheme, per hasScheme) goes into every miner's flag template -
-    // whether a scheme is present is the user's call, not something RigControl decides per-miner.
-    const styled = bare.map((h) => styledFsPoolUrlIfScheme(h, sslOn, hasScheme));
+// Wraps each pool address (used exactly as stored - scheme untouched) in the flag syntax the
+// given miner's CLI expects. This only changes surrounding flags/formatting, never the address
+// text itself: no scheme is ever added, stripped, or flipped here.
+function buildFsPoolCmdPreview(minerName, urls) {
+    const list = (urls.length > 0 ? urls : [""]).map((u) => (u || "").trim());
     const W = "%WALLET%";
     const P = "%PASS%";
     const miner = (minerName || "").trim().toLowerCase();
     switch (miner) {
         case "xmrig":
-            return styled.map((h) => `-o ${h} -u ${W} -p ${P}`).join(" ");
+            return list.map((h) => `-o ${h} -u ${W} -p ${P}`).join(" ");
         case "wildrig-multi":
         case "wildrig":
-            return styled.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
+            return list.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
         case "trex":
         case "t-rex":
-            return styled.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
+            return list.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
         case "teamredminer":
-            return styled.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
+            return list.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
         case "lolminer":
-            return styled.map((u) => `--pool ${u} --user ${W} --pass ${P}`).join(" ");
+            return list.map((u) => `--pool ${u} --user ${W} --pass ${P}`).join(" ");
         case "gminer":
-            return styled.map((h) => `--server ${h} --user ${W}`).join(" ");
+            return list.map((h) => `--server ${h} --user ${W}`).join(" ");
         case "rigel":
-            return styled.map((u) => `-o ${u} -u ${W}`).join(" ");
+            return list.map((u) => `-o ${u} -u ${W}`).join(" ");
         case "srbminer":
         case "srbminer-multi":
         case "srbminer-cpu":
         case "srbminer-gpu":
         case "srbminer-multi-cpu":
-            return styled.join(",");
+            return list.join(",");
         case "bzminer":
-            return styled.join(" ");
+            return list.join(" ");
         case "onezerominer":
-            return styled.join(",");
+            return list.join(",");
         default:
-            return styled.join(" ");
+            // Includes "custom" - no known flag syntax to convert to, so just list the pools.
+            return list.join("  ");
     }
 }
 function refreshFsPoolFieldDisplay() {
@@ -7150,10 +7165,8 @@ function refreshFsPoolFieldDisplay() {
         if (fsPrimaryPoolUrl) poolEl.value = fsPrimaryPoolUrl;
         return;
     }
-    const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
     const miner = document.getElementById("fs-field-miner")?.value || "";
-    const primaryBare = bareFsPoolUrl(fsPrimaryPoolUrl);
-    poolEl.value = buildFsPoolCmdPreview(miner, [primaryBare, ...fsExtraPoolUrls], sslOn, fsPoolsHaveScheme);
+    poolEl.value = buildFsPoolCmdPreview(miner, [fsPrimaryPoolUrl, ...fsExtraPoolUrls]);
     poolEl.classList.add("fs-pool-multi-preview");
 }
 function snapshotFsLiveStash() {
@@ -7161,7 +7174,6 @@ function snapshotFsLiveStash() {
         fsExtraPoolUrls: fsExtraPoolUrls.slice(),
         fsPrimaryPoolUrl,
         fsPoolUrlsExplicitlySet,
-        fsPoolsHaveScheme,
         fsBzminerOcJsonUserConfig,
         fsSrbminerOriginalUserConfig,
         fsXmrigHugepages,
@@ -7179,7 +7191,6 @@ function restoreFsLiveStash(stash) {
     fsExtraPoolUrls = (stash.fsExtraPoolUrls || []).slice();
     fsPrimaryPoolUrl = stash.fsPrimaryPoolUrl || "";
     fsPoolUrlsExplicitlySet = !!stash.fsPoolUrlsExplicitlySet;
-    fsPoolsHaveScheme = !!stash.fsPoolsHaveScheme;
     fsBzminerOcJsonUserConfig = stash.fsBzminerOcJsonUserConfig || "";
     fsSrbminerOriginalUserConfig = stash.fsSrbminerOriginalUserConfig || "";
     fsXmrigHugepages = stash.fsXmrigHugepages || "";
@@ -7236,7 +7247,6 @@ function clearFsFields() {
     fsExtraPoolUrls = [];
     fsPrimaryPoolUrl = "";
     fsPoolUrlsExplicitlySet = false;
-    fsPoolsHaveScheme = false;
     fsBzminerOcJsonUserConfig = "";
     fsSrbminerOriginalUserConfig = "";
     fsXmrigHugepages = "";
@@ -7351,12 +7361,12 @@ function openManagePoolsDialog() {
     managePoolsDialogMode = "flightsheet";
     setManagePoolsExplainer("flightsheet");
     const poolEl = document.getElementById("fs-field-pool");
-    const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
+    // Show pools exactly as stored - whatever scheme (or lack of one) each line has stays
+    // untouched here. Reopening this dialog must never change what was last saved.
     const primarySource = fsExtraPoolUrls.length > 0 ? fsPrimaryPoolUrl : (poolEl?.value || "");
-    const primary = bareFsPoolUrl(primarySource);
-    const combinedText = [primary, ...fsExtraPoolUrls].filter((v) => v !== "").join("\n");
-    const addrs = extractPoolAddressesFromText(combinedText);
-    const lines = addrs.map((bare) => styledFsPoolUrl(bare, sslOn));
+    const lines = [primarySource, ...fsExtraPoolUrls]
+        .map((v) => (v || "").trim())
+        .filter((v) => v !== "");
     const textarea = document.getElementById("fs-pools-textarea");
     if (textarea) textarea.value = lines.join("\n");
     document.querySelector("#fs-pools-modal .fs-pools-dialog")?.classList.remove("fs-pools-dialog-wide");
@@ -7388,24 +7398,22 @@ function detectExplicitSslFromText(text) {
 function saveManagePoolsDialog() {
     const textarea = document.getElementById("fs-pools-textarea");
     const rawText = textarea?.value || "";
-    const addrs = extractPoolAddressesFromText(rawText);
     if (managePoolsDialogMode === "wallet") {
-        setWalletPoolsSelect(addrs);
+        setWalletPoolsSelect(extractPoolAddressesFromText(rawText));
         closeManagePoolsDialog();
         return;
     }
+    // Pools are saved exactly as typed, line for line - RigControl never adds, strips, or
+    // flips a stratum+tcp://\/stratum+ssl:// scheme here, for any miner. Whatever's on each
+    // line becomes the pool list verbatim, both in state and in the main page's Pool field.
+    const lines = rawText.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+    // Purely cosmetic: keep the SSL checkbox in sync with the primary pool's own scheme, if
+    // it has one. This does not change any pool text.
     const sslEl = document.getElementById("fs-field-ssl");
     const explicitSsl = detectExplicitSslFromText(rawText);
-    let sslOn = !!sslEl?.checked;
-    if (explicitSsl !== null && explicitSsl !== sslOn) {
-        sslOn = explicitSsl;
-        if (sslEl) sslEl.checked = sslOn;
-    }
-    // Whether these pools get a scheme at all is the user's call - only remembered here so the
-    // SSL checkbox can flip an existing scheme later without ever adding one that wasn't typed.
-    fsPoolsHaveScheme = explicitSsl !== null;
-    fsPrimaryPoolUrl = addrs.length > 0 ? styledFsPoolUrlIfScheme(addrs[0], sslOn, fsPoolsHaveScheme) : "";
-    fsExtraPoolUrls = addrs.slice(1);
+    if (sslEl && explicitSsl !== null) sslEl.checked = explicitSsl;
+    fsPrimaryPoolUrl = lines[0] || "";
+    fsExtraPoolUrls = lines.slice(1);
     fsPoolUrlsExplicitlySet = true;
     updateManagePoolsBtnLabel();
     refreshFsPoolFieldDisplay();
@@ -8466,7 +8474,6 @@ function resetFsFieldInputsForNewSlot() {
     fsExtraPoolUrls = [];
     fsPrimaryPoolUrl = "";
     fsPoolUrlsExplicitlySet = false;
-    fsPoolsHaveScheme = false;
     fsBzminerOcJsonUserConfig = "";
     fsSrbminerOriginalUserConfig = "";
     fsXmrigHugepages = "";
@@ -8820,19 +8827,19 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
         const out = [];
         for (const u of jsonItem.pool_urls) {
             if (typeof u !== "string" || u.trim() === "") continue;
-            const bare = bareFsPoolUrl(u);
+            const trimmed = u.trim();
+            const bare = bareFsPoolUrl(trimmed);
             if (bare === primaryBare) continue;
             if (seen.has(bare)) continue;
             seen.add(bare);
-            out.push(bare);
+            // Keep each entry exactly as saved (with whatever scheme, or none, it has) -
+            // loading a flightsheet must not strip or rewrite backup pool addresses.
+            out.push(trimmed);
         }
         return out;
     })();
     fsPrimaryPoolUrl = fsExtraPoolUrls.length > 0 ? values.POOL : "";
     fsPoolUrlsExplicitlySet = false;
-    // Remember whether the loaded pool address already has a scheme, so the SSL checkbox flips
-    // it correctly on later edits instead of silently adding one that wasn't there.
-    fsPoolsHaveScheme = /^stratum\+(ssl|tcp):\/\//i.test((values.POOL || "").trim());
     updateManagePoolsBtnLabel();
     if (jsonItem.miner !== "custom") {
         values.ARGS = injectMinerTlsFlag(values.MINER, jsonItem.pool_ssl === true, values.ARGS);
@@ -9160,8 +9167,9 @@ function openFsWalletSaveDialog() {
     }
     const coin = (document.getElementById("fs-field-algo")?.value || "").trim();
     const poolEl = document.getElementById("fs-field-pool");
-    const primaryBare = bareFsPoolUrl(poolEl?.value || "");
-    const pools = [primaryBare, ...fsExtraPoolUrls].filter((p) => (p || "").trim() !== "");
+    const primarySource = fsExtraPoolUrls.length > 0 ? fsPrimaryPoolUrl : (poolEl?.value || "");
+    const pools = [bareFsPoolUrl(primarySource), ...fsExtraPoolUrls.map((u) => bareFsPoolUrl(u))]
+        .filter((p) => (p || "").trim() !== "");
     fsWalletSaveContext = { address, coin, pools };
     const input = document.getElementById("fs-wallet-save-name-input");
     if (input) input.value = "";
@@ -9296,8 +9304,9 @@ function renderFsWalletSuggestions(query) {
         box.classList.add("hidden");
         box.innerHTML = "";
         const poolEl = document.getElementById("fs-field-pool");
-        const primaryBare = bareFsPoolUrl(poolEl?.value || "");
-        const pools = [primaryBare, ...fsExtraPoolUrls].filter(p => (p || "").trim() !== "");
+        const primarySource = fsExtraPoolUrls.length > 0 ? fsPrimaryPoolUrl : (poolEl?.value || "");
+        const pools = [bareFsPoolUrl(primarySource), ...fsExtraPoolUrls.map((u) => bareFsPoolUrl(u))]
+            .filter(p => (p || "").trim() !== "");
         goToAddWalletForAlgo(algoRaw, pools);
     });
     box.appendChild(addItem);
@@ -13715,21 +13724,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("fs-field-pool")?.addEventListener("paste", (e) => {
         const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
-        const addrs = extractPoolAddressesFromText(text);
-        if (addrs.length === 0) return;
-        if (addrs.length === 1 && addrs[0] === text.trim()) return;
+        const lines = extractPoolLinesFromText(text);
+        if (lines.length === 0) return;
+        if (lines.length === 1 && lines[0] === text.trim()) return;
         e.preventDefault();
-        const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
         const poolEl = e.target;
-        // Whether the pasted text itself had a scheme - never invent one that wasn't pasted.
-        fsPoolsHaveScheme = detectExplicitSslFromText(text) !== null;
-        if (addrs.length === 1) {
-            poolEl.value = styledFsPoolUrlIfScheme(addrs[0], sslOn, fsPoolsHaveScheme);
+        // Pasted addresses are used exactly as they appear in the clipboard - no scheme is
+        // added, stripped, or flipped here.
+        if (lines.length === 1) {
+            poolEl.value = lines[0];
             fsExtraPoolUrls = [];
             fsPrimaryPoolUrl = "";
         } else {
-            fsPrimaryPoolUrl = styledFsPoolUrlIfScheme(addrs[0], sslOn, fsPoolsHaveScheme);
-            fsExtraPoolUrls = addrs.slice(1);
+            fsPrimaryPoolUrl = lines[0];
+            fsExtraPoolUrls = lines.slice(1);
         }
         updateManagePoolsBtnLabel();
         refreshFsPoolFieldDisplay();
@@ -13738,23 +13746,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("fs-field-ssl")?.addEventListener("change", (e) => {
         const poolEl = document.getElementById("fs-field-pool");
         if (!poolEl) return;
+        const sslOn = e.target.checked;
+        // Flip the scheme only on entries that already have one - checked per entry, fresh
+        // off its own current text, so nothing gets invented and nothing gets left stale.
+        const flip = (full) => {
+            const hasScheme = /^stratum\+(ssl|tcp):\/\//i.test((full || "").trim());
+            return styledFsPoolUrlIfScheme(bareFsPoolUrl(full), sslOn, hasScheme);
+        };
         if (fsExtraPoolUrls.length > 0) {
-            const bare = bareFsPoolUrl(fsPrimaryPoolUrl);
-            if (!bare) return;
-            fsPrimaryPoolUrl = styledFsPoolUrlIfScheme(bare, e.target.checked, fsPoolsHaveScheme);
+            fsPrimaryPoolUrl = flip(fsPrimaryPoolUrl);
+            fsExtraPoolUrls = fsExtraPoolUrls.map(flip);
             refreshFsPoolFieldDisplay();
             updateRawFromFieldChange(poolEl);
             return;
         }
-        // No backup pools - fsPoolsHaveScheme may be stale (e.g. the user hand-typed a bare
-        // address after it was last set), so check the field's own current text instead of
-        // trusting the stored flag.
-        const hadScheme = /^stratum\+(ssl|tcp):\/\//i.test(poolEl.value || "");
-        const bare = (poolEl.value || "")
-            .replace(/^stratum\+ssl:\/\//, "")
-            .replace(/^stratum\+tcp:\/\//, "");
-        if (!bare) return;
-        poolEl.value = styledFsPoolUrlIfScheme(bare, e.target.checked, hadScheme);
+        const flipped = flip(poolEl.value);
+        if (!flipped) return;
+        poolEl.value = flipped;
         updateRawFromFieldChange(poolEl);
     });
     document.getElementById("fs-field-tls")?.addEventListener("change", (e) => {
@@ -13807,12 +13815,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("fs-pools-textarea")?.addEventListener("paste", (e) => {
         const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
-        const addrs = extractPoolAddressesFromText(text);
-        if (addrs.length === 0) return;
-        if (addrs.length === 1 && addrs[0] === text.trim()) return;
+        const lines = extractPoolLinesFromText(text);
+        if (lines.length === 0) return;
+        if (lines.length === 1 && lines[0] === text.trim()) return;
         e.preventDefault();
-        const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
-        const cleaned = addrs.map((a) => styledFsPoolUrl(a, sslOn)).join("\n");
+        // Pasted addresses are used exactly as they appear in the clipboard - no scheme is
+        // added, stripped, or flipped here, per line.
+        const cleaned = lines.join("\n");
         const ta = e.target;
         const start = ta.selectionStart ?? ta.value.length;
         const end = ta.selectionEnd ?? ta.value.length;
