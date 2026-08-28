@@ -177,8 +177,15 @@ ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
+# get_start_cmd() (02-load_configs.sh) only reads $ARGS for CUSTOM_MINER now - known miners
+# run the dashboard-built $MINER_COMMAND instead, so the API flag has to land there or it's
+# silently dropped from the actual launched command. Custom miners still read $ARGS directly.
 if [[ "$API_PORT" -gt 0 ]]; then
+    if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
+    else
+        MINER_COMMAND=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$MINER_COMMAND")
+    fi
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
 case "$OC_FILE" in
