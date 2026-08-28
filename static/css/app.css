@@ -6586,6 +6586,20 @@ body.layout-left .rig-header {
     gap: 4px;
     border-bottom: 1px solid var(--border-modal);
 }
+/* Same GPU/CPU/AUX tab buttons, but living inline in the shared Raw Content popup's header
+   (.cmd-header) next to the title instead of stacked full-width above the editor fields - no
+   bottom border strip here, and margin-left instead pushes it off the title text. Shown only
+   when that popup is displaying Flightsheets' fs-raw (see openRawContentModal in app.js), since
+   Overclock/Watchdog raw content doesn't vary by service. */
+.raw-content-service-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    margin-left: 14px;
+}
+.raw-content-service-tabs.hidden {
+    display: none;
+}
 .fs-service-tab {
     background: transparent;
     border: none;

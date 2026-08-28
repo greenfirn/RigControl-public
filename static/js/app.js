@@ -2561,6 +2561,12 @@ function openRawContentModal(textareaId, title) {
     slot.appendChild(textarea);
     const titleEl = document.getElementById("raw-content-title");
     if (titleEl) titleEl.textContent = title || "Raw Content";
+    // Only Flightsheets have per-category raw content - CPU/GPU/AUX are independent configs
+    // (see handleFsServiceSwitch()), so #fs-raw's content genuinely changes with the active tab.
+    // Overclock/Watchdog raw content doesn't vary by category, so no switcher for those.
+    const tabsEl = document.getElementById("raw-content-service-tabs");
+    if (tabsEl) tabsEl.classList.toggle("hidden", textareaId !== "fs-raw");
+    if (textareaId === "fs-raw") fsSyncServiceTabsUI();
     modal.classList.remove("hidden");
     textarea.focus();
 }
@@ -2576,22 +2582,21 @@ function closeRawContentModal() {
 function initRawContentTriggers() {
     document.querySelectorAll(".fs-raw-label-clickable").forEach((btn) => {
         btn.addEventListener("click", () => {
-            const baseTitle = btn.dataset.rawTitle || "Raw Content";
-            let title = baseTitle;
-            // Only Flightsheets actually have a different raw content per category - its
-            // CPU/GPU/AUX service-type tabs are independent configs (see handleFsServiceSwitch()),
-            // so #fs-raw's content genuinely changes with fsCurrentServiceType. Overclock/Watchdog
-            // don't have that per-item structure (their raw content doesn't vary by category), so
-            // appending one to their title would just be misleading - left as plain titles.
-            if (btn.dataset.rawTarget === "fs-raw") {
-                const categoryLabel = { cpu: "CPU", gpu: "GPU", aux: "AUX" }[fsCurrentServiceType];
-                if (categoryLabel) title = `${baseTitle} - ${categoryLabel}`;
-            }
-            openRawContentModal(btn.dataset.rawTarget, title);
+            openRawContentModal(btn.dataset.rawTarget, btn.dataset.rawTitle || "Raw Content");
         });
     });
     document.getElementById("btn-raw-content-close-x")?.addEventListener("click", closeRawContentModal);
     document.getElementById("btn-raw-content-close")?.addEventListener("click", closeRawContentModal);
+    // GPU/CPU/AUX switcher living inside the popup header - only visible/wired for fs-raw
+    // (see openRawContentModal). Routes through the same fsSwitchServiceTab() as the main-page
+    // tabs, so the two tab bars and #fs-raw's content always agree no matter which one you use;
+    // the active tab's own highlight is what shows which category you're looking at, so the
+    // title itself stays a plain, unchanging label.
+    document.getElementById("raw-content-service-tabs")?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".fs-service-tab");
+        if (!btn) return;
+        fsSwitchServiceTab(btn.dataset.service);
+    });
 }
 function normalizeHexColor(value) {
     const v = (value || "").trim();
@@ -8918,7 +8923,10 @@ function fsSyncServiceTabsUI() {
         btn.classList.toggle("active", btn.dataset.service === active);
         btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });
-    document.querySelectorAll("#fs-service-tabs .fs-service-tab").forEach((btn) => {
+    // Same sync for both the main-page tabs and their twin inside the Raw Content popup header
+    // (#raw-content-service-tabs) - only one is ever visible at a time, but keeping both in sync
+    // means whichever one you use next already shows the right active/restart-on state.
+    document.querySelectorAll("#fs-service-tabs .fs-service-tab, #raw-content-service-tabs .fs-service-tab").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.service === active);
         btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });

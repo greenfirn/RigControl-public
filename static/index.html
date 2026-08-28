@@ -507,6 +507,11 @@
         <div class="cmd-dialog raw-content-dialog">
             <div class="cmd-header">
                 <span id="raw-content-title">Raw Content</span>
+                <div class="raw-content-service-tabs hidden" id="raw-content-service-tabs" title="Miner type - only Flightsheets have per-service raw content; switches which one (rig-gpu.json/rig-cpu.json/rig-aux.json) is shown here without closing this popup">
+                    <button type="button" class="fs-service-tab" data-service="gpu">GPU</button>
+                    <button type="button" class="fs-service-tab" data-service="cpu">CPU</button>
+                    <button type="button" class="fs-service-tab" data-service="aux">AUX</button>
+                </div>
                 <button type="button" class="cmd-header-close" id="btn-raw-content-close-x" title="Close">&#10005;</button>
             </div>
             <div class="cmd-body">
