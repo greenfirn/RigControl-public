@@ -7075,6 +7075,25 @@ function styledFsPoolUrlIfScheme(bareUrl, sslOn, hasScheme) {
     if (!hasScheme) return bareUrl;
     return (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bareUrl;
 }
+// If the Miner Configuration POOL override wraps %URL% in an explicit scheme (e.g.
+// "stratum+tcp://%URL%"), that's a deliberate, one-time instruction that every pool address
+// needs that same scheme - not just the one substituted into %URL% itself, since custom miners
+// can reference backup pools via %URL%[1], %URL%[2], etc. and those need it too. Returns
+// true/false for the scheme to force onto every pool, or null if the override doesn't specify
+// one (nothing should change).
+function forcedSchemeFromPoolToken(token) {
+    const t = (token || "").trim();
+    if (/^stratum\+ssl:\/\/.*%URL%/i.test(t)) return true;
+    if (/^stratum\+tcp:\/\/.*%URL%/i.test(t)) return false;
+    return null;
+}
+// Unlike styledFsPoolUrlIfScheme, this can ADD a scheme to a bare address - used only for the
+// forced-from-token case above, where writing the scheme into the override is explicit
+// permission to apply it across the whole pool set.
+function applyForcedPoolScheme(full, sslOn) {
+    const bare = bareFsPoolUrl(full);
+    return bare ? (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bare : full;
+}
 const FS_POOL_ADDRESS_RE = /(?:stratum\+ssl:\/\/|stratum\+tcp:\/\/|ssl:\/\/|tcp:\/\/)?((?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3}):(\d{2,5})\b/g;
 // Like extractPoolAddressesFromText, but returns each match's full original text (including
 // any stratum+tcp://\/stratum+ssl:// prefix it had, verbatim) instead of just the bare
@@ -7451,7 +7470,12 @@ function buildRigGpuItemObject(values, stash) {
     // it applies the same way for custom and non-custom miners alike, since for custom miners
     // it's the only POOL-labeled field visible while that modal is open.
     const poolUrlOverrideRaw = (stash.fsPoolUrlToken || "").trim();
-    const hasLiteralPoolOverride = poolUrlOverrideRaw !== "" && poolUrlOverrideRaw !== "%URL%";
+    // A scheme-wrapped template like "stratum+tcp://%URL%" still contains the %URL% token - it
+    // is NOT a resolved address, so pool_urls must keep holding the real pool address for that
+    // token to resolve to rig-side. Only an override with no %URL% left in it at all (a fully
+    // literal, already-resolved address) should replace pool_urls outright.
+    const overrideHasUrlToken = poolUrlOverrideRaw.includes("%URL%");
+    const hasLiteralPoolOverride = poolUrlOverrideRaw !== "" && !overrideHasUrlToken;
     let poolUrls;
     if (hasLiteralPoolOverride) {
         poolUrls = [poolUrlOverrideRaw];
@@ -7488,6 +7512,10 @@ function buildRigGpuItemObject(values, stash) {
         // field - skip the backup/failover pool_urls list entirely and use the real address
         // directly. Applies the same way for custom and non-custom miners.
         resolvedMinerUrl = poolUrl;
+    } else if (overrideHasUrlToken) {
+        // A scheme-wrapped template such as "stratum+tcp://%URL%" - used verbatim, %URL% and
+        // all, so it resolves rig-side against the real address still sitting in pool_urls[0].
+        resolvedMinerUrl = poolUrlOverrideRaw;
     } else {
         // Default token, resolved at deploy time from the full pool_urls list (with backups).
         // Custom miners also embed this same %URL% token inside user_config/ARGS and resolve
@@ -8840,6 +8868,19 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     })();
     fsPrimaryPoolUrl = fsExtraPoolUrls.length > 0 ? values.POOL : "";
     fsPoolUrlsExplicitlySet = false;
+    // Keep loaded flightsheets consistent with what Save now produces: if the loaded POOL
+    // override wraps %URL% in an explicit scheme, apply that scheme across every pool.
+    {
+        const sslOn = forcedSchemeFromPoolToken(fsPoolUrlToken);
+        if (sslOn !== null) {
+            if (fsExtraPoolUrls.length > 0) {
+                fsPrimaryPoolUrl = applyForcedPoolScheme(fsPrimaryPoolUrl, sslOn);
+                fsExtraPoolUrls = fsExtraPoolUrls.map((u) => applyForcedPoolScheme(u, sslOn));
+            } else {
+                values.POOL = applyForcedPoolScheme(values.POOL, sslOn);
+            }
+        }
+    }
     updateManagePoolsBtnLabel();
     if (jsonItem.miner !== "custom") {
         values.ARGS = injectMinerTlsFlag(values.MINER, jsonItem.pool_ssl === true, values.ARGS);
@@ -13661,6 +13702,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("fs-mc-pool-token")?.addEventListener("input", (e) => {
         fsPoolUrlToken = e.target.value;
         const poolEl = document.getElementById("fs-field-pool");
+        const sslOn = forcedSchemeFromPoolToken(fsPoolUrlToken);
+        if (sslOn !== null) {
+            if (fsExtraPoolUrls.length > 0) {
+                fsPrimaryPoolUrl = applyForcedPoolScheme(fsPrimaryPoolUrl, sslOn);
+                fsExtraPoolUrls = fsExtraPoolUrls.map((u) => applyForcedPoolScheme(u, sslOn));
+                refreshFsPoolFieldDisplay();
+            } else if (poolEl) {
+                poolEl.value = applyForcedPoolScheme(poolEl.value, sslOn);
+            }
+        }
         if (poolEl) updateRawFromFieldChange(poolEl);
     });
     document.getElementById("fs-field-miner")?.addEventListener("input", () => {
