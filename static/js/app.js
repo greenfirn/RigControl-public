@@ -7642,23 +7642,35 @@ function knownMinerAlgoFlag(minerLower) {
     return def ? (def.algo_flag || "") : "";
 }
 // Dashboard builds the FULL known-miner command line (algo flag, pool/wallet/pass/TLS flags,
-// and any raw extra args the user typed) once, at Save time. Rig-side just substitutes
-// %WALLET%/%PASS%/%WORKER_NAME% (and any other tokens) into this string and runs it - no
-// per-miner flag decisions happen rig-side anymore. xmrig and bzminer are the two exceptions:
-// their raw ARGS may be an OC-JSON blob (built by their optional overclock/CPU editors here in
-// the dashboard) that still needs rig-side conversion into flags via
-// convert_xmrig_user_config_to_args / convert_bzminer_oc_json_to_args, plus xmrig's
-// CPU-config/hugepages handling - those stay rig-side and get appended AFTER this command
-// string, so this function deliberately leaves ARGS out of the command for those two miners.
-function buildKnownMinerCommand(minerName, algoText, poolUrls, poolSsl, tlsOn, argsText) {
+// and the resolved extra args) once, at Save time. Rig-side just substitutes %WALLET%/%PASS%/
+// %WORKER_NAME% (and any other tokens) into this string and runs it - no per-miner flag
+// decisions, and no OC-JSON conversion, happen rig-side at all anymore. xmrig/bzminer ARGS can
+// be an OC-JSON blob (a series of "key": value lines - produced by a HiveOS flightsheet import,
+// or by the dashboard's own optional overclock/CPU editor for those two miners) instead of
+// plain CLI flags; resolveKnownMinerArgs converts that to real flags right here, via the same
+// convertBzminerOcJsonToArgs/convertXmrigUserConfigToArgs/convertXmrigCpuConfigToArgs helpers
+// used elsewhere in the dashboard, so the command is always complete and rig-side never has to
+// tell plain flags from an OC-JSON blob.
+function isOcJsonBlob(argsText) {
+    return /^\s*"/.test(argsText || "");
+}
+function resolveKnownMinerArgs(minerLower, argsText, cpuConfigText) {
+    if (minerLower === "bzminer") {
+        const uc = argsText || "";
+        return isOcJsonBlob(uc) ? convertBzminerOcJsonToArgs(uc) : uc.replace(/\r\n|\r|\n/g, " ").replace(/\s+/g, " ").trim();
+    }
+    if (minerLower === "xmrig") {
+        return buildXmrigArgsFromConfig(argsText || "", cpuConfigText || "");
+    }
+    return (argsText || "").replace(/\r\n|\r|\n/g, " ").replace(/\s+/g, " ").trim();
+}
+function buildKnownMinerCommand(minerName, algoText, poolUrls, poolSsl, tlsOn, argsText, cpuConfigText) {
     const miner = (minerName || "").trim().toLowerCase();
     const algoFlag = knownMinerAlgoFlag(miner);
     if (!algoFlag) return "";
     const poolArgs = buildKnownMinerPoolArgs(minerName, poolUrls, poolSsl, tlsOn, argsText);
-    let cmd = `${algoFlag} ${algoText || ""} ${poolArgs}`;
-    if (miner !== "xmrig" && miner !== "bzminer") {
-        cmd += ` ${argsText || ""}`;
-    }
+    const resolvedArgs = resolveKnownMinerArgs(miner, argsText, cpuConfigText);
+    const cmd = `${algoFlag} ${algoText || ""} ${poolArgs} ${resolvedArgs}`;
     return cmd.replace(/\s+/g, " ").trim();
 }
 function buildRigGpuItemObject(values, stash) {
@@ -7751,11 +7763,11 @@ function buildRigGpuItemObject(values, stash) {
     // Raw Content. Strip any stale nested copy a previously-saved flightsheet might carry.
     if ("miner_command" in minerConfig) delete minerConfig.miner_command;
     // Rig-side just substitutes %WALLET%/%PASS%/%WORKER_NAME% tokens into this and runs it
-    // directly - it no longer decides algo flag syntax, pool flag format, or TLS/SSL flags for
-    // known miners at all. (xmrig/bzminer still get their raw ARGS - possibly an OC-JSON blob -
-    // converted and appended rig-side; see buildKnownMinerCommand.)
+    // directly - it no longer decides algo flag syntax, pool flag format, TLS/SSL flags, or
+    // OC-JSON-vs-plain ARGS conversion for known miners at all; buildKnownMinerCommand resolves
+    // xmrig/bzminer ARGS (and xmrig's cpu_config) to real flags right here.
     const minerCommand = !isCustom
-        ? buildKnownMinerCommand(values.MINER, values.ALGO || "", poolUrls, poolSsl, values.TLS === "true", userConfigForJson || "")
+        ? buildKnownMinerCommand(values.MINER, values.ALGO || "", poolUrls, poolSsl, values.TLS === "true", userConfigForJson || "", stash.fsXmrigCpuConfigJson || "")
         : "";
     if (!isCustom && minerLowerForStash === "xmrig") {
         if (stash.fsXmrigCpuConfigJson) {
@@ -8651,7 +8663,7 @@ function addMinerCommandForClipboard(items) {
             const poolUrls = Array.isArray(item.pool_urls) ? item.pool_urls : [];
             const poolSsl = item.pool_ssl === true;
             const tlsOn = mc.tls === 1 || mc.tls === "1" || mc.tls === true;
-            computed = buildKnownMinerCommand(item.miner || "", mc.algo || "", poolUrls, poolSsl, tlsOn, mc.user_config || "");
+            computed = buildKnownMinerCommand(item.miner || "", mc.algo || "", poolUrls, poolSsl, tlsOn, mc.user_config || "", mc.cpu_config || "");
         }
         if (!computed) {
             if (!("miner_command" in item)) return item;

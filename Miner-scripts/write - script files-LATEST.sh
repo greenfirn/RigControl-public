@@ -557,151 +557,6 @@ get_pool_url_list() {
     fi
     printf '%s\n' "${urls[@]}"
 }
-convert_bzminer_oc_json_to_args() {
-    local input="$1"
-    if [[ ! "$input" =~ ^[[:space:]]*\" ]]; then
-        echo "$input"
-        return
-    fi
-    local out=""
-    local line key raw_value value flag
-    while IFS= read -r line; do
-        line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [[ -z "$line" ]] && continue
-        if [[ "$line" =~ ^\"([a-zA-Z0-9_]+)\"[[:space:]]*:[[:space:]]*(.+)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            raw_value="${BASH_REMATCH[2]}"
-            raw_value="${raw_value%,}"
-            raw_value="${raw_value%\"}"; raw_value="${raw_value#\"}"
-            raw_value="${raw_value%\]}"; raw_value="${raw_value#\[}"
-            value="${raw_value//,/ }"
-            value="$(echo "$value" | xargs)"
-            [[ -z "$value" ]] && continue
-            flag=""
-            case "$key" in
-                cpu_threads)            flag="--cpu_threads" ;;
-                oc_lock_core_clock)     flag="--oc_lock_core_clock" ;;
-                oc_core_clock_offset)   flag="--oc_core_clock_offset" ;;
-                oc_lock_memory_clock)   flag="--oc_lock_memory_clock" ;;
-                oc_memory_clock_offset) flag="--oc_memory_clock_offset" ;;
-                oc_power_limit)         flag="--oc_power_limit" ;;
-                oc_core_volt_offset)    flag="--oc_core_volt_offset" ;;
-                oc_memory_volt_offset)  flag="--oc_memory_volt_offset" ;;
-                oc_fan_speed)           flag="--oc_fan_speed" ;;
-                oc_pstate)              flag="--oc_pstate" ;;
-            esac
-            [[ -n "$flag" ]] && out+=" $flag $value"
-        fi
-    done <<< "$input"
-    echo "$out" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
-}
-xmrig_value_is_truthy() {
-    [[ "$1" == "true" || "$1" == "1" ]]
-}
-xmrig_value_is_falsy() {
-    [[ "$1" == "false" || "$1" == "0" ]]
-}
-convert_xmrig_user_config_to_args() {
-    local input="$1"
-    if [[ ! "$input" =~ ^[[:space:]]*\" ]]; then
-        echo "$input"
-        return
-    fi
-    local out=""
-    if [[ "$input" =~ \"randomx\"[[:space:]]*:[[:space:]]*\{[[:space:]]*\"1gb-pages\"[[:space:]]*:[[:space:]]*(true|false|1|0)[[:space:]]*\} ]]; then
-        xmrig_value_is_truthy "${BASH_REMATCH[1]}" && out+=" --randomx-1gb-pages"
-    fi
-    local line key raw_value
-    while IFS= read -r line; do
-        line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [[ -z "$line" ]] && continue
-        if [[ "$line" =~ ^\"([a-zA-Z0-9_-]+)\"[[:space:]]*:[[:space:]]*(.+)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            raw_value="${BASH_REMATCH[2]}"
-            raw_value="${raw_value%,}"
-            raw_value="${raw_value%\"}"; raw_value="${raw_value#\"}"
-            [[ -z "$raw_value" ]] && continue
-            if [[ "$key" == "keepalive" ]]; then
-                xmrig_value_is_truthy "$raw_value" && out+=" --keepalive"
-                continue
-            fi
-            if [[ "$key" == "tls" ]]; then
-                xmrig_value_is_truthy "$raw_value" && out+=" --tls"
-                continue
-            fi
-            if [[ "$key" == "cpu" ]]; then
-                xmrig_value_is_falsy "$raw_value" && out+=" --no-cpu"
-                continue
-            fi
-            if [[ "$key" == "donate-level" ]]; then
-                out+=" --donate-level $raw_value"
-            fi
-        fi
-    done <<< "$input"
-    echo "$out" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
-}
-convert_xmrig_cpu_config_to_args() {
-    local input="$1"
-    [[ -z "$input" ]] && { echo ""; return; }
-    local body="$input"
-    if [[ "$input" =~ \"cpu\"[[:space:]]*:[[:space:]]*\{(.*)\}[[:space:]]*$ ]]; then
-        body="${BASH_REMATCH[1]}"
-    fi
-    local out=""
-    local line key raw_value
-    while IFS= read -r line; do
-        line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [[ -z "$line" ]] && continue
-        if [[ "$line" =~ ^\"([a-zA-Z0-9_-]+)\"[[:space:]]*:[[:space:]]*(.+)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            raw_value="${BASH_REMATCH[2]}"
-            raw_value="${raw_value%,}"
-            case "$key" in
-                huge-pages)
-                    xmrig_value_is_falsy "$raw_value" && out+=" --no-huge-pages"
-                    ;;
-                priority)
-                    [[ "$raw_value" != "null" ]] && out+=" --cpu-priority=$raw_value"
-                    ;;
-                memory-pool)
-                    xmrig_value_is_falsy "$raw_value" && out+=" --cpu-memory-pool=0"
-                    ;;
-                asm)
-                    if xmrig_value_is_truthy "$raw_value"; then
-                        out+=" --asm=auto"
-                    elif xmrig_value_is_falsy "$raw_value"; then
-                        out+=" --asm=none"
-                    elif [[ "$raw_value" =~ ^\"(.*)\"$ ]]; then
-                        out+=" --asm=${BASH_REMATCH[1]}"
-                    fi
-                    ;;
-                rx)
-                    if [[ "$raw_value" =~ ^\[(.*)\]$ ]]; then
-                        local nums="${BASH_REMATCH[1]}"
-                        local count=0
-                        local mask=0
-                        local n
-                        local rx_list=()
-                        IFS=',' read -ra rx_list <<< "$nums"
-                        for n in "${rx_list[@]}"; do
-                            n="$(echo "$n" | xargs)"
-                            [[ -z "$n" ]] && continue
-                            [[ "$n" =~ ^[0-9]+$ ]] || continue
-                            (( count++ ))
-                            (( mask |= (1 << n) ))
-                        done
-                        if (( count > 0 )); then
-                            local hex
-                            hex="$(printf '%X' "$mask")"
-                            out+=" --threads=$count --cpu-affinity=0x$hex"
-                        fi
-                    fi
-                    ;;
-            esac
-        fi
-    done <<< "$body"
-    echo "$out" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
-}
 apply_xmrig_hugepages() {
     local pages="$1"
     [[ -n "$pages" && "$pages" != "0" && "$pages" =~ ^[0-9]+$ ]] || return 0
@@ -727,42 +582,28 @@ get_start_cmd() {
     fi
     # MINER_COMMAND is the FULL command line (algo flag, pool/wallet/pass/TLS flags, and any
     # extra args the user typed) built entirely dashboard-side at Save time, with %WALLET%/
-    # %PASS%/%WORKER_NAME%/etc. tokens already substituted above. This script just drops it in
-    # after $MINER_BIN and runs it - no per-miner flag decisions happen here anymore. xmrig and
-    # bzminer are the two exceptions: their raw ARGS may be an OC-JSON blob (built by their
-    # optional overclock/CPU editors in the dashboard) that still needs rig-side conversion into
-    # flags via convert_xmrig_user_config_to_args/convert_bzminer_oc_json_to_args, plus xmrig's
-    # CPU-config/hugepages handling - those conversions are appended after MINER_COMMAND for
-    # just those two miners.
+    # %PASS%/%WORKER_NAME%/etc. tokens already substituted above. This includes xmrig/bzminer
+    # ARGS that came in as an OC-JSON blob (a HiveOS flightsheet import, or the dashboard's own
+    # optional overclock/CPU editor for those two miners) - the dashboard converts that to real
+    # CLI flags before it ever gets here, so this script just drops MINER_COMMAND in after
+    # $MINER_BIN and runs it. No per-miner flag decisions, and no OC-JSON conversion, happen
+    # rig-side anymore.
     case "$name" in
         xmrig)
             if [[ -z "$MINER_COMMAND" ]]; then
                 echo "[ERROR] MINER_COMMAND is empty for xmrig - re-save the flightsheet in the dashboard." >&2
                 return
             fi
-            local xmrig_args
-            xmrig_args="$(convert_xmrig_user_config_to_args "$ARGS")"
-            local xmrig_cpu_flags
-            xmrig_cpu_flags="$(convert_xmrig_cpu_config_to_args "$CPU_CONFIG")"
-            if [[ -n "$xmrig_cpu_flags" ]]; then
-                xmrig_args="$(echo "$xmrig_args $xmrig_cpu_flags" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-            fi
-            if [[ ("$CPU" == "0" || "$CPU" == "false") && "$xmrig_args" != *"--no-cpu"* ]]; then
-                xmrig_args="$(echo "$xmrig_args --no-cpu" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            # --no-cpu is the one flag still decided rig-side: CPU on/off is a live per-rig
+            # toggle, not something re-saving the flightsheet always accompanies.
+            local xmrig_args=""
+            if [[ ("$CPU" == "0" || "$CPU" == "false") && "$MINER_COMMAND" != *"--no-cpu"* ]]; then
+                xmrig_args="--no-cpu"
             fi
             apply_xmrig_hugepages "$HUGEPAGES"
             cmd="$MINER_BIN $MINER_COMMAND $xmrig_args"
             ;;
-        bzminer)
-            if [[ -z "$MINER_COMMAND" ]]; then
-                echo "[ERROR] MINER_COMMAND is empty for bzminer - re-save the flightsheet in the dashboard." >&2
-                return
-            fi
-            local bz_args
-            bz_args="$(convert_bzminer_oc_json_to_args "$ARGS")"
-            cmd="$MINER_BIN $MINER_COMMAND $bz_args"
-            ;;
-        wildrig-multi|srbminer|srbminer-cpu|srbminer-gpu|rigel|lolminer|onezerominer|gminer|teamredminer|trex)
+        bzminer|wildrig-multi|srbminer|srbminer-cpu|srbminer-gpu|rigel|lolminer|onezerominer|gminer|teamredminer|trex)
             if [[ -z "$MINER_COMMAND" ]]; then
                 echo "[ERROR] MINER_COMMAND is empty for $name - re-save the flightsheet in the dashboard." >&2
                 return
