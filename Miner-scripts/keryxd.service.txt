@@ -1,17 +1,25 @@
 sudo apt install -y unzip
 
-sudo mkdir -p /opt/miners/keryx-node
-cd /opt/miners
-#keryx-node in zip
-sudo wget https://github.com/Keryx-Labs/keryx-node/releases/download/v1.5.5-PoM/keryx-node-v1.5.5-PoM-linux-amd64.zip
-sudo unzip -o keryx-node-v1.5.5-PoM-linux-amd64.zip
-sudo rm -v keryx-node-v1.5.5-PoM-linux-amd64.zip
-/opt/miners/keryx-node/keryxd --version
+# Bump this to install/update to a different keryx-node release - every wget/unzip/version
+# check below (both the initial install and the #update block at the bottom) derives from it.
+VERSION="v1.5.5-PoM"
 
-# if using different location, update details below in the service file:
-# ** must be the full absolute path, can not be the home shortcut ~/ **
-# 'WorkingDirectory=/' - your node location
-# 'ExecStart=/' - path to the node itself
+# Where keryx-node lives on this rig. keryx-node unpacks into $INSTALL_DIR/keryx-node - if you
+# change INSTALL_DIR, also re-run the 'write the service file' block below so WorkingDirectory/
+# ExecStart in the systemd unit stay pointed at the right path.
+INSTALL_DIR="/opt/miners"
+NODE_DIR="$INSTALL_DIR/keryx-node"
+
+ZIP="keryx-node-${VERSION}-linux-amd64.zip"
+URL="https://github.com/Keryx-Labs/keryx-node/releases/download/${VERSION}/${ZIP}"
+
+sudo mkdir -p "$NODE_DIR"
+cd "$INSTALL_DIR"
+#keryx-node in zip
+sudo wget -O "$ZIP" "$URL"
+sudo unzip -o "$ZIP"
+sudo rm -v "$ZIP"
+"$NODE_DIR/keryxd" --version
 
 # copy/paste from 'write the service file' to 'reload the daemon' into your rigs console and press enter to write and load the service file
 # enable, start the node, watch node output/service logs
@@ -22,7 +30,9 @@ sudo rm -v keryx-node-v1.5.5-PoM-linux-amd64.zip
 # --addpeer=141.95.35.181
 
 # write the service file
-sudo tee /etc/systemd/system/keryxd.service > /dev/null << 'EOF'
+# NOTE: this heredoc is intentionally unquoted (<<EOF, not <<'EOF') so $NODE_DIR expands into
+# WorkingDirectory/ExecStart below - keep it that way if you edit this block.
+sudo tee /etc/systemd/system/keryxd.service > /dev/null <<EOF
 [Unit]
 Description=Keryx Node
 After=network-online.target
@@ -31,8 +41,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/miners/keryx-node
-ExecStart=/opt/miners/keryx-node/keryxd --utxoindex --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110
+WorkingDirectory=$NODE_DIR
+ExecStart=$NODE_DIR/keryxd --utxoindex --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
@@ -95,22 +105,3 @@ sudo mv -v /home/user/datadir /root/.keryx-labs/keryx-mainnet/
 network mainnet
 connect localhost
 rpc get-block-dag-info
-
-#update
-#stop the node
-sudo systemctl stop keryxd.service
-
-cd /opt/miners
-#keryx-node in zip
-sudo wget https://github.com/Keryx-Labs/keryx-node/releases/download/v1.5.5-PoM/keryx-node-v1.5.5-PoM-linux-amd64.zip
-sudo unzip -o keryx-node-v1.5.5-PoM-linux-amd64.zip
-sudo rm -v keryx-node-v1.5.5-PoM-linux-amd64.zip
-/opt/miners/keryx-node/keryxd --version
-
-#start the node
-sudo systemctl start keryxd.service
-
-#watch logs
-journalctl -u keryxd.service -f
-
-journalctl -u keryxd.service -n 50 --no-pager
