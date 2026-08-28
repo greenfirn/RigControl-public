@@ -7038,6 +7038,12 @@ async function saveFlightsheetFromDialog() {
 let fsExtraPoolUrls = [];
 let fsPoolUrlsExplicitlySet = false;
 let fsPrimaryPoolUrl = "";
+// Whether the pool text last entered (via Manage Pools Save or a paste into the Pool field)
+// included an explicit stratum+tcp://\/stratum+ssl:// scheme. Whether to add/keep a scheme is
+// entirely the user's call, for every miner - RigControl only flips an EXISTING tcp<->ssl scheme
+// to match the SSL checkbox, it never adds one to an address that didn't have one, and never
+// strips one the user explicitly typed.
+let fsPoolsHaveScheme = false;
 let fsBzminerOcJsonUserConfig = "";
 let fsSrbminerOriginalUserConfig = "";
 let fsXmrigHugepages = "";
@@ -7061,6 +7067,17 @@ function bareFsPoolUrl(url) {
 function styledFsPoolUrl(bareUrl, sslOn) {
     if (!bareUrl) return "";
     return sslOn ? "stratum+ssl://" + bareUrl : bareUrl;
+}
+// Whether an address gets a stratum+tcp://\/stratum+ssl:// scheme at all is entirely up to the
+// user, for every miner (some, like keryx-miner-supr, require an explicit scheme even for plain
+// TCP; most standard miners expect bare host:port). RigControl never invents a scheme that wasn't
+// there and never strips one the user explicitly typed - the SSL checkbox only flips an EXISTING
+// scheme between tcp and ssl. hasScheme should reflect whether the ORIGINAL text (before this
+// bareUrl was extracted from it) had a stratum+tcp:// or stratum+ssl:// prefix.
+function styledFsPoolUrlIfScheme(bareUrl, sslOn, hasScheme) {
+    if (!bareUrl) return "";
+    if (!hasScheme) return bareUrl;
+    return (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bareUrl;
 }
 const FS_POOL_ADDRESS_RE = /(?:stratum\+ssl:\/\/|stratum\+tcp:\/\/|ssl:\/\/|tcp:\/\/)?((?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3}):(\d{2,5})\b/g;
 function extractPoolAddressesFromText(text) {
@@ -7086,45 +7103,43 @@ function updateManagePoolsBtnLabel() {
         ? `Add/edit backup pools for failover (${count} backup pool${count === 1 ? "" : "s"} configured)`
         : "Add/edit backup pools for failover";
 }
-const FS_POOL_PREVIEW_BARE_ADDR = new Set([
-    "xmrig", "wildrig-multi", "wildrig", "gminer",
-    "srbminer", "srbminer-multi", "srbminer-cpu", "srbminer-gpu", "srbminer-multi-cpu",
-]);
-function buildFsPoolCmdPreview(minerName, bareUrls, sslOn) {
+function buildFsPoolCmdPreview(minerName, bareUrls, sslOn, hasScheme) {
     const bare = bareUrls.length > 0 ? bareUrls : [""];
-    const prefixed = bare.map((h) => styledFsPoolUrl(h, sslOn));
+    // Same address (with or without scheme, per hasScheme) goes into every miner's flag template -
+    // whether a scheme is present is the user's call, not something RigControl decides per-miner.
+    const styled = bare.map((h) => styledFsPoolUrlIfScheme(h, sslOn, hasScheme));
     const W = "%WALLET%";
     const P = "%PASS%";
     const miner = (minerName || "").trim().toLowerCase();
     switch (miner) {
         case "xmrig":
-            return bare.map((h) => `-o ${h} -u ${W} -p ${P}`).join(" ");
+            return styled.map((h) => `-o ${h} -u ${W} -p ${P}`).join(" ");
         case "wildrig-multi":
         case "wildrig":
-            return bare.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
+            return styled.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
         case "trex":
         case "t-rex":
-            return prefixed.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
+            return styled.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
         case "teamredminer":
-            return prefixed.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
+            return styled.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
         case "lolminer":
-            return prefixed.map((u) => `--pool ${u} --user ${W} --pass ${P}`).join(" ");
+            return styled.map((u) => `--pool ${u} --user ${W} --pass ${P}`).join(" ");
         case "gminer":
-            return bare.map((h) => `--server ${h} --user ${W}`).join(" ");
+            return styled.map((h) => `--server ${h} --user ${W}`).join(" ");
         case "rigel":
-            return prefixed.map((u) => `-o ${u} -u ${W}`).join(" ");
+            return styled.map((u) => `-o ${u} -u ${W}`).join(" ");
         case "srbminer":
         case "srbminer-multi":
         case "srbminer-cpu":
         case "srbminer-gpu":
         case "srbminer-multi-cpu":
-            return bare.join(",");
+            return styled.join(",");
         case "bzminer":
-            return prefixed.join(" ");
+            return styled.join(" ");
         case "onezerominer":
-            return prefixed.join(",");
+            return styled.join(",");
         default:
-            return prefixed.join(" ");
+            return styled.join(" ");
     }
 }
 function refreshFsPoolFieldDisplay() {
@@ -7138,7 +7153,7 @@ function refreshFsPoolFieldDisplay() {
     const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
     const miner = document.getElementById("fs-field-miner")?.value || "";
     const primaryBare = bareFsPoolUrl(fsPrimaryPoolUrl);
-    poolEl.value = buildFsPoolCmdPreview(miner, [primaryBare, ...fsExtraPoolUrls], sslOn);
+    poolEl.value = buildFsPoolCmdPreview(miner, [primaryBare, ...fsExtraPoolUrls], sslOn, fsPoolsHaveScheme);
     poolEl.classList.add("fs-pool-multi-preview");
 }
 function snapshotFsLiveStash() {
@@ -7146,6 +7161,7 @@ function snapshotFsLiveStash() {
         fsExtraPoolUrls: fsExtraPoolUrls.slice(),
         fsPrimaryPoolUrl,
         fsPoolUrlsExplicitlySet,
+        fsPoolsHaveScheme,
         fsBzminerOcJsonUserConfig,
         fsSrbminerOriginalUserConfig,
         fsXmrigHugepages,
@@ -7163,6 +7179,7 @@ function restoreFsLiveStash(stash) {
     fsExtraPoolUrls = (stash.fsExtraPoolUrls || []).slice();
     fsPrimaryPoolUrl = stash.fsPrimaryPoolUrl || "";
     fsPoolUrlsExplicitlySet = !!stash.fsPoolUrlsExplicitlySet;
+    fsPoolsHaveScheme = !!stash.fsPoolsHaveScheme;
     fsBzminerOcJsonUserConfig = stash.fsBzminerOcJsonUserConfig || "";
     fsSrbminerOriginalUserConfig = stash.fsSrbminerOriginalUserConfig || "";
     fsXmrigHugepages = stash.fsXmrigHugepages || "";
@@ -7219,6 +7236,7 @@ function clearFsFields() {
     fsExtraPoolUrls = [];
     fsPrimaryPoolUrl = "";
     fsPoolUrlsExplicitlySet = false;
+    fsPoolsHaveScheme = false;
     fsBzminerOcJsonUserConfig = "";
     fsSrbminerOriginalUserConfig = "";
     fsXmrigHugepages = "";
@@ -7383,7 +7401,10 @@ function saveManagePoolsDialog() {
         sslOn = explicitSsl;
         if (sslEl) sslEl.checked = sslOn;
     }
-    fsPrimaryPoolUrl = addrs.length > 0 ? styledFsPoolUrl(addrs[0], sslOn) : "";
+    // Whether these pools get a scheme at all is the user's call - only remembered here so the
+    // SSL checkbox can flip an existing scheme later without ever adding one that wasn't typed.
+    fsPoolsHaveScheme = explicitSsl !== null;
+    fsPrimaryPoolUrl = addrs.length > 0 ? styledFsPoolUrlIfScheme(addrs[0], sslOn, fsPoolsHaveScheme) : "";
     fsExtraPoolUrls = addrs.slice(1);
     fsPoolUrlsExplicitlySet = true;
     updateManagePoolsBtnLabel();
@@ -8425,6 +8446,7 @@ function resetFsFieldInputsForNewSlot() {
     fsExtraPoolUrls = [];
     fsPrimaryPoolUrl = "";
     fsPoolUrlsExplicitlySet = false;
+    fsPoolsHaveScheme = false;
     fsBzminerOcJsonUserConfig = "";
     fsSrbminerOriginalUserConfig = "";
     fsXmrigHugepages = "";
@@ -8788,6 +8810,9 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     })();
     fsPrimaryPoolUrl = fsExtraPoolUrls.length > 0 ? values.POOL : "";
     fsPoolUrlsExplicitlySet = false;
+    // Remember whether the loaded pool address already has a scheme, so the SSL checkbox flips
+    // it correctly on later edits instead of silently adding one that wasn't there.
+    fsPoolsHaveScheme = /^stratum\+(ssl|tcp):\/\//i.test((values.POOL || "").trim());
     updateManagePoolsBtnLabel();
     if (jsonItem.miner !== "custom") {
         values.ARGS = injectMinerTlsFlag(values.MINER, jsonItem.pool_ssl === true, values.ARGS);
@@ -13676,12 +13701,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.preventDefault();
         const sslOn = !!document.getElementById("fs-field-ssl")?.checked;
         const poolEl = e.target;
+        // Whether the pasted text itself had a scheme - never invent one that wasn't pasted.
+        fsPoolsHaveScheme = detectExplicitSslFromText(text) !== null;
         if (addrs.length === 1) {
-            poolEl.value = styledFsPoolUrl(addrs[0], sslOn);
+            poolEl.value = styledFsPoolUrlIfScheme(addrs[0], sslOn, fsPoolsHaveScheme);
             fsExtraPoolUrls = [];
             fsPrimaryPoolUrl = "";
         } else {
-            fsPrimaryPoolUrl = styledFsPoolUrl(addrs[0], sslOn);
+            fsPrimaryPoolUrl = styledFsPoolUrlIfScheme(addrs[0], sslOn, fsPoolsHaveScheme);
             fsExtraPoolUrls = addrs.slice(1);
         }
         updateManagePoolsBtnLabel();
@@ -13694,16 +13721,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (fsExtraPoolUrls.length > 0) {
             const bare = bareFsPoolUrl(fsPrimaryPoolUrl);
             if (!bare) return;
-            fsPrimaryPoolUrl = styledFsPoolUrl(bare, e.target.checked);
+            fsPrimaryPoolUrl = styledFsPoolUrlIfScheme(bare, e.target.checked, fsPoolsHaveScheme);
             refreshFsPoolFieldDisplay();
             updateRawFromFieldChange(poolEl);
             return;
         }
+        // No backup pools - fsPoolsHaveScheme may be stale (e.g. the user hand-typed a bare
+        // address after it was last set), so check the field's own current text instead of
+        // trusting the stored flag.
+        const hadScheme = /^stratum\+(ssl|tcp):\/\//i.test(poolEl.value || "");
         const bare = (poolEl.value || "")
             .replace(/^stratum\+ssl:\/\//, "")
             .replace(/^stratum\+tcp:\/\//, "");
         if (!bare) return;
-        poolEl.value = e.target.checked ? `stratum+ssl://${bare}` : bare;
+        poolEl.value = styledFsPoolUrlIfScheme(bare, e.target.checked, hadScheme);
         updateRawFromFieldChange(poolEl);
     });
     document.getElementById("fs-field-tls")?.addEventListener("change", (e) => {
