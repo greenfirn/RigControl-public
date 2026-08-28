@@ -19,7 +19,15 @@
         "  algo_to_coin: {algo: COIN} - exact, case-insensitive match on the miner's algo field. Checked first, before the pool address is even looked at.",
         "  pool_coin_hints: [[substring, COIN], ...] - checked in order against the pool hostname if algo_to_coin had no match. First substring found in the hostname wins, so put more specific hints earlier if two could both match.",
         "  ambiguous_algo_defaults: {algo: null} - algos deliberately mapped to null (e.g. rx/0, kawpow are mined for many different coins) so the auto-fill leaves 'coin' blank instead of guessing wrong.",
-        "  pool_slug_overrides: {derived_label: real_slug} - the pool short-name is normally just pulled from the pool hostname (e.g. 'herominers' from ca.pearl.herominers.com); this remaps specific derived labels to a nicer/more correct value."
+        "  pool_slug_overrides: {derived_label: real_slug} - the pool short-name is normally just pulled from the pool hostname (e.g. 'herominers' from ca.pearl.herominers.com); this remaps specific derived labels to a nicer/more correct value.",
+        "",
+        "known_miners holds the pool/algo flag layout for each known (built-in) miner - buildKnownMinerCommand() in app.js uses these to build the FULL command line (miner_config/root-level miner_command) at Flightsheet Save time; rig-side just substitutes %WALLET%/%PASS% and runs it, no per-miner flag logic left there. Unlike flightsheet_derivation above, each miner name here is its OWN top-level key, so you only need to include the miner(s) you're actually changing or adding here - any miner you don't list keeps its built-in default.",
+        "  algo_flag: the flag placed before the algo value, e.g. \"-a\" -> \"-a kawpow\".",
+        "  url_mode: \"bare\" (scheme stripped, e.g. \"pool.example.com:3333\") or \"full\" (scheme kept exactly as stored in pool_urls, e.g. \"stratum+ssl://pool.example.com:3333\") - depends on whether that miner's CLI accepts an inline stratum+tcp/ssl:// scheme on its pool flag.",
+        "  pool_join: \"repeat\" (pool_template repeated once per pool_urls entry, space-joined - most miners, for failover pool support) or \"comma\"/\"space\" (pool_template used ONCE, with %POOL% filled by every pool address joined with that separator into a single flag value).",
+        "  pool_template: the flag(s) for one pool entry (repeat mode) or the whole pool flag (comma/space mode) - %POOL% is replaced with the real address (or the joined list). %WALLET%/%PASS% must be left exactly as written (literal, including the % on both sides) - only the rig can resolve those, at launch time.",
+        "  suffix_template (optional): appended once at the very end, after all pool_template repetitions - for miners whose wallet/pass flag isn't part of the per-pool repeat (e.g. rigel, gminer).",
+        "  conditional_flag (optional): a TLS/SSL flag inserted as a PREFIX, only if `detect` isn't already found in the user's own extra args (so a manually-typed flag is never duplicated). when_true/when_false pick the value based on pool_ssl or the flightsheet's TLS checkbox."
     ],
     "flightsheet": {
         "cpu_template": "tee /etc/rigcontrol/rig-cpu.json > /dev/null <<'EOF'\n%RIG_GPU_JSON%\nEOF\nsudo systemctl restart docker_events_cpu",
@@ -74,6 +82,113 @@
             "luckypool": "luckypoolio",
             "vipor": "vipornet",
             "pearlhash": "pearlhash.xyz"
+        }
+    },
+    "known_miners": {
+        "xmrig": {
+            "algo_flag": "-a",
+            "url_mode": "bare",
+            "pool_join": "repeat",
+            "pool_template": "-o %POOL% -u %WALLET% -p %PASS%",
+            "conditional_flag": { "detect": "--tls", "when_true": "--tls ", "when_false": "" }
+        },
+        "wildrig-multi": {
+            "algo_flag": "--algo",
+            "url_mode": "bare",
+            "pool_join": "repeat",
+            "pool_template": "--url %POOL% --user %WALLET% --pass %PASS%"
+        },
+        "wildrig": {
+            "algo_flag": "--algo",
+            "url_mode": "bare",
+            "pool_join": "repeat",
+            "pool_template": "--url %POOL% --user %WALLET% --pass %PASS%"
+        },
+        "gminer": {
+            "algo_flag": "--algo",
+            "url_mode": "bare",
+            "pool_join": "repeat",
+            "pool_template": "--server %POOL% --user %WALLET%",
+            "suffix_template": " --pass %PASS%",
+            "conditional_flag": { "detect": "--ssl ", "when_true": "--ssl 1 ", "when_false": "--ssl 0 " }
+        },
+        "trex": {
+            "algo_flag": "-a",
+            "url_mode": "full",
+            "pool_join": "repeat",
+            "pool_template": "-o %POOL% -u %WALLET% -p %PASS%"
+        },
+        "t-rex": {
+            "algo_flag": "-a",
+            "url_mode": "full",
+            "pool_join": "repeat",
+            "pool_template": "-o %POOL% -u %WALLET% -p %PASS%"
+        },
+        "teamredminer": {
+            "algo_flag": "-a",
+            "url_mode": "full",
+            "pool_join": "repeat",
+            "pool_template": "-o %POOL% -u %WALLET% -p %PASS%"
+        },
+        "rigel": {
+            "algo_flag": "-a",
+            "url_mode": "full",
+            "pool_join": "repeat",
+            "pool_template": "-o %POOL% -u %WALLET%",
+            "suffix_template": " -p %PASS%"
+        },
+        "lolminer": {
+            "algo_flag": "--algo",
+            "url_mode": "full",
+            "pool_join": "repeat",
+            "pool_template": "--pool %POOL% --user %WALLET% --pass %PASS%"
+        },
+        "srbminer": {
+            "algo_flag": "--algorithm",
+            "url_mode": "bare",
+            "pool_join": "comma",
+            "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+        },
+        "srbminer-multi": {
+            "algo_flag": "--algorithm",
+            "url_mode": "bare",
+            "pool_join": "comma",
+            "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+        },
+        "srbminer-cpu": {
+            "algo_flag": "--algorithm-cpu",
+            "url_mode": "bare",
+            "pool_join": "comma",
+            "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+        },
+        "srbminer-multi-cpu": {
+            "algo_flag": "--algorithm-cpu",
+            "url_mode": "bare",
+            "pool_join": "comma",
+            "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+        },
+        "srbminer-gpu": {
+            "algo_flag": "--algorithm-gpu",
+            "url_mode": "bare",
+            "pool_join": "comma",
+            "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+        },
+        "bzminer": {
+            "algo_flag": "-a",
+            "url_mode": "full",
+            "pool_join": "space",
+            "pool_template": "-p %POOL% -w %WALLET% --pool_password %PASS%"
+        },
+        "onezerominer": {
+            "algo_flag": "--algo",
+            "url_mode": "full",
+            "pool_join": "comma",
+            "pool_template": "--pool %POOL% --wallet %WALLET% --pass %PASS%"
         }
     }
 }

@@ -142,6 +142,135 @@ const TEMPLATES_CONFIG = {
             pearlhash: "pearlhash.xyz",
         },
     },
+    // Per-known-miner pool/algo flag layouts, used by buildKnownMinerPoolArgs()/knownMinerAlgoFlag()
+    // below to build the FULL command line for known miners (see buildKnownMinerCommand()) - editing
+    // these in templates.json (instead of here) lets a miner's flag syntax be fixed, or a brand new
+    // miner added, without an app.js redeploy. Unlike flightsheet_derivation above, each miner name
+    // here is its own top-level key, so templates.json only needs to include the miner(s) actually
+    // being changed/added - it does NOT need to repeat every other miner's entry to keep it.
+    //   algo_flag: the flag placed before the algo value, e.g. "-a" -> "-a kawpow".
+    //   url_mode: "bare" (scheme stripped, e.g. "pool.example.com:3333") or "full" (scheme kept
+    //     exactly as stored in pool_urls, e.g. "stratum+ssl://pool.example.com:3333") - depends on
+    //     whether that miner's CLI accepts an inline stratum+tcp/ssl:// scheme on its pool flag.
+    //   pool_join: "repeat" (pool_template repeated once per pool_urls entry, space-joined - most
+    //     miners, for failover pool support), "comma" or "space" (pool_template used ONCE, with
+    //     %POOL% filled by every pool address joined with that separator into a single flag value).
+    //   pool_template: the flag(s) for one pool entry (repeat mode) or the whole pool flag (comma/
+    //     space mode) - %POOL% is replaced with the real address (or the joined list); %WALLET%/
+    //     %PASS% are left exactly as-is, since only the rig can resolve them (see resolve_wallet/
+    //     resolve_pass rig-side) - never replace those two here.
+    //   suffix_template (optional): appended once at the very end, after all pool_template
+    //     repetitions - for miners whose wallet/pass flag isn't part of the per-pool repeat.
+    //   conditional_flag (optional): a TLS/SSL flag inserted as a PREFIX, only if `detect` isn't
+    //     already found in the user's own extra args (so a manually-typed flag is never duplicated).
+    //     when_true/when_false pick the value based on pool_ssl || the flightsheet's TLS checkbox.
+    known_miners: {
+        xmrig: {
+            algo_flag: "-a",
+            url_mode: "bare",
+            pool_join: "repeat",
+            pool_template: "-o %POOL% -u %WALLET% -p %PASS%",
+            conditional_flag: { detect: "--tls", when_true: "--tls ", when_false: "" },
+        },
+        "wildrig-multi": {
+            algo_flag: "--algo",
+            url_mode: "bare",
+            pool_join: "repeat",
+            pool_template: "--url %POOL% --user %WALLET% --pass %PASS%",
+        },
+        wildrig: {
+            algo_flag: "--algo",
+            url_mode: "bare",
+            pool_join: "repeat",
+            pool_template: "--url %POOL% --user %WALLET% --pass %PASS%",
+        },
+        gminer: {
+            algo_flag: "--algo",
+            url_mode: "bare",
+            pool_join: "repeat",
+            pool_template: "--server %POOL% --user %WALLET%",
+            suffix_template: " --pass %PASS%",
+            conditional_flag: { detect: "--ssl ", when_true: "--ssl 1 ", when_false: "--ssl 0 " },
+        },
+        trex: {
+            algo_flag: "-a",
+            url_mode: "full",
+            pool_join: "repeat",
+            pool_template: "-o %POOL% -u %WALLET% -p %PASS%",
+        },
+        "t-rex": {
+            algo_flag: "-a",
+            url_mode: "full",
+            pool_join: "repeat",
+            pool_template: "-o %POOL% -u %WALLET% -p %PASS%",
+        },
+        teamredminer: {
+            algo_flag: "-a",
+            url_mode: "full",
+            pool_join: "repeat",
+            pool_template: "-o %POOL% -u %WALLET% -p %PASS%",
+        },
+        rigel: {
+            algo_flag: "-a",
+            url_mode: "full",
+            pool_join: "repeat",
+            pool_template: "-o %POOL% -u %WALLET%",
+            suffix_template: " -p %PASS%",
+        },
+        lolminer: {
+            algo_flag: "--algo",
+            url_mode: "full",
+            pool_join: "repeat",
+            pool_template: "--pool %POOL% --user %WALLET% --pass %PASS%",
+        },
+        srbminer: {
+            algo_flag: "--algorithm",
+            url_mode: "bare",
+            pool_join: "comma",
+            pool_template: "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            conditional_flag: { detect: "--tls ", when_true: "--tls true ", when_false: "--tls false " },
+        },
+        "srbminer-multi": {
+            algo_flag: "--algorithm",
+            url_mode: "bare",
+            pool_join: "comma",
+            pool_template: "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            conditional_flag: { detect: "--tls ", when_true: "--tls true ", when_false: "--tls false " },
+        },
+        "srbminer-cpu": {
+            algo_flag: "--algorithm-cpu",
+            url_mode: "bare",
+            pool_join: "comma",
+            pool_template: "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            conditional_flag: { detect: "--tls ", when_true: "--tls true ", when_false: "--tls false " },
+        },
+        "srbminer-multi-cpu": {
+            algo_flag: "--algorithm-cpu",
+            url_mode: "bare",
+            pool_join: "comma",
+            pool_template: "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            conditional_flag: { detect: "--tls ", when_true: "--tls true ", when_false: "--tls false " },
+        },
+        "srbminer-gpu": {
+            algo_flag: "--algorithm-gpu",
+            url_mode: "bare",
+            pool_join: "comma",
+            pool_template: "--pool %POOL% --wallet %WALLET% --password %PASS%",
+            conditional_flag: { detect: "--tls ", when_true: "--tls true ", when_false: "--tls false " },
+        },
+        bzminer: {
+            algo_flag: "-a",
+            url_mode: "full",
+            pool_join: "space",
+            pool_template: "-p %POOL% -w %WALLET% --pool_password %PASS%",
+        },
+        onezerominer: {
+            algo_flag: "--algo",
+            url_mode: "full",
+            pool_join: "comma",
+            pool_template: "--pool %POOL% --wallet %WALLET% --pass %PASS%",
+        },
+    },
 };
 // Fetches static/config/templates.json and merges it over the hardcoded defaults above (section by
 // section, key by key - see the TEMPLATES_CONFIG comment). Named (not an IIFE) so the Settings
@@ -7473,76 +7602,44 @@ function collectFsFieldValues() {
 // %WALLET%/%PASS% are kept as literal tokens (not resolved here) because only the rig itself
 // knows their final values - %WALLET% in particular can have %WORKER_NAME% baked into it via
 // the flightsheet's TEMPLATE field, and only the rig knows its own hostname.
+// Fills a known-miner pool_template/suffix_template: %POOL% becomes the real address (or the
+// joined list, for comma/space join miners) - %WALLET%/%PASS% are deliberately left untouched,
+// since only the rig can resolve those (see resolve_wallet/resolve_pass rig-side).
+function fillKnownMinerPoolToken(tpl, poolValue) {
+    return (tpl || "").split("%POOL%").join(poolValue);
+}
+// Data-driven: reads the miner's layout from TEMPLATES_CONFIG.known_miners (hardcoded defaults
+// here, overridable per-miner from static/config/templates.json with no app.js redeploy - see the
+// known_miners comment on TEMPLATES_CONFIG above for the field reference). An unrecognized miner
+// name (no entry in known_miners) returns "" the same as the old hardcoded switch's default case.
 function buildKnownMinerPoolArgs(minerName, poolUrls, poolSsl, tlsOn, argsText) {
+    const miner = (minerName || "").trim().toLowerCase();
+    const def = TEMPLATES_CONFIG.known_miners && TEMPLATES_CONFIG.known_miners[miner];
+    if (!def) return "";
     const urls = poolUrls.length > 0 ? poolUrls : [""];
     const bareList = urls.map((u) => bareFsPoolUrl(u));
+    const useUrls = def.url_mode === "bare" ? bareList : urls;
     const args = argsText || "";
-    const W = "%WALLET%";
-    const P = "%PASS%";
-    const miner = (minerName || "").trim().toLowerCase();
-    switch (miner) {
-        case "xmrig": {
-            const tlsFlag = (poolSsl || tlsOn) && !args.includes("--tls") ? "--tls " : "";
-            return (tlsFlag + bareList.map((h) => `-o ${h} -u ${W} -p ${P}`).join(" ")).trim();
-        }
-        case "wildrig-multi":
-        case "wildrig":
-            return bareList.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
-        case "gminer": {
-            const sslFlag = !args.includes("--ssl ") ? `--ssl ${poolSsl ? "1" : "0"} ` : "";
-            return (sslFlag + bareList.map((h) => `--server ${h} --user ${W}`).join(" ") + ` --pass ${P}`).trim();
-        }
-        case "trex":
-        case "t-rex":
-            return urls.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
-        case "teamredminer":
-            return urls.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
-        case "rigel":
-            return (urls.map((u) => `-o ${u} -u ${W}`).join(" ") + ` -p ${P}`).trim();
-        case "lolminer":
-            return urls.map((u) => `--pool ${u} --user ${W} --pass ${P}`).join(" ");
-        case "srbminer":
-        case "srbminer-multi":
-        case "srbminer-cpu":
-        case "srbminer-gpu":
-        case "srbminer-multi-cpu": {
-            const tlsFlag = !args.includes("--tls ") ? `--tls ${(poolSsl || tlsOn) ? "true" : "false"} ` : "";
-            return (tlsFlag + `--pool ${bareList.join(",")} --wallet ${W} --password ${P}`).trim();
-        }
-        case "bzminer":
-            return `-p ${urls.join(" ")} -w ${W} --pool_password ${P}`;
-        case "onezerominer":
-            return `--pool ${urls.join(",")} --wallet ${W} --pass ${P}`;
-        default:
-            return "";
+    let poolPart;
+    if (def.pool_join === "comma" || def.pool_join === "space") {
+        const joined = useUrls.join(def.pool_join === "comma" ? "," : " ");
+        poolPart = fillKnownMinerPoolToken(def.pool_template, joined);
+    } else {
+        // "repeat" (or anything else/unset - matches every pre-existing miner's default behavior)
+        poolPart = useUrls.map((u) => fillKnownMinerPoolToken(def.pool_template, u)).join(" ");
     }
+    if (def.suffix_template) {
+        poolPart += def.suffix_template;
+    }
+    let prefix = "";
+    if (def.conditional_flag && !args.includes(def.conditional_flag.detect)) {
+        prefix = (poolSsl || tlsOn) ? (def.conditional_flag.when_true || "") : (def.conditional_flag.when_false || "");
+    }
+    return (prefix + poolPart).trim();
 }
 function knownMinerAlgoFlag(minerLower) {
-    switch (minerLower) {
-        case "xmrig":
-        case "bzminer":
-        case "trex":
-        case "t-rex":
-        case "teamredminer":
-        case "rigel":
-            return "-a";
-        case "wildrig-multi":
-        case "wildrig":
-        case "gminer":
-        case "lolminer":
-        case "onezerominer":
-            return "--algo";
-        case "srbminer":
-        case "srbminer-multi":
-            return "--algorithm";
-        case "srbminer-cpu":
-        case "srbminer-multi-cpu":
-            return "--algorithm-cpu";
-        case "srbminer-gpu":
-            return "--algorithm-gpu";
-        default:
-            return "";
-    }
+    const def = TEMPLATES_CONFIG.known_miners && TEMPLATES_CONFIG.known_miners[minerLower];
+    return def ? (def.algo_flag || "") : "";
 }
 // Dashboard builds the FULL known-miner command line (algo flag, pool/wallet/pass/TLS flags,
 // and any raw extra args the user typed) once, at Save time. Rig-side just substitutes
