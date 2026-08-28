@@ -30,7 +30,7 @@ RIG_GPU_JQ_FILTER=$(cat <<'JQ'
       ARGS: ($mc.user_config // ""),
       POOL: ($mc.url // ""),
       POOL_URLS: (($it.pool_urls // []) | join("|")),
-      MINER_COMMAND: ($mc.miner_command // ""),
+      MINER_COMMAND: ($it.miner_command // ""),
       TEMPLATE: ($mc.template // ""),
       WALLET_ADDR: ($mc.wallet_address // ""),
       MINER: (if $is_custom then "" else

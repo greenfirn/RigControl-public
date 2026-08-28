@@ -7649,20 +7649,17 @@ function buildRigGpuItemObject(values, stash) {
     } else {
         delete minerConfig.user_config;
     }
-    if (!isCustom) {
-        // Rig-side just substitutes %WALLET%/%PASS%/%WORKER_NAME% tokens into this and runs
-        // it directly - it no longer decides algo flag syntax, pool flag format, or TLS/SSL
-        // flags for known miners at all. (xmrig/bzminer still get their raw ARGS - possibly an
-        // OC-JSON blob - converted and appended rig-side; see buildKnownMinerCommand.)
-        const minerCommand = buildKnownMinerCommand(values.MINER, values.ALGO || "", poolUrls, poolSsl, values.TLS === "true", userConfigForJson || "");
-        if (minerCommand) {
-            minerConfig.miner_command = minerCommand;
-        } else if ("miner_command" in minerConfig) {
-            delete minerConfig.miner_command;
-        }
-    } else if ("miner_command" in minerConfig) {
-        delete minerConfig.miner_command;
-    }
+    // miner_command lives at the item ROOT, not nested in miner_config - it's assigned last,
+    // below, after pool_urls/miner_config are set on `item`, so it's the last field visible in
+    // Raw Content. Strip any stale nested copy a previously-saved flightsheet might carry.
+    if ("miner_command" in minerConfig) delete minerConfig.miner_command;
+    // Rig-side just substitutes %WALLET%/%PASS%/%WORKER_NAME% tokens into this and runs it
+    // directly - it no longer decides algo flag syntax, pool flag format, or TLS/SSL flags for
+    // known miners at all. (xmrig/bzminer still get their raw ARGS - possibly an OC-JSON blob -
+    // converted and appended rig-side; see buildKnownMinerCommand.)
+    const minerCommand = !isCustom
+        ? buildKnownMinerCommand(values.MINER, values.ALGO || "", poolUrls, poolSsl, values.TLS === "true", userConfigForJson || "")
+        : "";
     if (!isCustom && minerLowerForStash === "xmrig") {
         if (stash.fsXmrigCpuConfigJson) {
             minerConfig.cpu_config = stash.fsXmrigCpuConfigJson;
@@ -7708,6 +7705,13 @@ function buildRigGpuItemObject(values, stash) {
     if (values.VERSION && values.VERSION.trim()) item.version = values.VERSION.trim();
     item.pool_urls = poolUrls;
     item.miner_config = minerConfig;
+    // Assigned last (via delete+reassign, so it lands at the end of key order regardless of
+    // where a previously-saved item had it) so miner_command is the last field visible in Raw
+    // Content - easy to spot as the one thing rig-side actually runs.
+    if ("miner_command" in item) delete item.miner_command;
+    if (minerCommand) {
+        item.miner_command = minerCommand;
+    }
     // Same pool short-name / coin ticker auto-fill "Copy JSON" already does (addPoolSlugForClipboard/
     // addCoinTickerForClipboard below) - applied here too so the LIVE raw content (what Send/Save
     // actually uses) carries them, instead of only the separate clipboard export. Both no-op if the
@@ -8533,6 +8537,38 @@ function addCoinTickerForClipboard(items) {
         return { coin, ...item };
     });
 }
+// Recomputes miner_command from an item's own algo/pool_urls/pool_ssl/tls/user_config, the same
+// way buildRigGpuItemObject does at Save time - used on LOAD (populateFsFieldsFromRaw), where the
+// raw box is otherwise just echoing whatever text was already stored. Without this, a flightsheet
+// saved before miner_command existed (or one edited/synced elsewhere) would sit there missing it,
+// or showing a stale value, until the user touched a field and triggered a live rebuild. Mirrors
+// addPoolSlugForClipboard/addCoinTickerForClipboard's pattern: returns the SAME item object back
+// (reference-equal) when nothing needs to change, so callers can detect "was anything enriched".
+function addMinerCommandForClipboard(items) {
+    return items.map((item) => {
+        if (!item || typeof item !== "object") return item;
+        const isCustomItem = item.miner === "custom";
+        let computed = "";
+        if (!isCustomItem) {
+            const mc = (item.miner_config && typeof item.miner_config === "object") ? item.miner_config : {};
+            const poolUrls = Array.isArray(item.pool_urls) ? item.pool_urls : [];
+            const poolSsl = item.pool_ssl === true;
+            const tlsOn = mc.tls === 1 || mc.tls === "1" || mc.tls === true;
+            computed = buildKnownMinerCommand(item.miner || "", mc.algo || "", poolUrls, poolSsl, tlsOn, mc.user_config || "");
+        }
+        if (!computed) {
+            if (!("miner_command" in item)) return item;
+            const newItem = { ...item };
+            delete newItem.miner_command;
+            return newItem;
+        }
+        if (item.miner_command === computed) return item;
+        const newItem = { ...item };
+        delete newItem.miner_command;
+        newItem.miner_command = computed;
+        return newItem;
+    });
+}
 function buildFsCombinedJson() {
     const serviceType = (document.getElementById("fs-field-service-type")?.value || "").trim().toLowerCase();
     const activeService = serviceType === "cpu" ? "cpu" : serviceType === "aux" ? "aux" : "gpu";
@@ -9034,7 +9070,11 @@ function populateFsFieldsFromRaw(rawText) {
         // return the SAME object back when there's nothing to add) is what "wasFsItemsEnriched" below
         // uses to decide whether the raw box text itself needs to be rewritten to match.
         const fsItemsWithPool = addPoolSlugForClipboard(parsedItems.items);
-        const fsItemsEnriched = addCoinTickerForClipboard(fsItemsWithPool);
+        const fsItemsWithCoin = addCoinTickerForClipboard(fsItemsWithPool);
+        // Also (re)computes miner_command on load - a flightsheet saved before that field existed,
+        // or edited/synced elsewhere, would otherwise sit there missing it (or showing a stale
+        // value) until the user touched a field and triggered a live rebuild.
+        const fsItemsEnriched = addMinerCommandForClipboard(fsItemsWithCoin);
         const wasFsItemsEnriched = fsItemsEnriched.some((it, i) => it !== parsedItems.items[i]);
         parsedItems.items = fsItemsEnriched;
         setFsApplyToRigs(parsedItems.apply_to_workers || []);
@@ -9076,10 +9116,14 @@ function populateFsFieldsFromRaw(rawText) {
             } else if (!/<<'EOF'\n[\s\S]*?\n[ \t]*EOF[ \t]*(?=\n|$)/.test(rawText)) {
                 rawEl.value = buildFsBlock(activeValues.SERVICE_TYPE);
                 autoResizeFsRaw();
-            } else if (wasFsItemsEnriched) {
-                // Native format, single service, but pool/coin got added above - splice the enriched
-                // items back into the existing heredoc body so the box reflects it (everything else
-                // in the pasted text - the tee line, any trailing restart line - stays untouched).
+            } else {
+                // Native format, single service - always splice the enriched items (pool/coin/
+                // miner_command) back into the existing heredoc body so Raw Content reflects the
+                // freshly computed state on every load, not just when addPoolSlugForClipboard/
+                // addCoinTickerForClipboard/addMinerCommandForClipboard detected a change from
+                // the stored text. Everything else in the pasted text (the tee line, any trailing
+                // restart line) stays untouched. wasFsItemsEnriched is unused now but left in
+                // place above in case a future caller needs the "did anything change" signal.
                 const enrichedBody = { items: parsedItems.items };
                 if (fsApplyToRigs.size > 0) enrichedBody.apply_to_workers = Array.from(fsApplyToRigs);
                 rawEl.value = rawText.replace(
