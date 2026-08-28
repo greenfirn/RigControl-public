@@ -2146,15 +2146,14 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     signal - that sub-count is tracked as a second, separate running
     total and surfaced as accepted_shares/total_accepted_shares,
     alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
-    total-blocks-accepted metric above.
+    total-blocks-accepted metric above. Both totals reset to 0 whenever
+    keryxd itself restarts (log file replaced/truncated) - a new keryxd
+    session starts a fresh count rather than carrying the old one forward.
     """
     accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
     submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
     share_state = _log_event_state.setdefault(
-        log_path, {
-            "offset": 0, "accepted_shares": 0, "submit_block_shares": 0,
-            "lifetime_accepted_shares": 0, "lifetime_submit_block_shares": 0,
-        }
+        log_path, {"offset": 0, "accepted_shares": 0, "submit_block_shares": 0}
     )
     new_text = _read_new_log_bytes(log_path, share_state)
     if new_text is None:
@@ -2164,20 +2163,16 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
         )
     if share_state.get("reset"):
         # keryxd's log file itself resets on every keryxd restart (crash, manual, watchdog-
-        # triggered, or host reboot) - fold whatever this session already counted into a
-        # lifetime accumulator before zeroing, so the reported total keeps climbing across
-        # keryxd restarts instead of dropping back to 0. Only resets if the RigControl agent
-        # process itself restarts (lifetime_* lives in the same in-memory _log_event_state).
-        share_state["lifetime_accepted_shares"] += share_state["accepted_shares"]
-        share_state["lifetime_submit_block_shares"] += share_state["submit_block_shares"]
+        # triggered, or host reboot) - treat that as a genuinely new session and zero both
+        # counts instead of carrying them forward.
         share_state["accepted_shares"] = 0
         share_state["submit_block_shares"] = 0
     for match in accepted_re.finditer(new_text):
         share_state["accepted_shares"] += int(match.group(1))
     for match in submit_block_re.finditer(new_text):
         share_state["submit_block_shares"] += int(match.group(1))
-    accepted_shares = share_state["lifetime_accepted_shares"] + share_state["accepted_shares"]
-    submit_block_shares = share_state["lifetime_submit_block_shares"] + share_state["submit_block_shares"]
+    accepted_shares = share_state["accepted_shares"]
+    submit_block_shares = share_state["submit_block_shares"]
     _named_miner_version(name, force=share_state.get("reset", False))
     return _build_miner_result(
         "ok", name,

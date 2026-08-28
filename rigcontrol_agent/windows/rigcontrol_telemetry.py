@@ -1659,7 +1659,9 @@ def collect_keryxd_stats():
     total_hashrate_hs (no separate accepted_shares field) so the
     dashboard's existing fmtRateHs() display path - which already
     auto-scales through kH/s, MH/s, GH/s, TH/s, PH/s for arbitrarily
-    large numbers - picks this up for free.
+    large numbers - picks this up for free. Resets to 0 whenever keryxd
+    itself restarts (log file replaced/truncated) - a new keryxd session
+    starts a fresh count rather than carrying the old one forward.
     """
     default_log_path = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "keryxd.log")
     log_path = os.environ.get("KERYXD_LOG_PATH", default_log_path)
@@ -1668,23 +1670,19 @@ def collect_keryxd_stats():
     submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
     count_re = submit_block_re if log_style == "blocks" else accepted_re
     share_state = _log_event_state.setdefault(
-        log_path, {"offset": 0, "accepted_shares": 0, "lifetime_accepted_shares": 0}
+        log_path, {"offset": 0, "accepted_shares": 0}
     )
     new_text = _read_new_log_bytes(log_path, share_state)
     if new_text is None:
         return _build_miner_result("error", "keryxd", error=f"could not read log file '{log_path}'")
     if share_state.get("reset"):
         # keryxd's own log file resets on every keryxd restart (crash, manual, watchdog-
-        # triggered, or host reboot) - fold whatever this session already counted into a
-        # lifetime accumulator before zeroing, so the reported total keeps climbing across
-        # keryxd restarts instead of dropping back to 0. Only resets if the RigControl agent
-        # process itself restarts (lifetime_accepted_shares lives in the same in-memory
-        # _log_event_state as everything else here).
-        share_state["lifetime_accepted_shares"] += share_state["accepted_shares"]
+        # triggered, or host reboot) - treat that as a genuinely new session and zero the
+        # count instead of carrying it forward.
         share_state["accepted_shares"] = 0
     for match in count_re.finditer(new_text):
         share_state["accepted_shares"] += int(match.group(1))
-    accepted_shares = share_state["lifetime_accepted_shares"] + share_state["accepted_shares"]
+    accepted_shares = share_state["accepted_shares"]
     return _build_miner_result(
         "ok", "keryxd",
         algorithms=[_build_algo_entry("keryxd-node", hashrate_hs=accepted_shares)],
