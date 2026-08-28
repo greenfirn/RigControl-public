@@ -7460,12 +7460,18 @@ function buildRigGpuItemObject(values, stash) {
     poolUrls = poolUrls.map((u) => (u || "").trim()).filter((u) => u !== "");
     let poolSsl = false;
     let poolUrl = poolUrls[0] || "";
-    if (poolUrl.startsWith("stratum+ssl://")) {
-        poolSsl = true;
-        poolUrl = poolUrl.slice("stratum+ssl://".length);
-    } else if (poolUrl.startsWith("stratum+tcp://")) {
-        poolSsl = false;
-        poolUrl = poolUrl.slice("stratum+tcp://".length);
+    // A literal override like "stratum+tcp://%URL%" or "stratum+ssl://%URL%" (Miner Configuration's
+    // POOL field) is a template, not a resolved address yet - the %URL% token gets substituted
+    // rig-side later, so its scheme prefix must stay exactly as typed here rather than being
+    // stripped off as if this were already a real host:port address.
+    if (!poolUrl.includes("%URL%")) {
+        if (poolUrl.startsWith("stratum+ssl://")) {
+            poolSsl = true;
+            poolUrl = poolUrl.slice("stratum+ssl://".length);
+        } else if (poolUrl.startsWith("stratum+tcp://")) {
+            poolSsl = false;
+            poolUrl = poolUrl.slice("stratum+tcp://".length);
+        }
     }
     if (poolUrls.length > 0) poolUrls[0] = poolUrl;
     let resolvedMinerUrl;
@@ -7938,11 +7944,19 @@ function parseRigGpuJsonFromRaw(rawText) {
     return null;
 }
 function resolveHiveosUrlToken(url, poolUrls) {
-    if (url && url !== "%URL%") return url;
-    if (Array.isArray(poolUrls) && poolUrls.length > 0 && typeof poolUrls[0] === "string") {
-        return poolUrls[0];
+    if (!url) return url || "";
+    // Handles both a bare "%URL%" token and a scheme-wrapped one (e.g. "stratum+tcp://%URL%",
+    // used by miners like keryx-miner-supr that require an explicit scheme) - only the token
+    // itself gets substituted, any surrounding scheme prefix the user typed stays exactly as-is.
+    if (url === "%URL%") {
+        return Array.isArray(poolUrls) && poolUrls.length > 0 && typeof poolUrls[0] === "string"
+            ? poolUrls[0]
+            : "";
     }
-    return url || "";
+    if (url.includes("%URL%") && Array.isArray(poolUrls) && poolUrls.length > 0 && typeof poolUrls[0] === "string" && poolUrls[0]) {
+        return url.split("%URL%").join(poolUrls[0]);
+    }
+    return url;
 }
 function resolveHiveosServerPortTokens(server, port, poolUrls) {
     if (!server && !port) return "";
@@ -8272,10 +8286,16 @@ function resolveUrlTokenForClipboard(items) {
         const url = item.miner_config.url;
         if (typeof url !== "string" || !url.includes("%URL%")) return item;
         if (item.pool && String(item.pool).trim()) return item;
-        const realUrl = Array.isArray(item.pool_urls) && item.pool_urls.length > 0
+        let realUrl = Array.isArray(item.pool_urls) && item.pool_urls.length > 0
             ? (item.pool_urls[0] || "").trim()
             : "";
         if (!realUrl) return item;
+        // If the template itself already wraps the token in a scheme (e.g. "stratum+tcp://%URL%"),
+        // and the resolved pool address also happens to carry one, substitute the bare address so
+        // the template's own scheme wins instead of doubling up (e.g. "stratum+tcp://stratum+ssl://...").
+        if (/^stratum\+(ssl|tcp):\/\/%URL%/i.test(url) && /^stratum\+(ssl|tcp):\/\//i.test(realUrl)) {
+            realUrl = bareFsPoolUrl(realUrl);
+        }
         return {
             ...item,
             miner_config: { ...item.miner_config, url: url.split("%URL%").join(realUrl) },
