@@ -17,6 +17,7 @@ sudo rm -v keryx-node-v1.5.5-PoM-linux-amd64.zip
 # enable, start the node, watch node output/service logs
 
 # --disable-upnp
+# --nologfiles
 # --ram-scale=10.0
 # --addpeer=141.95.35.181
 

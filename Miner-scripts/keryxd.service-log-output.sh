@@ -17,6 +17,7 @@ sudo rm -v keryx-node-v1.5.5-PoM-linux-amd64.zip
 # enable, start the node, watch node output/service logs
 
 # --disable-upnp
+# --nologfiles
 # --ram-scale=10.0
 # --addpeer=141.95.35.181
 
@@ -40,7 +41,7 @@ ExecStart=/bin/bash -c '\
             tail -c 10485760 /tmp/keryxd.log > /tmp/keryxd.log.tmp 2>/dev/null && cat /tmp/keryxd.log.tmp > /tmp/keryxd.log && rm -f /tmp/keryxd.log.tmp; \
         fi; \
     done ) & \
-    /opt/miners/keryx-node/keryxd --utxoindex --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110 2>&1 | tee -a /tmp/keryxd.log'
+    /opt/miners/keryx-node/keryxd --utxoindex --nologfiles --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110 2>&1 | tee -a /tmp/keryxd.log'
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
