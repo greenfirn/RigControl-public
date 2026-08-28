@@ -17,7 +17,7 @@ convert_old_miner_name() {
         *)       echo "$name" ;;
     esac
 }
-RIG_GPU_JSON_KEYS=" ALGO PASS ARGS POOL POOL_URLS TEMPLATE WALLET_ADDR MINER CUSTOM_MINER CUSTOM_MINER_URL TARGET_IMAGE TARGET_NAME RESET_OC APPLY_OC HUGEPAGES CPU_CONFIG TLS CPU "
+RIG_GPU_JSON_KEYS=" ALGO PASS ARGS POOL POOL_URLS MINER_COMMAND TEMPLATE WALLET_ADDR MINER CUSTOM_MINER CUSTOM_MINER_URL TARGET_IMAGE TARGET_NAME RESET_OC APPLY_OC HUGEPAGES CPU_CONFIG TLS CPU "
 RIG_GPU_JQ_FILTER=$(cat <<'JQ'
   .items[0] as $it
   | ($it.miner_config // {}) as $mc
@@ -26,17 +26,9 @@ RIG_GPU_JQ_FILTER=$(cat <<'JQ'
       ALGO: ($mc.algo // ""),
       PASS: ($mc.pass // ""),
       ARGS: ($mc.user_config // ""),
-      POOL: (if (($mc.url // "") == "") then "" else
-          (if ($is_custom) then "" elif ($it.pool_ssl == true) then "stratum+ssl://" else "stratum+tcp://" end) + $mc.url
-        end),
-      POOL_URLS: (
-          ($it.pool_urls // [])
-          | map(sub("^stratum\\+ssl://"; "") | sub("^stratum\\+tcp://"; ""))
-          | (if $is_custom then . else
-              map(if ($it.pool_ssl == true) then "stratum+ssl://" + . else "stratum+tcp://" + . end)
-            end)
-          | join("|")
-        ),
+      POOL: ($mc.url // ""),
+      POOL_URLS: (($it.pool_urls // []) | join("|")),
+      MINER_COMMAND: ($mc.miner_command // ""),
       TEMPLATE: ($mc.template // ""),
       WALLET_ADDR: ($mc.wallet_address // ""),
       MINER: (if $is_custom then "" else

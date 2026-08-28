@@ -19,7 +19,7 @@ convert_old_miner_name() {
         *)       echo "$name" ;;
     esac
 }
-RIG_GPU_JSON_KEYS=" ALGO PASS ARGS POOL POOL_URLS TEMPLATE WALLET_ADDR MINER CUSTOM_MINER CUSTOM_MINER_URL TARGET_IMAGE TARGET_NAME RESET_OC APPLY_OC HUGEPAGES CPU_CONFIG TLS CPU "
+RIG_GPU_JSON_KEYS=" ALGO PASS ARGS POOL POOL_URLS MINER_COMMAND TEMPLATE WALLET_ADDR MINER CUSTOM_MINER CUSTOM_MINER_URL TARGET_IMAGE TARGET_NAME RESET_OC APPLY_OC HUGEPAGES CPU_CONFIG TLS CPU "
 RIG_GPU_JQ_FILTER=$(cat <<'JQ'
   .items[0] as $it
   | ($it.miner_config // {}) as $mc
@@ -30,6 +30,7 @@ RIG_GPU_JQ_FILTER=$(cat <<'JQ'
       ARGS: ($mc.user_config // ""),
       POOL: ($mc.url // ""),
       POOL_URLS: (($it.pool_urls // []) | join("|")),
+      MINER_COMMAND: ($mc.miner_command // ""),
       TEMPLATE: ($mc.template // ""),
       WALLET_ADDR: ($mc.wallet_address // ""),
       MINER: (if $is_custom then "" else
@@ -556,75 +557,6 @@ get_pool_url_list() {
     fi
     printf '%s\n' "${urls[@]}"
 }
-build_pool_cmd_args() {
-    local miner="$1"
-    local urls=()
-    mapfile -t urls < <(get_pool_url_list)
-    local bare_list=()
-    local h
-    for h in "${urls[@]}"; do
-        h="${h#stratum+ssl://}"
-        h="${h#stratum+tcp://}"
-        bare_list+=("$h")
-    done
-    local out=""
-    case "$miner" in
-        xmrig)
-            for h in "${bare_list[@]}"; do
-                out+=" -o $h -u $WALLET -p $PASS"
-            done
-            ;;
-        wildrig-multi)
-            for h in "${bare_list[@]}"; do
-                out+=" --url $h --user $WALLET --pass $PASS"
-            done
-            ;;
-        gminer)
-            for h in "${bare_list[@]}"; do
-                out+=" --server $h --user $WALLET"
-            done
-            ;;
-        trex)
-            for u in "${urls[@]}"; do
-                out+=" -o $u -u $WALLET -p $PASS"
-            done
-            ;;
-        teamredminer)
-            for u in "${urls[@]}"; do
-                out+=" -o $u -u $WALLET -p $PASS"
-            done
-            ;;
-        rigel)
-            for u in "${urls[@]}"; do
-                out+=" -o $u -u $WALLET"
-            done
-            ;;
-        lolminer)
-            for u in "${urls[@]}"; do
-                out+=" --pool $u --user $WALLET --pass $PASS"
-            done
-            ;;
-        srbminer|srbminer-cpu|srbminer-gpu)
-            local joined
-            joined=$(IFS=,; echo "${bare_list[*]}")
-            out=" --pool $joined --wallet $WALLET"
-            ;;
-        bzminer)
-            local joined
-            joined=$(IFS=' '; echo "${urls[*]}")
-            out=" -p $joined -w $WALLET"
-            ;;
-        onezerominer)
-            local joined
-            joined=$(IFS=,; echo "${urls[*]}")
-            out=" --pool $joined --wallet $WALLET"
-            ;;
-        *)
-            out=" -o $POOL -u $WALLET -p $PASS"
-            ;;
-    esac
-    echo "$out"
-}
 convert_bzminer_oc_json_to_args() {
     local input="$1"
     if [[ ! "$input" =~ ^[[:space:]]*\" ]]; then
@@ -793,19 +725,21 @@ get_start_cmd() {
         echo "$cmd"
         return
     fi
+    # MINER_COMMAND is the FULL command line (algo flag, pool/wallet/pass/TLS flags, and any
+    # extra args the user typed) built entirely dashboard-side at Save time, with %WALLET%/
+    # %PASS%/%WORKER_NAME%/etc. tokens already substituted above. This script just drops it in
+    # after $MINER_BIN and runs it - no per-miner flag decisions happen here anymore. xmrig and
+    # bzminer are the two exceptions: their raw ARGS may be an OC-JSON blob (built by their
+    # optional overclock/CPU editors in the dashboard) that still needs rig-side conversion into
+    # flags via convert_xmrig_user_config_to_args/convert_bzminer_oc_json_to_args, plus xmrig's
+    # CPU-config/hugepages handling - those conversions are appended after MINER_COMMAND for
+    # just those two miners.
     case "$name" in
-        bzminer)
-            local bz_args
-            bz_args="$(convert_bzminer_oc_json_to_args "$ARGS")"
-            cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args bzminer) --pool_password $PASS $bz_args"
-            ;;
-        wildrig-multi)
-            if [[ "$POOL_SSL" == "true" ]]; then
-                echo "$(date): WARNING — wildrig-multi has no SSL/TLS support; connecting to $POOL_HOST over plain TCP instead of the requested SSL." >&2
-            fi
-            cmd="$MINER_BIN --algo $ALGO$(build_pool_cmd_args wildrig-multi) $ARGS"
-            ;;
         xmrig)
+            if [[ -z "$MINER_COMMAND" ]]; then
+                echo "[ERROR] MINER_COMMAND is empty for xmrig - re-save the flightsheet in the dashboard." >&2
+                return
+            fi
             local xmrig_args
             xmrig_args="$(convert_xmrig_user_config_to_args "$ARGS")"
             local xmrig_cpu_flags
@@ -813,51 +747,27 @@ get_start_cmd() {
             if [[ -n "$xmrig_cpu_flags" ]]; then
                 xmrig_args="$(echo "$xmrig_args $xmrig_cpu_flags" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
             fi
-            local tls_flag=""
-            if [[ ("$POOL_SSL" == "true" || "$TLS" == "1" || "$TLS" == "true") && "$xmrig_args" != *"--tls"* ]]; then
-                tls_flag="--tls"
-            fi
             if [[ ("$CPU" == "0" || "$CPU" == "false") && "$xmrig_args" != *"--no-cpu"* ]]; then
                 xmrig_args="$(echo "$xmrig_args --no-cpu" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
             fi
             apply_xmrig_hugepages "$HUGEPAGES"
-            cmd="$MINER_BIN $tls_flag -a $ALGO$(build_pool_cmd_args xmrig) $xmrig_args"
+            cmd="$MINER_BIN $MINER_COMMAND $xmrig_args"
             ;;
-        srbminer|srbminer-cpu|srbminer-gpu)
-            local srb_tls_flag=""
-            if [[ "$ARGS" != *"--tls "* ]]; then
-                local srb_tls="false"
-                [[ "$POOL_SSL" == "true" || "$TLS" == "1" || "$TLS" == "true" ]] && srb_tls="true"
-                srb_tls_flag="--tls $srb_tls"
+        bzminer)
+            if [[ -z "$MINER_COMMAND" ]]; then
+                echo "[ERROR] MINER_COMMAND is empty for bzminer - re-save the flightsheet in the dashboard." >&2
+                return
             fi
-            local srb_algo_flag="--algorithm"
-            [[ "$name" == "srbminer-cpu" ]] && srb_algo_flag="--algorithm-cpu"
-            [[ "$name" == "srbminer-gpu" ]] && srb_algo_flag="--algorithm-gpu"
-            cmd="$MINER_BIN $srb_tls_flag $srb_algo_flag $ALGO$(build_pool_cmd_args srbminer) --password $PASS $ARGS"
+            local bz_args
+            bz_args="$(convert_bzminer_oc_json_to_args "$ARGS")"
+            cmd="$MINER_BIN $MINER_COMMAND $bz_args"
             ;;
-        rigel)
-            cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args rigel) -p $PASS $ARGS"
-            ;;
-        lolminer)
-            cmd="$MINER_BIN --algo $ALGO$(build_pool_cmd_args lolminer) $ARGS"
-            ;;
-        onezerominer)
-            cmd="$MINER_BIN --algo $ALGO$(build_pool_cmd_args onezerominer) --pass $PASS $ARGS"
-            ;;
-        gminer)
-            local gm_ssl_flag=""
-            if [[ "$ARGS" != *"--ssl "* ]]; then
-                local gm_ssl="0"
-                [[ "$POOL_SSL" == "true" ]] && gm_ssl="1"
-                gm_ssl_flag="--ssl $gm_ssl"
+        wildrig-multi|srbminer|srbminer-cpu|srbminer-gpu|rigel|lolminer|onezerominer|gminer|teamredminer|trex)
+            if [[ -z "$MINER_COMMAND" ]]; then
+                echo "[ERROR] MINER_COMMAND is empty for $name - re-save the flightsheet in the dashboard." >&2
+                return
             fi
-            cmd="$MINER_BIN $gm_ssl_flag --algo $ALGO$(build_pool_cmd_args gminer) --pass $PASS $ARGS"
-            ;;
-        teamredminer)
-            cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args teamredminer) $ARGS"
-            ;;
-        trex)
-            cmd="$MINER_BIN -a $ALGO$(build_pool_cmd_args trex) $ARGS"
+            cmd="$MINER_BIN $MINER_COMMAND"
             ;;
         *)
             echo "[ERROR] Unknown miner: $name" >&2
@@ -944,15 +854,20 @@ ARGS=$(resolve_pass "$ARGS")
 ARGS=$(resolve_url_indexed "$ARGS")
 ARGS=$(resolve_url "$ARGS")
 ARGS=$(resolve_algo "$ARGS")
-POOL_SSL="false"
-POOL_HOST="$POOL"
-case "$POOL" in
-    stratum+ssl://*) POOL_SSL="true";  POOL_HOST="${POOL#stratum+ssl://}" ;;
-    stratum+tcp://*) POOL_SSL="false"; POOL_HOST="${POOL#stratum+tcp://}" ;;
-esac
+# MINER_COMMAND is the dashboard-built full command line for known miners (algo flag, pool/
+# wallet/pass/TLS flags, and any extra args baked in already) - it gets the exact same token
+# pipeline as ARGS/ALGO above, since it can contain the same %WORKER_NAME%/%WALLET%/%PASS%/
+# %URL%/%URL%[N]/%ALGO% tokens.
+MINER_COMMAND=$(get_rig_conf "MINER_COMMAND" "0")
+MINER_COMMAND=$(resolve_worker_name "$MINER_COMMAND")
+MINER_COMMAND=$(resolve_wallet "$MINER_COMMAND")
+MINER_COMMAND=$(resolve_wallet_addr "$MINER_COMMAND")
+MINER_COMMAND=$(resolve_pass "$MINER_COMMAND")
+MINER_COMMAND=$(resolve_url_indexed "$MINER_COMMAND")
+MINER_COMMAND=$(resolve_url "$MINER_COMMAND")
+MINER_COMMAND=$(resolve_algo "$MINER_COMMAND")
 HUGEPAGES=$(get_rig_conf "HUGEPAGES" "0")
 CPU_CONFIG=$(get_rig_conf "CPU_CONFIG" "0")
-TLS=$(get_rig_conf "TLS" "0")
 CPU=$(get_rig_conf "CPU" "0")
 EOF
 sudo tee /usr/local/bin/lib/03-cpu_threads.sh > /dev/null <<'EOF'

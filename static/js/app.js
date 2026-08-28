@@ -7466,6 +7466,104 @@ function collectFsFieldValues() {
         CUSTOM_MINER_URL: val("fs-field-custom-miner-url"),
     };
 }
+// Rig-side used to build each known miner's pool/wallet/pass/TLS-SSL flags itself
+// (build_pool_cmd_args() plus per-miner TLS/SSL derivation in Miner-scripts/lib/02-load_configs.sh).
+// That decision-making now happens here, once, at Save time, so the rig-side scripts just load
+// this and run it - no flag-building, no scheme add/strip/flip left there for known miners.
+// %WALLET%/%PASS% are kept as literal tokens (not resolved here) because only the rig itself
+// knows their final values - %WALLET% in particular can have %WORKER_NAME% baked into it via
+// the flightsheet's TEMPLATE field, and only the rig knows its own hostname.
+function buildKnownMinerPoolArgs(minerName, poolUrls, poolSsl, tlsOn, argsText) {
+    const urls = poolUrls.length > 0 ? poolUrls : [""];
+    const bareList = urls.map((u) => bareFsPoolUrl(u));
+    const args = argsText || "";
+    const W = "%WALLET%";
+    const P = "%PASS%";
+    const miner = (minerName || "").trim().toLowerCase();
+    switch (miner) {
+        case "xmrig": {
+            const tlsFlag = (poolSsl || tlsOn) && !args.includes("--tls") ? "--tls " : "";
+            return (tlsFlag + bareList.map((h) => `-o ${h} -u ${W} -p ${P}`).join(" ")).trim();
+        }
+        case "wildrig-multi":
+        case "wildrig":
+            return bareList.map((h) => `--url ${h} --user ${W} --pass ${P}`).join(" ");
+        case "gminer": {
+            const sslFlag = !args.includes("--ssl ") ? `--ssl ${poolSsl ? "1" : "0"} ` : "";
+            return (sslFlag + bareList.map((h) => `--server ${h} --user ${W}`).join(" ") + ` --pass ${P}`).trim();
+        }
+        case "trex":
+        case "t-rex":
+            return urls.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
+        case "teamredminer":
+            return urls.map((u) => `-o ${u} -u ${W} -p ${P}`).join(" ");
+        case "rigel":
+            return (urls.map((u) => `-o ${u} -u ${W}`).join(" ") + ` -p ${P}`).trim();
+        case "lolminer":
+            return urls.map((u) => `--pool ${u} --user ${W} --pass ${P}`).join(" ");
+        case "srbminer":
+        case "srbminer-multi":
+        case "srbminer-cpu":
+        case "srbminer-gpu":
+        case "srbminer-multi-cpu": {
+            const tlsFlag = !args.includes("--tls ") ? `--tls ${(poolSsl || tlsOn) ? "true" : "false"} ` : "";
+            return (tlsFlag + `--pool ${bareList.join(",")} --wallet ${W} --password ${P}`).trim();
+        }
+        case "bzminer":
+            return `-p ${urls.join(" ")} -w ${W} --pool_password ${P}`;
+        case "onezerominer":
+            return `--pool ${urls.join(",")} --wallet ${W} --pass ${P}`;
+        default:
+            return "";
+    }
+}
+function knownMinerAlgoFlag(minerLower) {
+    switch (minerLower) {
+        case "xmrig":
+        case "bzminer":
+        case "trex":
+        case "t-rex":
+        case "teamredminer":
+        case "rigel":
+            return "-a";
+        case "wildrig-multi":
+        case "wildrig":
+        case "gminer":
+        case "lolminer":
+        case "onezerominer":
+            return "--algo";
+        case "srbminer":
+        case "srbminer-multi":
+            return "--algorithm";
+        case "srbminer-cpu":
+        case "srbminer-multi-cpu":
+            return "--algorithm-cpu";
+        case "srbminer-gpu":
+            return "--algorithm-gpu";
+        default:
+            return "";
+    }
+}
+// Dashboard builds the FULL known-miner command line (algo flag, pool/wallet/pass/TLS flags,
+// and any raw extra args the user typed) once, at Save time. Rig-side just substitutes
+// %WALLET%/%PASS%/%WORKER_NAME% (and any other tokens) into this string and runs it - no
+// per-miner flag decisions happen rig-side anymore. xmrig and bzminer are the two exceptions:
+// their raw ARGS may be an OC-JSON blob (built by their optional overclock/CPU editors here in
+// the dashboard) that still needs rig-side conversion into flags via
+// convert_xmrig_user_config_to_args / convert_bzminer_oc_json_to_args, plus xmrig's
+// CPU-config/hugepages handling - those stay rig-side and get appended AFTER this command
+// string, so this function deliberately leaves ARGS out of the command for those two miners.
+function buildKnownMinerCommand(minerName, algoText, poolUrls, poolSsl, tlsOn, argsText) {
+    const miner = (minerName || "").trim().toLowerCase();
+    const algoFlag = knownMinerAlgoFlag(miner);
+    if (!algoFlag) return "";
+    const poolArgs = buildKnownMinerPoolArgs(minerName, poolUrls, poolSsl, tlsOn, argsText);
+    let cmd = `${algoFlag} ${algoText || ""} ${poolArgs}`;
+    if (miner !== "xmrig" && miner !== "bzminer") {
+        cmd += ` ${argsText || ""}`;
+    }
+    return cmd.replace(/\s+/g, " ").trim();
+}
 function buildRigGpuItemObject(values, stash) {
     const isCustom = !!values.CUSTOM_MINER && values.CUSTOM_MINER !== "0";
     // The Miner Configuration modal's own POOL field (fs-mc-pool-token) is a literal override -
@@ -7550,6 +7648,20 @@ function buildRigGpuItemObject(values, stash) {
         minerConfig.user_config = userConfigForJson;
     } else {
         delete minerConfig.user_config;
+    }
+    if (!isCustom) {
+        // Rig-side just substitutes %WALLET%/%PASS%/%WORKER_NAME% tokens into this and runs
+        // it directly - it no longer decides algo flag syntax, pool flag format, or TLS/SSL
+        // flags for known miners at all. (xmrig/bzminer still get their raw ARGS - possibly an
+        // OC-JSON blob - converted and appended rig-side; see buildKnownMinerCommand.)
+        const minerCommand = buildKnownMinerCommand(values.MINER, values.ALGO || "", poolUrls, poolSsl, values.TLS === "true", userConfigForJson || "");
+        if (minerCommand) {
+            minerConfig.miner_command = minerCommand;
+        } else if ("miner_command" in minerConfig) {
+            delete minerConfig.miner_command;
+        }
+    } else if ("miner_command" in minerConfig) {
+        delete minerConfig.miner_command;
     }
     if (!isCustom && minerLowerForStash === "xmrig") {
         if (stash.fsXmrigCpuConfigJson) {
