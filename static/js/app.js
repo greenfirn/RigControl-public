@@ -10266,20 +10266,40 @@ function populateOcAlgoApplySelect() {
         select.value = "";
     }
 }
+// Tolerant of the whitespace variations seen in older/hand-edited Overclock profiles (extra
+// spaces, tabs) between "sudo", the path, and (for the invoke line) the algo name - a profile
+// saved with irregular spacing around either line used to go undetected/unmatched by the old
+// single-literal-space regexes below, which is why an older profile's already-saved invoke line
+// could silently fail to show up as selected when the profile was first loaded.
+const OC_INVOKE_LINE_RE = /sudo[ \t]+\/usr\/local\/bin\/gpu_apply_ocs\.sh[ \t]+(\S+)[ \t]*/;
+const OC_CHMOD_ANCHOR_RE = /sudo[ \t]+chmod[ \t]+\+x[ \t]+\/usr\/local\/bin\/gpu_apply_ocs\.sh[ \t]*/;
 function onOcAlgoApplySelectChange() {
     const select = document.getElementById("oc-algo-apply-select");
     const rawEl = document.getElementById("oc-raw");
     if (!select || !rawEl) return;
     ocApplyInvokeAlgo = select.value;
-    let text = rawEl.value.replace(/\n*sudo \/usr\/local\/bin\/gpu_apply_ocs\.sh \S+\s*$/, "");
-    text = text.replace(/\s+$/, "");
-    if (ocApplyInvokeAlgo) {
-        text += `\n\nsudo /usr/local/bin/gpu_apply_ocs.sh ${ocApplyInvokeAlgo}\n`;
-    } else {
-        text += "\n";
-    }
-    rawEl.value = text;
+    rawEl.value = setOcApplyInvokeLine(rawEl.value, ocApplyInvokeAlgo);
     autoResizeOcRaw();
+}
+// Strips any existing invoke line (wherever it appears - not just as the literal last line) and,
+// if an algo is picked, re-inserts one right after the "sudo chmod +x .../gpu_apply_ocs.sh"
+// anchor line rather than blindly at the very end of the raw text - so content a user has added
+// after that line (notes, extra commands) doesn't end up before the invoke line. Scripts with no
+// chmod +x anchor at all (fully custom/hand-written ones) fall back to appending at the end.
+function setOcApplyInvokeLine(scriptText, algo) {
+    let text = (scriptText || "").replace(new RegExp("\\n*" + OC_INVOKE_LINE_RE.source + "\\s*"), "");
+    if (!algo) {
+        return text.replace(/\s+$/, "") + "\n";
+    }
+    const invokeLine = `sudo /usr/local/bin/gpu_apply_ocs.sh ${algo}`;
+    const anchor = text.match(OC_CHMOD_ANCHOR_RE);
+    if (anchor) {
+        const insertAt = anchor.index + anchor[0].length;
+        const before = text.slice(0, insertAt).replace(/[ \t]+$/, "");
+        const after = text.slice(insertAt).replace(/^[ \t]*\n?/, "");
+        return `${before}\n\n${invokeLine}\n${after ? "\n" + after : ""}`.replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "\n");
+    }
+    return text.replace(/\s+$/, "") + `\n\n${invokeLine}\n`;
 }
 function parseOcScriptRows(scriptText) {
     const rows = [];
@@ -10321,7 +10341,11 @@ function getOcScriptAlgoSummary(scriptText) {
     return names.join(", ");
 }
 function getOcApplyInvokeAlgoFromScript(scriptText) {
-    const m = (scriptText || "").match(/sudo \/usr\/local\/bin\/gpu_apply_ocs\.sh (\S+)\s*$/);
+    // Matches anywhere in the script, not just as the literal last line - older profiles that
+    // predate the "insert right after the chmod +x anchor" behavior in setOcApplyInvokeLine()
+    // above may have it elsewhere, and OC_INVOKE_LINE_RE's tolerant spacing means this also
+    // catches profiles saved with irregular whitespace.
+    const m = (scriptText || "").match(OC_INVOKE_LINE_RE);
     return m ? m[1] : "";
 }
 function newOverclock() {
