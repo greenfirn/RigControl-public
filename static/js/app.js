@@ -9393,6 +9393,27 @@ function wireUpFsTemplateToken(tokenId, tokenText) {
         e.stopPropagation();
     });
 }
+// Same insert-at-cursor idiom as wireUpFsTemplateToken above, but hardcoded to
+// #fs-pools-textarea instead of document.activeElement - it's the only field in the Manage
+// Pools modal, so there's no ambiguity about where a scheme prefix should land.
+function wireUpFsPoolsSchemeToken(tokenId, tokenText) {
+    const el = document.getElementById(tokenId);
+    const ta = document.getElementById("fs-pools-textarea");
+    if (!el || !ta) return;
+    el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const start = ta.selectionStart ?? ta.value.length;
+        const end = ta.selectionEnd ?? ta.value.length;
+        ta.value = ta.value.slice(0, start) + tokenText + ta.value.slice(end);
+        const caretPos = start + tokenText.length;
+        ta.focus();
+        ta.setSelectionRange(caretPos, caretPos);
+    });
+    el.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+}
 function sendItFs() {
     const raw = fsFinalizeRawForAction().trim();
     if (!raw) {
@@ -14211,6 +14232,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     wireUpFsTemplateToken("algo-value-token", "%ALGO%");
     wireUpFsTemplateToken("wallet-template-token-wal", "%WAL%");
     wireUpFsTemplateToken("wallet-worker-combo-token", "%WAL%.%WORKER_NAME%");
+    wireUpFsPoolsSchemeToken("fs-pools-scheme-tcp", "stratum+tcp://");
+    wireUpFsPoolsSchemeToken("fs-pools-scheme-ssl", "stratum+ssl://");
     document.getElementById('btn-clear-oc').addEventListener('click', function() {
         document.querySelectorAll('.selected').forEach(item => {
             item.classList.remove('active');

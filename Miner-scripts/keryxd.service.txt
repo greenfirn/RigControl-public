@@ -1,12 +1,18 @@
+# Writes the installer to disk and runs it once. Bump VERSION inside (re-run this whole block,
+# or edit /usr/local/bin/keryx-node-install.sh directly) to install/update to a different
+# keryx-node release
 sudo apt install -y unzip
+sudo tee /usr/local/bin/keryx-node-install.sh > /dev/null <<'EOF'
+#!/bin/bash
+set -Eeuo pipefail
 
 # Bump this to install/update to a different keryx-node release - every wget/unzip/version
-# check below (both the initial install and the #update block at the bottom) derives from it.
+# check below derives from it.
 VERSION="v1.5.5-PoM"
 
-# Where keryx-node lives on this rig. keryx-node unpacks into $INSTALL_DIR/keryx-node - if you
-# change INSTALL_DIR, also re-run the 'write the service file' block below so WorkingDirectory/
-# ExecStart in the systemd unit stay pointed at the right path.
+# Where keryx-node lives on this rig - only used for the download/extract below. keryx-node
+# unpacks into $INSTALL_DIR/keryx-node. WorkingDirectory/ExecStart in the service file below are
+# hardcoded to /opt/miners/keryx-node - if you change INSTALL_DIR, update those two lines too.
 INSTALL_DIR="/opt/miners"
 NODE_DIR="$INSTALL_DIR/keryx-node"
 
@@ -20,6 +26,14 @@ sudo wget -O "$ZIP" "$URL"
 sudo unzip -o "$ZIP"
 sudo rm -v "$ZIP"
 "$NODE_DIR/keryxd" --version
+EOF
+sudo chmod +x /usr/local/bin/keryx-node-install.sh
+sudo /usr/local/bin/keryx-node-install.sh
+
+# if using different location, update details below in the service file:
+# ** must be the full absolute path, can not be the home shortcut ~/ **
+# 'WorkingDirectory=/' - your node location
+# 'ExecStart=/' - path to the node itself
 
 # copy/paste from 'write the service file' to 'reload the daemon' into your rigs console and press enter to write and load the service file
 # enable, start the node, watch node output/service logs
@@ -30,9 +44,7 @@ sudo rm -v "$ZIP"
 # --addpeer=141.95.35.181
 
 # write the service file
-# NOTE: this heredoc is intentionally unquoted (<<EOF, not <<'EOF') so $NODE_DIR expands into
-# WorkingDirectory/ExecStart below - keep it that way if you edit this block.
-sudo tee /etc/systemd/system/keryxd.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/keryxd.service > /dev/null <<'EOF'
 [Unit]
 Description=Keryx Node
 After=network-online.target
@@ -41,8 +53,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$NODE_DIR
-ExecStart=$NODE_DIR/keryxd --utxoindex --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110
+WorkingDirectory=/opt/miners/keryx-node
+ExecStart=/opt/miners/keryx-node/keryxd --utxoindex --rpclisten=0.0.0.0:22110 --rpclisten-json=0.0.0.0:24110 --rpclisten-borsh=0.0.0.0:23110
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536

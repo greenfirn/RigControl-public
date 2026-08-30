@@ -1,12 +1,18 @@
+# Writes the installer to disk and runs it once. Bump VERSION inside (re-run this whole block,
+# or edit /usr/local/bin/keryx-miner-install.sh directly) to install/update to a different
+# keryx-miner release
 sudo apt install -y unzip
+sudo tee /usr/local/bin/keryx-miner-install.sh > /dev/null <<'EOF'
+#!/bin/bash
+set -Eeuo pipefail
 
 # Bump this to install/update to a different keryx-miner release - every wget/unzip/version
-# check below (both the initial install and the #update block further down) derives from it.
-VERSION="v0.5.0-PoM"
+# check below derives from it.
+VERSION="v0.5.2-PoM"
 
-# Where keryx-miner lives on this rig - keryx-miner unpacks directly into this dir. If you
-# change INSTALL_DIR, also re-run the 'write the service file' block below so WorkingDirectory/
-# ExecStart in the systemd unit stay pointed at the right path.
+# Where keryx-miner lives on this rig - only used for the download/extract below (it unpacks
+# directly into this dir). WorkingDirectory/ExecStart in the service file below are hardcoded to
+# /opt/miners/keryx-miner - if you change INSTALL_DIR, update those two lines too.
 INSTALL_DIR="/opt/miners/keryx-miner"
 
 ZIP="keryx-miner-${VERSION}-linux-amd64.zip"
@@ -18,6 +24,14 @@ sudo wget -O "$ZIP" "$URL"
 sudo unzip -o "$ZIP"
 sudo rm -v "$ZIP"
 "$INSTALL_DIR/keryx-miner" --version
+EOF
+sudo chmod +x /usr/local/bin/keryx-miner-install.sh
+sudo /usr/local/bin/keryx-miner-install.sh
+
+# if using different location, update details below in the service file:
+# ** paths must be the full absolute path, can not be the home shortcut ~/ **
+# 'WorkingDirectory=/' - your miner location
+# 'ExecStart=/' - path to the miner itself
 
 # update wallet address, node address
 # '--mining-address' - your wallet address
@@ -31,9 +45,7 @@ sudo rm -v "$ZIP"
 # enable, start the miner, watch miner output/service logs
 
 # write the service file
-# NOTE: this heredoc is intentionally unquoted (<<EOF, not <<'EOF') so $INSTALL_DIR expands into
-# WorkingDirectory/ExecStart below - keep it that way if you edit this block.
-sudo tee /etc/systemd/system/keryx-miner.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/keryx-miner.service > /dev/null <<'EOF'
 [Unit]
 Description=Keryx Miner
 After=network-online.target
@@ -42,10 +54,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$INSTALL_DIR
+WorkingDirectory=/opt/miners/keryx-miner
 #ExecStartPre=/usr/local/bin/gpu_apply_ocs.sh
 #ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
-ExecStart=$INSTALL_DIR/keryx-miner --mining-address keryx:************* --keryxd-address your-node-ip-address:22110
+ExecStart=/opt/miners/keryx-miner/keryx-miner --mining-address keryx:************* --keryxd-address your-node-ip-address:22110
 Restart=on-failure
 RestartSec=5
 #LimitNOFILE=65536
