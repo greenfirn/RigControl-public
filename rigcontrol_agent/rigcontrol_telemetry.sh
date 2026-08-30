@@ -799,6 +799,11 @@ def docker_containers_running():
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
 _custom_miner_last_pid = {}
+# keryx-miner/keryxd are hardcoded into the grep_pattern below (unlike other custom miners,
+# which only get grepped for once resolve_custom_miner() registers their name) so ps aux
+# catches them even before any slot has been registered - see the "unregistered hint" handling
+# in detect_running_miners() for why that matters.
+_UNREGISTERED_CUSTOM_HINT_NAMES = ("keryx-miner", "keryxd")
 def consume_miners_changed_flag():
     """Returns True if detect_running_miners() has observed the running-miner
     set change since this was last called, then clears the flag (one-shot).
@@ -823,7 +828,17 @@ def detect_running_miners():
     re-read rigcontrol-agent.conf from disk immediately rather than waiting for its normal
     mtime-diff check - a miner restart is exactly the moment a conf edit (e.g. adding the
     matching API port for a version that just enabled its stats API) is most likely to need to
-    take effect right away, without waiting on the next incidental conf write."""
+    take effect right away, without waiting on the next incidental conf write.
+    A process line that matches _UNREGISTERED_CUSTOM_HINT_NAMES but not any registered slot
+    (i.e. the flightsheet's custom miner hasn't been resolved into a slot yet - fresh agent
+    start racing the miner, a flightsheet edit while the agent was already running, etc.) is
+    recorded under a synthetic "_unregistered_hint_<name>" key purely so its
+    appearance/disappearance still changes new_set below and flips the changed-flag - a
+    slot-unaware match would otherwise be silently dropped every single poll, so
+    consume_miners_changed_flag() would never fire and resolve_custom_miner() would never get
+    a chance to register it, requiring a full agent restart to ever pick up hashrate. Once
+    resolve_custom_miner() runs and registers the slot, later polls match it as
+    "custom_log_<slot>" instead and the hint key naturally drops out of the set."""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
@@ -856,9 +871,17 @@ def detect_running_miners():
                         _agent_conf_cache["mtime"] = None
                         _named_miner_version(custom_names[_matched_slot], force=True)
                     continue
+                _matched_builtin = False
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
                     if proc_name in line_lower:
                         found[miner_name] = True
+                        _matched_builtin = True
+                        break
+                if _matched_builtin:
+                    continue
+                for _hint_name in _UNREGISTERED_CUSTOM_HINT_NAMES:
+                    if _hint_name in line_lower:
+                        found[f"_unregistered_hint_{_hint_name}"] = True
                         break
     except Exception as e:
         print(f"Error detecting native miner processes: {e}")
@@ -2038,11 +2061,32 @@ def collect_named_custom_miner_stats(slot):
         return _collect_named_miner_block_log_stats(name, log_path, mining_type)
     return _collect_named_miner_generic_log_stats(name, key, log_path, mining_type)
 def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
-    """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected block counts, and (on
-    builds that report it - confirmed on keryx-miner-supr 0.11.10) real per-device temp/fan/power/
-    clock/vram readings. Older builds/other custom miners that don't report those per-device fields
-    just get None there, and temp/fan/power for those still come from collect_nvidia_gpu_stats()
-    (the frontend already merges the system GPU list with each miner's own "gpus" list by index)."""
+    """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected OPoI SHARE counts, and
+    (on builds that report it) real per-device temp/fan/power/clock/vram readings. The API's own
+    JSON keys are literally named "accepted_blocks"/"rejected_blocks"/"blocks_accepted"/
+    "blocks_rejected" (kept as-is below since that's what the miner actually calls them), but for
+    keryx-MINER (this function) they count accepted/rejected OPoI shares this rig submitted, not
+    distinct blockchain blocks - "block" in that literal sense only applies to keryxD, the node
+    (see _collect_named_miner_block_log_stats() below, which really does count blocks off keryxd's
+    own log). Confirmed live via:
+      $ curl 127.0.0.1:3338/stats
+      {"started_epoch_s":..., "uptime_s":512, "synced":true, "opoi_challenge_active":false,
+       "mining_address":"keryx:...", "api_port":3338, "total_hashrate_hs":2163142,
+       "accepted_blocks":5, "rejected_blocks":0, "claimed_outputs":2913,
+       "claimed_sompi":303660659242, "escrow_pending_outputs":1451,
+       "escrow_pending_sompi":150064094454, "last_update_epoch_s":..., "devices":[
+         {"id":"#0 (NVIDIA GeForce RTX 3090)", "hashrate_hs":2163142, "blocks_accepted":5,
+          "blocks_rejected":0, "temp_c":57, "memory_temp_c":null, "fan_percent":92,
+          "power_draw_w":333.238}
+       ]}
+    (claimed_outputs/claimed_sompi/escrow_pending_outputs/escrow_pending_sompi are Keryx-protocol
+    wallet/escrow bookkeeping, not GPU or mining-rate data - not surfaced here, same as the Windows
+    agent's collect_keryx_stats(). power_w/core_mhz/mem_mhz/vram_total_mb/vram_used_mb/
+    efficiency_mhs_per_w below were never actually seen on a live response - kept only as harmless
+    fallbacks in case some other keryx-miner build/fork reports them under those older names.)
+    Older builds/other custom miners that don't report per-device fields at all just get None
+    there, and temp/fan/power for those still come from collect_nvidia_gpu_stats() (the frontend
+    already merges the system GPU list with each miner's own "gpus" list by index)."""
     data = None
     last_err = None
     for path in ("/stats", "/v1/miner/stats"):
@@ -2062,7 +2106,7 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
     # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
     # /stats response pasted from a live 0.11.10 rig. dev.get("id") or dev.get("name") and the
-    # accepted_blocks/rejected_blocks fallback below handle both the old and new shape, so this keeps
+    # accepted_shares/rejected_shares fallback below handle both the old and new shape, so this keeps
     # working across the schema change either direction without needing to pin a version. That same
     # 0.11.10 response also includes real per-device core_mhz/mem_mhz/fan_pct/power_w/temp_c/
     # vram_total_mb/vram_used_mb readings that were never being read before - extracted below into
@@ -2078,13 +2122,17 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
         parsed_devices.append((idx, gname, dev))
     parsed_devices.sort(key=lambda d: d[0])
     total_hr_hs = data.get("total_hashrate_hs", 0)
+    # Despite the API's own "accepted_blocks"/"rejected_blocks" key names, these are accepted/
+    # rejected OPoI SHARE counts for keryx-miner, not distinct blockchain blocks - see the
+    # docstring above. Named accepted_shares/rejected_shares here (rather than mirroring the API's
+    # own "_blocks" naming) so this doesn't read as literal block counts anywhere below.
     if "accepted_blocks" in data or "rejected_blocks" in data:
-        accepted_blocks = data.get("accepted_blocks", 0)
-        rejected_blocks = data.get("rejected_blocks", 0)
+        accepted_shares = data.get("accepted_blocks", 0)
+        rejected_shares = data.get("rejected_blocks", 0)
     else:
         shares = data.get("shares") or {}
-        accepted_blocks = shares.get("accepted", 0)
-        rejected_blocks = shares.get("rejected", 0)
+        accepted_shares = shares.get("accepted", 0)
+        rejected_shares = shares.get("rejected", 0)
     uptime_s = data.get("uptime_s", 0)
     cache = _named_miner_version_cache.setdefault(name, {"version": "", "queried": False, "last_uptime_s": None})
     # Newer keryx-miner-supr builds (confirmed on 0.11.10) report their own "version" field directly
@@ -2099,18 +2147,26 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     elif cache.get("last_uptime_s") is None or uptime_s < cache["last_uptime_s"]:
         _named_miner_version(name, force=True)
     cache["last_uptime_s"] = uptime_s
-    # Same reasoning as the Windows agent's collect_keryx_stats(): the API only ever reports
-    # accepted/rejected in AGGREGATE, never broken down per device, so there's no way to honestly
-    # attribute them to a specific GPU on a multi-GPU rig. On a single-GPU rig there's no ambiguity -
-    # the one GPU IS the whole aggregate - so attribute the totals to it directly.
+    # Confirmed live (see docstring above), each device object reports its own real
+    # "blocks_accepted"/"blocks_rejected" share counts - prefer those over the aggregate whenever
+    # a device actually has them, so multi-GPU rigs get honest per-device accepted/rejected
+    # instead of None. Same reasoning as the Windows agent's collect_keryx_stats() for the
+    # fallback below: older builds only report accepted/rejected in AGGREGATE, never broken down
+    # per device, so there's no way to honestly attribute them to a specific GPU on a multi-GPU
+    # rig - but on a single-GPU rig there's no ambiguity, the one GPU IS the whole aggregate.
     single_gpu = len(parsed_devices) == 1
     gpus = [
         _build_gpu_entry(
             idx, name=gname, hashrate_hs=dev.get("hashrate_hs", 0),
-            accepted_shares=accepted_blocks if single_gpu else None,
-            rejected_shares=rejected_blocks if single_gpu else None,
-            power=dev.get("power_w"), core_clock=dev.get("core_mhz"), mem_clock=dev.get("mem_mhz"),
-            temperature=dev.get("temp_c"), fan_speed=dev.get("fan_pct"),
+            accepted_shares=dev.get("blocks_accepted", accepted_shares if single_gpu else None),
+            rejected_shares=dev.get("blocks_rejected", rejected_shares if single_gpu else None),
+            # power_draw_w/fan_percent/memory_temp_c are the confirmed live field names (see
+            # docstring above) - power_w/fan_pct below are kept only as fallbacks for an older/
+            # different build that might still use those names.
+            power=dev.get("power_draw_w", dev.get("power_w")),
+            core_clock=dev.get("core_mhz"), mem_clock=dev.get("mem_mhz"),
+            temperature=dev.get("temp_c"), mem_temp=dev.get("memory_temp_c"),
+            fan_speed=dev.get("fan_percent", dev.get("fan_pct")),
             vram_total_mb=dev.get("vram_total_mb"), vram_used_mb=dev.get("vram_used_mb"),
             efficiency_mhs_per_w=dev.get("efficiency_mhs_per_w"),
         )
@@ -2126,8 +2182,8 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
             cpu_hashrate_hs=total_hr_hs if mining_type == "CPU" else 0,
             gpu_hashrate_hs=total_hr_hs if mining_type == "GPU" else 0,
             mining_type=mining_type,
-            accepted_shares=accepted_blocks,
-            rejected_shares=rejected_blocks,
+            accepted_shares=accepted_shares,
+            rejected_shares=rejected_shares,
         )],
         gpus=gpus,
         synced=data.get("synced"),
