@@ -799,6 +799,16 @@ def docker_containers_running():
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
 _custom_miner_last_pid = {}
+# Names whose PID changed on the current detect_running_miners() poll - a one-poll-lived
+# signal (cleared and rebuilt every call, not one-shot-consumed like
+# consume_miners_changed_flag()) so any collector called later in the SAME poll cycle
+# (e.g. _collect_named_miner_block_log_stats() below) can tell "did this miner just
+# restart" without re-querying/re-caching its PID itself - detect_running_miners() already
+# did that work via _custom_miner_last_pid, which by the time a same-poll collector runs
+# has already been overwritten with the current PID, so comparing against it directly
+# would always show no change. This set is the "did it just change" answer instead of the
+# raw PID, so it stays correct regardless of that overwrite-before-read ordering.
+_miner_pid_changed_this_poll = set()
 _RIG_CONF_SLOT_PATHS = (
     ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
     ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
@@ -940,6 +950,7 @@ def detect_running_miners():
     take effect right away, without waiting on the next incidental conf write."""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
+    _miner_pid_changed_this_poll.clear()
     try:
         custom_names = {}
         for _slot, _path in _RIG_CONF_SLOT_PATHS:
@@ -992,6 +1003,7 @@ def detect_running_miners():
                         found[f"custom_log_{_matched_slot}"] = True
                     if _custom_miner_last_pid.get(_matched_name) != _pid:
                         _custom_miner_last_pid[_matched_name] = _pid
+                        _miner_pid_changed_this_poll.add(_matched_name)
                         _agent_conf_cache["mtime"] = None
                         # Also force _resolve_custom_name_for_slot()'s per-slot cache to
                         # re-read rig-*.conf/.json on the next call - a restart is exactly
@@ -2323,35 +2335,6 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
 # fixes below.
 _NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH = 1000
 
-# A real restart used to be inferred purely from the log file getting
-# smaller (see _read_new_log_bytes). That heuristic silently misses a
-# restart when the miner's service wrapper appends to the *same* log file
-# across restarts instead of truncating/replacing it - the file never
-# shrinks, so share_state["reset"] never fires, and any bad
-# accepted_shares/submit_block_shares total already accumulated (e.g.
-# from a single corrupted regex capture on a torn/interleaved log write)
-# survives the restart forever, no matter how many times the miner is
-# actually restarted. PID is a much more direct signal: if the miner's
-# PID changed since the last poll, it restarted, full stop, independent
-# of what its log file looks like. Keyed by name (not slot) so it works
-# the same way _named_miner_version_cache already does.
-_named_miner_block_stats_pid_cache = {}
-
-
-def _get_named_miner_pid(name):
-    """Return the PID (int) of the process named `name`, or None if it's
-    not currently running."""
-    try:
-        result = subprocess.run(
-            ["bash", "-c", f"ps -C {shlex.quote(name)} -o pid= | head -1"],
-            capture_output=True, text=True, timeout=2
-        )
-        pid_str = result.stdout.strip()
-        return int(pid_str) if pid_str else None
-    except Exception:
-        return None
-
-
 def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
     counts since the last poll, offset-tracked via _read_new_log_bytes -
@@ -2367,9 +2350,17 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
     total-blocks-accepted metric above. Both totals reset to 0 whenever
     the miner itself restarts - detected two ways: the log file going
-    small (a real replace/truncate) OR the miner's PID changing (catches
-    restarts where the service wrapper just keeps appending to the same
-    log file, which the file-size check alone would miss forever).
+    small (a real replace/truncate) OR the miner's PID changing since the
+    last poll, which catches restarts where the service wrapper just
+    keeps appending to the same log file (the file-size check alone
+    would miss those forever). This is only ever called (via
+    collect_named_custom_miner_stats()) for a name detect_running_miners()
+    already matched THIS poll, so its PID-change signal
+    (_miner_pid_changed_this_poll, set where detect_running_miners()
+    already does its own PID comparison against _custom_miner_last_pid)
+    is reused directly here instead of this function re-querying and
+    re-caching the PID itself - same correctness, one less `ps` call per
+    poll.
 
     The line regex below is anchored to the real line shape - timestamp +
     "[LEVEL]" + "Accepted N blocks" - rather than just "digits near the
@@ -2386,14 +2377,7 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
         re.MULTILINE,
     )
 
-    current_pid = _get_named_miner_pid(name)
-    last_pid = _named_miner_block_stats_pid_cache.get(name)
-    miner_restarted = (
-        current_pid is not None
-        and last_pid is not None
-        and current_pid != last_pid
-    )
-    _named_miner_block_stats_pid_cache[name] = current_pid
+    miner_restarted = name in _miner_pid_changed_this_poll
 
     share_state = _log_event_state.setdefault(
         log_path, {"offset": 0, "accepted_shares": 0, "submit_block_shares": 0}
