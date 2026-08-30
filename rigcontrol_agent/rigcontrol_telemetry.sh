@@ -803,11 +803,10 @@ _custom_miner_last_pid = {}
 # signal (cleared and rebuilt every call, not one-shot-consumed like
 # consume_miners_changed_flag()) so any collector called later in the SAME poll cycle
 # (e.g. _collect_named_miner_block_log_stats() below) can tell "did this miner just
-# restart" without re-querying/re-caching its PID itself - detect_running_miners() already
-# did that work via _custom_miner_last_pid, which by the time a same-poll collector runs
-# has already been overwritten with the current PID, so comparing against it directly
-# would always show no change. This set is the "did it just change" answer instead of the
-# raw PID, so it stays correct regardless of that overwrite-before-read ordering.
+# restart" without re-querying/re-caching its PID itself. Safe to rely on now that
+# detect_running_miners() matches on exact exe basename (not a substring of the whole
+# command line) - see its docstring for why that used to make _custom_miner_last_pid
+# flap between two different PIDs for what was logically one miner.
 _miner_pid_changed_this_poll = set()
 _RIG_CONF_SLOT_PATHS = (
     ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
@@ -929,12 +928,25 @@ def consume_miners_changed_flag():
     _miners_set_changed_flag = False
     return changed
 def detect_running_miners():
-    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
+    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via `ps -eo pid=,args=` and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
     Resolves each slot's custom-miner name from the flightsheet (via _resolve_custom_name_for_slot(),
-    mtime-cached) BEFORE building the ps aux grep pattern, so a brand-new custom miner - keryx-miner
+    mtime-cached) BEFORE building the match pattern, so a brand-new custom miner - keryx-miner
     or anything else - gets matched to the right slot on the very same poll its process first shows
     up, instead of needing a separate caller (rigcontrol_agent.sh's resolve_custom_miner()) to have
     already registered it first.
+    Matches against each process's own invoked-executable basename (the first token of its `args`,
+    with any path stripped), NOT the full command line - matching the full line (as this used to,
+    via `ps aux | grep -E pattern`) means a wrapper/launcher script whose PATH argument merely
+    contains a miner's name (e.g. `bash /opt/miners/custom/keryxd/current/start-keryxd.sh`) matches
+    just as readily as the miner's own process line, even though the wrapper isn't the miner. Two
+    lines matching the same name for what's logically one miner meant whichever one `ps` happened
+    to list last that poll won the PID comparison below - not guaranteed stable poll to poll, so it
+    could flap between the wrapper's PID and the real binary's PID and look like a restart on every
+    flap (this is what broke keryxd's share counters after the PID-restart fix started trusting this
+    signal directly instead of re-querying independently). Matching on just the exe basename can't
+    be fooled by a wrapper's path/args this way; this fleet already runs miners inside detached
+    `screen -S <slot>` sessions, whose real binary always shows up as its own separate process with
+    its own accurate exe basename, not merged into screen's.
     Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of the
     set-membership flag: a miner that crashes and restarts (or gets reinstalled to a new
     version) keeps the same "custom_log_<slot>" key the whole time, so the set never changes
@@ -959,20 +971,30 @@ def detect_running_miners():
             with _custom_miner_lock:
                 if _CUSTOM_MINER_PROCESS_NAMES.get(_slot) != _cname:
                     _CUSTOM_MINER_PROCESS_NAMES[_slot] = _cname
-        grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
-                         "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
-        for _slot, _cname in custom_names.items():
-            if _cname:
-                grep_pattern += "|" + re.escape(_cname)
-        grep_pattern += ")"
+        name_pattern = re.compile("(xmrig|lolminer|bzminer|rigel|srbminer|"
+                                   "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer"
+                                   + "".join(f"|{re.escape(_cname)}" for _cname in custom_names.values() if _cname)
+                                   + ")", re.IGNORECASE)
+        # No `grep` pipeline needed - `-eo pid=,args=` gives PID and the full argv as two
+        # cleanly-splittable fields directly, and matching happens in Python below against
+        # just the exe basename, so there's nothing left for a shell-side grep to filter.
         result = subprocess.run(
-            ["bash", "-c", f"ps aux | grep -E {shlex.quote(grep_pattern)} | grep -v grep"],
+            ["bash", "-c", "ps -eo pid=,args="],
             capture_output=True, text=True, timeout=2
         )
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
-                line_lower = line.lower()
-                # Figure out which custom-miner NAME this line is (whether or not it's
+                line = line.strip()
+                if not line:
+                    continue
+                _pid, _, _args = line.partition(' ')
+                if not _pid.isdigit() or not _args:
+                    continue
+                _exe_token = _args.split(None, 1)[0]
+                _exe_name = os.path.basename(_exe_token).lower()
+                if not name_pattern.search(_exe_name):
+                    continue
+                # Figure out which custom-miner NAME this process is (whether or not it's
                 # currently attributed to a slot) before touching PID tracking at all -
                 # _custom_miner_last_pid/_named_miner_version_cache are both keyed by name,
                 # not by slot, so PID-change detection shouldn't depend on slot resolution
@@ -980,25 +1002,21 @@ def detect_running_miners():
                 _matched_slot = None
                 _matched_name = None
                 for _slot, _cname in custom_names.items():
-                    if _cname and _cname in line_lower:
+                    if _cname and _cname in _exe_name:
                         _matched_slot = _slot
                         _matched_name = _cname
                         break
                 if _matched_name is None:
-                    # keryx-miner/keryxd are the only names hardcoded into grep_pattern ahead
+                    # keryx-miner/keryxd are the only names hardcoded into name_pattern ahead
                     # of any slot resolution (see the base pattern above) - matching one here
                     # with no assigned slot means it's running but not named in any flightsheet
                     # right now. Still worth tracking its PID/version; just nothing to attribute
                     # it to in found[] until a flightsheet actually claims it.
                     for _hint_name in ("keryx-miner", "keryxd"):
-                        if _hint_name in line_lower:
+                        if _hint_name in _exe_name:
                             _matched_name = _hint_name
                             break
                 if _matched_name:
-                    _pid_fields = line.split(None, 2)
-                    _pid = _pid_fields[1] if len(_pid_fields) > 1 else None
-                    if not _pid:
-                        continue
                     if _matched_slot:
                         found[f"custom_log_{_matched_slot}"] = True
                     if _custom_miner_last_pid.get(_matched_name) != _pid:
@@ -1015,7 +1033,7 @@ def detect_running_miners():
                         _named_miner_version(_matched_name, force=True)
                     continue
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
-                    if proc_name in line_lower:
+                    if proc_name in _exe_name:
                         found[miner_name] = True
                         break
     except Exception as e:
@@ -2350,17 +2368,15 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
     total-blocks-accepted metric above. Both totals reset to 0 whenever
     the miner itself restarts - detected two ways: the log file going
-    small (a real replace/truncate) OR the miner's PID changing since the
-    last poll, which catches restarts where the service wrapper just
-    keeps appending to the same log file (the file-size check alone
-    would miss those forever). This is only ever called (via
-    collect_named_custom_miner_stats()) for a name detect_running_miners()
-    already matched THIS poll, so its PID-change signal
-    (_miner_pid_changed_this_poll, set where detect_running_miners()
-    already does its own PID comparison against _custom_miner_last_pid)
-    is reused directly here instead of this function re-querying and
-    re-caching the PID itself - same correctness, one less `ps` call per
-    poll.
+    small (a real replace/truncate) OR the miner's PID changing (catches
+    restarts where the service wrapper just keeps appending to the same
+    log file, which the file-size check alone would miss forever). This
+    is only ever called (via collect_named_custom_miner_stats()) for a
+    name detect_running_miners() already matched THIS poll, so its
+    PID-change signal (_miner_pid_changed_this_poll, populated at the
+    exact point detect_running_miners() already does its own PID compare
+    against _custom_miner_last_pid) is reused directly here instead of
+    re-querying/re-caching the PID independently.
 
     The line regex below is anchored to the real line shape - timestamp +
     "[LEVEL]" + "Accepted N blocks" - rather than just "digits near the
