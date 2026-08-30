@@ -1106,6 +1106,11 @@ let watchdogProfiles = [];
 let selectedWatchdogProfileId = null;
 let savedCommands = [];
 let selectedSavedCommandId = null;
+let selectedSavedCommandIds = new Set();
+let cmdHistoryEntries = [];
+let selectedCmdHistoryIds = new Set();
+let selectedCmdHistoryEntryId = null;
+let cmdActiveTab = "send";
 const WD_ACTION_CHECKBOX_DEFAULTS = {
     "wdconfig-action-restart-cpu": false,
     "wdconfig-action-restart-gpu": false,
@@ -5222,12 +5227,41 @@ function openCmdModal() {
     const out = document.getElementById("cmd-output");
     if (out) out.textContent = "";
     document.getElementById("cmd-modal")?.classList.remove("hidden");
+    initCmdMainTabs();
+    switchCmdMainTab("send");
     loadSavedCommands();
     input.focus();
 }
 function closeCmdModal() {
     document.getElementById("cmd-modal").classList.add("hidden");
     cmdModalRigOverride = null;
+}
+function initCmdMainTabs() {
+    const tabBar = document.getElementById("cmd-main-tabs");
+    if (!tabBar || tabBar.dataset.wired) return;
+    tabBar.dataset.wired = "1";
+    tabBar.querySelectorAll(".cmd-main-tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            switchCmdMainTab(btn.dataset.tabPanel);
+        });
+    });
+}
+function switchCmdMainTab(tabName) {
+    cmdActiveTab = tabName;
+    document.querySelectorAll("#cmd-main-tabs .cmd-main-tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tabPanel === tabName);
+    });
+    document.querySelectorAll("#cmd-modal .cmd-main-tab-panel").forEach((panel) => {
+        panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
+    });
+    const status = document.getElementById("saved-cmd-status");
+    if (status) status.textContent = "";
+    if (tabName === "history") {
+        initCmdHistoryHSizer();
+        initCmdHistoryVSizer();
+        restoreCmdHistorySizers();
+        loadCmdHistory();
+    }
 }
 function isLogsModuleVisible() {
     const modal = document.getElementById("logs-modal");
@@ -5428,15 +5462,29 @@ function renderSavedCommandsList() {
     const list = document.getElementById("saved-cmd-list");
     if (!list) return;
     list.innerHTML = "";
+    selectedSavedCommandIds.clear();
     const sorted = [...savedCommands].sort((a, b) =>
         naturalCompare(a.CommandId, b.CommandId)
     );
     for (const c of sorted) {
         const row = document.createElement("div");
         row.className = "fs-item";
-        row.textContent = c.CommandId;
         row.dataset.id = c.CommandId;
         row.dataset.value = c.Value || "";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "statuslog-item-checkbox";
+        checkbox.addEventListener("click", (ev) => ev.stopPropagation());
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) selectedSavedCommandIds.add(c.CommandId);
+            else selectedSavedCommandIds.delete(c.CommandId);
+            updateSavedCmdSelectAllState();
+        });
+        const textEl = document.createElement("span");
+        textEl.className = "statuslog-item-text";
+        textEl.textContent = c.CommandId;
+        row.appendChild(checkbox);
+        row.appendChild(textEl);
         row.addEventListener("click", () => {
             document
                 .querySelectorAll("#saved-cmd-list .fs-item.selected")
@@ -5451,6 +5499,27 @@ function renderSavedCommandsList() {
         list.appendChild(row);
     }
     filterSavedCommandsList();
+    updateSavedCmdSelectAllState();
+}
+function updateSavedCmdSelectAllState() {
+    const selectAll = document.getElementById("saved-cmd-select-all");
+    if (!selectAll) return;
+    const rows = document.querySelectorAll("#saved-cmd-list .fs-item");
+    const total = rows.length;
+    const checkedCount = selectedSavedCommandIds.size;
+    selectAll.checked = total > 0 && checkedCount === total;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < total;
+}
+function toggleAllSavedCommands(checked) {
+    const rows = document.querySelectorAll("#saved-cmd-list .fs-item");
+    rows.forEach(row => {
+        const id = row.dataset.id;
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = checked;
+        if (checked) selectedSavedCommandIds.add(id);
+        else selectedSavedCommandIds.delete(id);
+    });
+    updateSavedCmdSelectAllState();
 }
 function filterSavedCommandsList() {
     const query = (document.getElementById("saved-cmd-search")?.value || "").trim().toLowerCase();
@@ -5460,7 +5529,7 @@ function filterSavedCommandsList() {
     });
 }
 function collectSavedCommandEntries() {
-    const raw = document.getElementById("cmd-input").value.trim();
+    const raw = getActiveCmdText();
     if (!raw) {
         alert("Cannot save an empty command! Enter a command above first.");
         throw new Error("Empty saved command");
@@ -5504,6 +5573,32 @@ async function saveSavedCommandFromDialog() {
     }
 }
 async function deleteSavedCommandSelected() {
+    if (selectedSavedCommandIds.size > 0) {
+        const ids = [...selectedSavedCommandIds];
+        if (!confirm(`Delete ${ids.length} saved command${ids.length !== 1 ? "s" : ""}?\n\n${ids.join(", ")}`)) {
+            return;
+        }
+        const failed = [];
+        for (const id of ids) {
+            try {
+                const res = await fetch(`${API}/api/saved-commands/${encodeURIComponent(id)}`, { method: "DELETE" });
+                if (!res.ok) failed.push(id);
+            } catch (err) {
+                failed.push(id);
+            }
+        }
+        selectedSavedCommandIds.clear();
+        if (selectedSavedCommandId && ids.includes(selectedSavedCommandId)) {
+            selectedSavedCommandId = null;
+        }
+        loadSavedCommands();
+        const status = document.getElementById("saved-cmd-status");
+        if (status) status.textContent = `Deleted ${ids.length - failed.length} saved command${ids.length !== 1 ? "s" : ""}`;
+        if (failed.length > 0) {
+            alert(`Deleted ${ids.length - failed.length} of ${ids.length}. Failed: ${failed.join(", ")}`);
+        }
+        return;
+    }
     if (!selectedSavedCommandId) {
         alert("No saved command selected");
         return;
@@ -5524,6 +5619,163 @@ async function deleteSavedCommandSelected() {
         alert(`Error deleting command: ${err.message}`);
     } finally {
         selectedSavedCommandId = null;
+    }
+}
+async function loadCmdHistory() {
+    try {
+        const res = await fetch(`${API}/api/cmd-history`);
+        if (!res.ok) {
+            console.error("Failed to load command history");
+            return;
+        }
+        cmdHistoryEntries = await res.json();
+        renderCmdHistoryList();
+    } catch (e) {
+        console.error("Error loading command history:", e);
+    }
+}
+function renderCmdHistoryList() {
+    const list = document.getElementById("cmd-history-list");
+    if (!list) return;
+    list.innerHTML = "";
+    selectedCmdHistoryIds.clear();
+    for (const item of cmdHistoryEntries) {
+        const row = document.createElement("div");
+        row.className = "fs-item";
+        row.dataset.id = item.id;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "statuslog-item-checkbox";
+        checkbox.addEventListener("click", (ev) => ev.stopPropagation());
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) selectedCmdHistoryIds.add(String(item.id));
+            else selectedCmdHistoryIds.delete(String(item.id));
+            updateCmdHistorySelectAllState();
+        });
+        const textWrap = document.createElement("div");
+        textWrap.className = "statuslog-item-text";
+        const titleEl = document.createElement("div");
+        titleEl.className = "statuslog-item-title";
+        const firstLine = (item.command || "").split("\n")[0];
+        titleEl.textContent = firstLine.length > 80 ? `${firstLine.slice(0, 80)}...` : firstLine;
+        const timeEl = document.createElement("div");
+        timeEl.className = "statuslog-item-time";
+        timeEl.textContent = item.created_at ? statsTimestampToLocalLabel(item.created_at) : "";
+        textWrap.appendChild(titleEl);
+        textWrap.appendChild(timeEl);
+        row.appendChild(checkbox);
+        row.appendChild(textWrap);
+        row.addEventListener("click", () => selectCmdHistoryEntry(item.id));
+        list.appendChild(row);
+    }
+    filterCmdHistoryList();
+    updateCmdHistorySelectAllState();
+}
+function updateCmdHistorySelectAllState() {
+    const selectAll = document.getElementById("cmd-history-select-all");
+    if (!selectAll) return;
+    const rows = document.querySelectorAll("#cmd-history-list .fs-item");
+    const total = rows.length;
+    const checkedCount = selectedCmdHistoryIds.size;
+    selectAll.checked = total > 0 && checkedCount === total;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < total;
+}
+function toggleAllCmdHistoryEntries(checked) {
+    const rows = document.querySelectorAll("#cmd-history-list .fs-item");
+    rows.forEach(row => {
+        const id = row.dataset.id;
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = checked;
+        if (checked) selectedCmdHistoryIds.add(String(id));
+        else selectedCmdHistoryIds.delete(String(id));
+    });
+    updateCmdHistorySelectAllState();
+}
+function filterCmdHistoryList() {
+    const query = (document.getElementById("saved-cmd-search")?.value || "").trim().toLowerCase();
+    document.querySelectorAll("#cmd-history-list .fs-item").forEach(item => {
+        const match = !query || item.textContent.toLowerCase().includes(query);
+        item.style.display = match ? "" : "none";
+    });
+}
+function selectCmdHistoryEntry(id) {
+    document
+        .querySelectorAll("#cmd-history-list .fs-item.selected")
+        .forEach(e => e.classList.remove("selected"));
+    const row = document.querySelector(`#cmd-history-list .fs-item[data-id="${id}"]`);
+    if (row) {
+        row.classList.add("selected");
+        row.scrollIntoView({ block: "nearest" });
+    }
+    selectedCmdHistoryEntryId = String(id);
+    const entry = cmdHistoryEntries.find(e => String(e.id) === String(id));
+    const textarea = document.getElementById("cmd-history-textarea");
+    if (textarea) textarea.value = entry ? (entry.command || "") : "";
+    const nameInput = document.getElementById("saved-cmd-name");
+    if (nameInput) nameInput.value = "";
+    const status = document.getElementById("saved-cmd-status");
+    if (status) status.textContent = entry ? `Loaded history entry from ${statsTimestampToLocalLabel(entry.created_at)}` : "";
+}
+async function deleteCmdHistoryEntriesByIds(ids) {
+    if (!ids || ids.length === 0) {
+        alert("No history entries selected");
+        return;
+    }
+    if (!confirm(`Delete ${ids.length} history ${ids.length === 1 ? "entry" : "entries"}? This cannot be undone.`)) {
+        return;
+    }
+    const status = document.getElementById("saved-cmd-status");
+    if (status) status.textContent = "Deleting...";
+    try {
+        const res = await fetch(`${API}/api/cmd-history?ids=${ids.join(",")}`, { method: "DELETE" });
+        if (!res.ok) {
+            if (status) status.textContent = "";
+            alert("Failed to delete history entries");
+            return;
+        }
+        selectedCmdHistoryEntryId = null;
+        const textarea = document.getElementById("cmd-history-textarea");
+        if (textarea) textarea.value = "";
+        await loadCmdHistory();
+        if (status) status.textContent = "Deleted";
+    } catch (e) {
+        console.error("Error deleting command history entries:", e);
+        if (status) status.textContent = "";
+        alert("Failed to delete history entries");
+    }
+}
+async function deleteSelectedCmdHistoryEntries() {
+    const ids = [...selectedCmdHistoryIds];
+    await deleteCmdHistoryEntriesByIds(ids);
+}
+async function clearAllCmdHistoryWithConfirm() {
+    const total = cmdHistoryEntries.length;
+    if (total === 0) {
+        const status = document.getElementById("saved-cmd-status");
+        if (status) status.textContent = "History is already empty";
+        return;
+    }
+    if (!confirm(`Delete all ${total} command history ${total === 1 ? "entry" : "entries"}? This cannot be undone.`)) {
+        return;
+    }
+    const status = document.getElementById("saved-cmd-status");
+    if (status) status.textContent = "Clearing...";
+    try {
+        const res = await fetch(`${API}/api/cmd-history?clear_all=true`, { method: "DELETE" });
+        if (!res.ok) {
+            if (status) status.textContent = "";
+            alert("Failed to clear command history");
+            return;
+        }
+        selectedCmdHistoryEntryId = null;
+        const textarea = document.getElementById("cmd-history-textarea");
+        if (textarea) textarea.value = "";
+        await loadCmdHistory();
+        if (status) status.textContent = "History cleared";
+    } catch (e) {
+        console.error("Error clearing command history:", e);
+        if (status) status.textContent = "";
+        alert("Failed to clear command history");
     }
 }
 function initRefreshTimer() {
@@ -6456,7 +6708,7 @@ async function sendCommandToSelectedRigs(command) {
     cmdModalRigOverride = null;
     if (targets.length === 0) {
         alert("No workers selected");
-        return;
+        return null;
     }
     return fetch(`${API}/command`, {
         method: "POST",
@@ -6467,13 +6719,71 @@ async function sendCommandToSelectedRigs(command) {
         })
     });
 }
+function getActiveCmdText() {
+    // The Send tab's textarea and the History tab's read-only preview are two different
+    // elements sharing one toolbar - Send/Save both need "whichever one the operator is
+    // currently looking at", not always cmd-input.
+    if (cmdActiveTab === "history") {
+        return (document.getElementById("cmd-history-textarea")?.value || "").trim();
+    }
+    return (document.getElementById("cmd-input")?.value || "").trim();
+}
+async function recordCmdHistoryEntry(command) {
+    try {
+        await fetch(`${API}/api/cmd-history`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command })
+        });
+        // Only re-fetch the visible list if the History tab is actually open - no need to
+        // reload it every time a command is sent while the operator is looking at Send.
+        if (cmdActiveTab === "history") {
+            loadCmdHistory();
+        }
+    } catch (e) {
+        console.error("Error recording command history:", e);
+    }
+}
 function submitCmd() {
-    const cmd = document.getElementById("cmd-input").value.trim();
+    const cmd = getActiveCmdText();
     if (!cmd) return;
-    sendCommandToSelectedRigs(cmd).catch(err => {
+    sendCommandToSelectedRigs(cmd).then((result) => {
+        // sendCommandToSelectedRigs resolves to null (after its own "No workers selected"
+        // alert) when nothing was actually sent - don't log a history entry for that.
+        if (result !== null) {
+            recordCmdHistoryEntry(cmd);
+        }
+    }).catch(err => {
         console.error("Command send failed", err);
         alert("Failed to send command");
     });
+}
+function deleteActiveCmdSelection() {
+    // Delete is one shared button - which list it acts on depends on which tab is showing,
+    // same as Send/Save above.
+    if (cmdActiveTab === "history") {
+        deleteSelectedCmdHistoryEntries();
+    } else {
+        deleteSavedCommandSelected();
+    }
+}
+function handleCmdClearAll() {
+    // On the History tab "Clear All" means wipe the persisted history (with its own confirm,
+    // handled inside clearAllCmdHistoryWithConfirm) - it's destructive in a way the Send tab's
+    // "clear the current fields" never was, so the two can't share one code path.
+    if (cmdActiveTab === "history") {
+        clearAllCmdHistoryWithConfirm();
+        return;
+    }
+    document.getElementById('cmd-input').value = '';
+    document.getElementById('cmd-output').textContent = '';
+    document.getElementById('saved-cmd-name').value = '';
+    document
+        .querySelectorAll('#saved-cmd-list .fs-item.selected')
+        .forEach(e => e.classList.remove('selected'));
+    selectedSavedCommandId = null;
+    const status = document.getElementById('saved-cmd-status');
+    if (status) status.textContent = 'Cleared';
 }
 function clearOutputAndSend() {
     const output = document.getElementById("cmd-output");
@@ -12468,6 +12778,78 @@ function restoreBackupsSizers() {
         previewPanel.style.height = savedPreviewHeight;
     }
 }
+const CMD_HISTORY_HSIZER_WIDTH_KEY = "rigcontrol_cmd_history_hsizer_width";
+const CMD_HISTORY_VSIZER_HEIGHT_KEY = "rigcontrol_cmd_history_vsizer_height";
+function initCmdHistoryHSizer() {
+    const bar = document.getElementById("cmd-history-hsizer");
+    const listEl = document.querySelector("#cmd-modal .cmd-history-list-wrap");
+    if (!bar || !listEl || bar.dataset.wired) return;
+    bar.dataset.wired = "1";
+    bar.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = listEl.getBoundingClientRect().width;
+        bar.classList.add("dragging");
+        document.body.style.userSelect = "none";
+        function onMouseMove(moveEvent) {
+            const deltaX = moveEvent.clientX - startX;
+            const newWidth = Math.max(120, startWidth + deltaX);
+            listEl.style.flex = "0 0 auto";
+            listEl.style.width = `${newWidth}px`;
+        }
+        function onMouseUp() {
+            bar.classList.remove("dragging");
+            document.body.style.userSelect = "";
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+            if (listEl.style.width) localStorage.setItem(CMD_HISTORY_HSIZER_WIDTH_KEY, listEl.style.width);
+        }
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+    });
+}
+function initCmdHistoryVSizer() {
+    const bar = document.getElementById("cmd-history-vsizer");
+    const panel = document.querySelector("#cmd-modal .cmd-history-panel");
+    if (!bar || !panel || bar.dataset.wired) return;
+    bar.dataset.wired = "1";
+    bar.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = panel.getBoundingClientRect().height;
+        bar.classList.add("dragging");
+        document.body.style.userSelect = "none";
+        function onMouseMove(moveEvent) {
+            const deltaY = moveEvent.clientY - startY;
+            const newHeight = Math.max(80, startHeight + deltaY);
+            panel.style.flex = "0 0 auto";
+            panel.style.height = `${newHeight}px`;
+        }
+        function onMouseUp() {
+            bar.classList.remove("dragging");
+            document.body.style.userSelect = "";
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+            if (panel.style.height) localStorage.setItem(CMD_HISTORY_VSIZER_HEIGHT_KEY, panel.style.height);
+        }
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+    });
+}
+function restoreCmdHistorySizers() {
+    const listEl = document.querySelector("#cmd-modal .cmd-history-list-wrap");
+    const panel = document.querySelector("#cmd-modal .cmd-history-panel");
+    const savedListWidth = localStorage.getItem(CMD_HISTORY_HSIZER_WIDTH_KEY);
+    if (listEl && savedListWidth) {
+        listEl.style.flex = "0 0 auto";
+        listEl.style.width = savedListWidth;
+    }
+    const savedPanelHeight = localStorage.getItem(CMD_HISTORY_VSIZER_HEIGHT_KEY);
+    if (panel && savedPanelHeight) {
+        panel.style.flex = "0 0 auto";
+        panel.style.height = savedPanelHeight;
+    }
+}
 // Backups now lives as a Settings sub-tab (see switchSettingsMainTab()'s "backups" branch for
 // the actual sizer-init/list-load work) rather than its own top-level view-tab - this is kept
 // as a stable entry point in case anything wants to jump straight there.
@@ -13918,17 +14300,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-qa-close-x")?.addEventListener("click", closeQuickActionsModal);
     document.getElementById("btn-cmd-send")?.addEventListener("click", submitCmd);
     document.getElementById("btn-cmd-clear-send")?.addEventListener("click", clearOutputAndSend);
-    document.getElementById('btn-cmd-clear').addEventListener('click', function() {
-        document.getElementById('cmd-input').value = '';
-        document.getElementById('cmd-output').textContent = '';
-        document.getElementById('saved-cmd-name').value = '';
-        document
-            .querySelectorAll('#saved-cmd-list .fs-item.selected')
-            .forEach(e => e.classList.remove('selected'));
-        selectedSavedCommandId = null;
-        const status = document.getElementById('saved-cmd-status');
-        if (status) status.textContent = 'Cleared';
-    });
+    document.getElementById('btn-cmd-clear').addEventListener('click', handleCmdClearAll);
     document.getElementById('btn-clear-fs').addEventListener('click', function() {
         document.getElementById("fs-raw").value = '';
         autoResizeFsRaw();
@@ -14352,6 +14724,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("statuslog-select-all")?.addEventListener("change", (e) => {
         toggleAllStatusLogEntries(e.target.checked);
     });
+    document.getElementById("cmd-history-select-all")?.addEventListener("change", (e) => {
+        toggleAllCmdHistoryEntries(e.target.checked);
+    });
     let statuslogSearchDebounceTimer = null;
     const debounceStatuslogSearch = () => {
         clearTimeout(statuslogSearchDebounceTimer);
@@ -14505,8 +14880,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
     document.getElementById("btn-save-saved-cmd")?.addEventListener("click", saveSavedCommandFromDialog);
-    document.getElementById("btn-delete-saved-cmd")?.addEventListener("click", deleteSavedCommandSelected);
-    document.getElementById("saved-cmd-search")?.addEventListener("input", filterSavedCommandsList);
+    document.getElementById("btn-delete-saved-cmd")?.addEventListener("click", deleteActiveCmdSelection);
+    document.getElementById("saved-cmd-search")?.addEventListener("input", () => {
+        filterSavedCommandsList();
+        filterCmdHistoryList();
+    });
+    document.getElementById("saved-cmd-select-all")?.addEventListener("change", (e) => {
+        toggleAllSavedCommands(e.target.checked);
+    });
     document.getElementById("wdconfig-settings-panel")?.addEventListener("input", (e) => {
         if (e.target && e.target.id === "wdconfig-raw") return;
         updateWdCustomScriptEnabled();

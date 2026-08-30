@@ -1168,6 +1168,51 @@ h1 {
     color: var(--text-white);
     background: var(--surface-modal-panel);
 }
+#cmd-modal .cmd-main-tabs {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+    padding: 8px 12px 0;
+    background: var(--surface-modal-panel);
+    border-bottom: 1px solid var(--border-modal);
+}
+#cmd-modal .cmd-main-tab-btn {
+    height: 28px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-label);
+    background: var(--tab-bg);
+    border: 1px solid var(--tab-border);
+    border-bottom: none;
+    color: var(--tab-text, var(--text-secondary));
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+    margin-bottom: -1px;
+}
+#cmd-modal .cmd-main-tab-btn:hover {
+    background: var(--tab-hover-bg);
+    color: var(--text-white);
+}
+#cmd-modal .cmd-main-tab-btn.active {
+    background: var(--tab-active-bg);
+    border-color: var(--tab-active-border);
+    color: var(--tab-active-text);
+}
+#cmd-modal .cmd-main-tab-btn.active:hover {
+    background: var(--tab-active-hover-bg);
+}
+#cmd-modal .cmd-main-tab-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    min-height: 0;
+}
+#cmd-modal .cmd-main-tab-panel.hidden {
+    display: none;
+}
 #cmd-input {
     flex: 0 0 auto;
     height: 269px;
@@ -1252,6 +1297,85 @@ h1 {
 }
 .cmd-output-resize-divider:hover::after,
 .cmd-output-resize-divider.dragging::after {
+    background: var(--text-accent);
+}
+#cmd-modal .cmd-history-panel {
+    display: flex;
+    flex: 0 0 260px;
+    min-height: 100px;
+    max-height: 70vh;
+}
+#cmd-modal .cmd-history-list-wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 260px;
+    min-width: 140px;
+    max-width: 70%;
+}
+#cmd-modal .cmd-history-list-header {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border: 1px solid var(--border-list);
+    border-bottom: none;
+    background: var(--surface-modal-panel);
+}
+#cmd-modal .cmd-history-select-all-label,
+#cmd-modal .saved-cmd-select-all-label {
+    font-size: var(--font-size-list-item-meta);
+    color: var(--text-secondary);
+}
+#cmd-modal .cmd-history-list-wrap .fs-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+#cmd-modal .cmd-history-hsizer {
+    flex: 0 0 auto;
+    width: 8px;
+    margin: 0 -4px;
+    cursor: col-resize;
+    position: relative;
+    z-index: 3;
+}
+#cmd-modal .cmd-history-hsizer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 3px;
+    width: 2px;
+    background: var(--border-divider-soft);
+    border-radius: 2px;
+}
+#cmd-modal .cmd-history-hsizer:hover::after,
+#cmd-modal .cmd-history-hsizer.dragging::after {
+    background: var(--text-accent);
+}
+#cmd-modal .cmd-history-textarea {
+    flex: 1 1 auto;
+    min-height: 100px;
+    margin: 0;
+    resize: none;
+}
+#cmd-modal .cmd-history-vsizer {
+    flex: 0 0 auto;
+    height: 8px;
+    margin: -4px 0 0;
+    cursor: row-resize;
+    position: relative;
+    z-index: 3;
+}
+#cmd-modal .cmd-history-vsizer::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 3px;
+    height: 2px;
+    background: var(--border-divider-soft);
+    border-radius: 2px;
+}
+#cmd-modal .cmd-history-vsizer:hover::after,
+#cmd-modal .cmd-history-vsizer.dragging::after {
     background: var(--text-accent);
 }
 #logs-modal.cmd-float-panel {
@@ -6147,6 +6271,13 @@ h1 {
     flex: 0 0 auto;
     padding: 0 14px 10px;
     box-sizing: border-box;
+    background: var(--surface-modal-panel);
+}
+#cmd-modal .saved-cmd-list-header {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border: 1px solid var(--border-list);
+    border-bottom: none;
     background: var(--surface-modal-panel);
 }
 #cmd-modal .fs-list {

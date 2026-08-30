@@ -1410,19 +1410,48 @@
                 <span id="saved-cmd-status" class="wdconfig-status"></span>
                 <button type="button" class="cmd-header-close" id="btn-close-cmd-modal" title="Close">&#10005;</button>
             </div>
-            <textarea
-                id="cmd-input"
-                spellcheck="false"
-                placeholder="# Enter command(s) to execute on selected workers
+            <div class="cmd-main-tabs" id="cmd-main-tabs">
+                <button type="button" class="cmd-main-tab-btn active" id="cmd-main-tab-btn-send" data-tab-panel="send">Send</button>
+                <button type="button" class="cmd-main-tab-btn" id="cmd-main-tab-btn-history" data-tab-panel="history">History</button>
+            </div>
+            <div class="cmd-main-tab-panel" data-tab-panel="send">
+                <textarea
+                    id="cmd-input"
+                    spellcheck="false"
+                    placeholder="# Enter command(s) to execute on selected workers
 # Example:
 uptime
 df -h
 nvidia-smi
 "></textarea>
-            <div class="cmd-resize-divider" id="cmd-resize-divider" title="Drag to resize"></div>
-            <div class="input-help">Ctrl+Enter to send</div>
-            <pre id="cmd-output" class="cmd-output"></pre>
-            <div class="cmd-output-resize-divider" id="cmd-output-resize-divider" title="Drag to resize"></div>
+                <div class="cmd-resize-divider" id="cmd-resize-divider" title="Drag to resize"></div>
+                <div class="input-help">Ctrl+Enter to send</div>
+                <pre id="cmd-output" class="cmd-output"></pre>
+                <div class="cmd-output-resize-divider" id="cmd-output-resize-divider" title="Drag to resize"></div>
+            </div>
+            <div class="cmd-main-tab-panel hidden" data-tab-panel="history">
+                <div class="cmd-history-panel">
+                    <div class="cmd-history-list-wrap">
+                        <div class="cmd-history-list-header">
+                            <label class="checkbox-label cmd-history-select-all-label">
+                                <input type="checkbox" id="cmd-history-select-all">
+                                <span class="checkbox-text">Select All</span>
+                            </label>
+                        </div>
+                        <div id="cmd-history-list" class="fs-list">
+                        </div>
+                    </div>
+                    <div class="cmd-history-hsizer" id="cmd-history-hsizer" title="Drag to resize"></div>
+                    <textarea
+                        id="cmd-history-textarea"
+                        class="fs-pools-textarea cmd-history-textarea"
+                        readonly
+                        spellcheck="false"
+                        placeholder="Select an entry on the left to see its full command text here."
+                    ></textarea>
+                </div>
+                <div class="cmd-history-vsizer" id="cmd-history-vsizer" title="Drag to resize"></div>
+            </div>
             <div class="saved-cmd-toolbar">
                 <input
                     type="text"
@@ -1450,6 +1479,12 @@ nvidia-smi
                 </div>
             </div>
             <div class="fs-list-panel">
+                <div class="saved-cmd-list-header">
+                    <label class="checkbox-label saved-cmd-select-all-label">
+                        <input type="checkbox" id="saved-cmd-select-all">
+                        <span class="checkbox-text">Select All</span>
+                    </label>
+                </div>
                 <div id="saved-cmd-list" class="fs-list">
                 </div>
             </div>

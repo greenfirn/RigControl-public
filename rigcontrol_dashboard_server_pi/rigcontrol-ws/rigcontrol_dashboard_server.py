@@ -50,6 +50,8 @@ class SavedCommandEntryIn(BaseModel):
     value: str
 class SavedCommandPutIn(BaseModel):
     entries: List[SavedCommandEntryIn]
+class CmdHistoryEntryIn(BaseModel):
+    command: str
 class WalletEntryIn(BaseModel):
     key: str
     gpu: int
@@ -607,6 +609,109 @@ class LocalSavedCommandDB:
     def close_all(self):
         self._conns.close_all()
 local_saved_command_db = LocalSavedCommandDB()
+class LocalCmdHistoryDB:
+    # Auto-recorded log of commands actually sent from the Send Cmd modal - append-only and
+    # capped, distinct from saved_commands above (a user-named library the operator explicitly
+    # saves entries into). Modeled on LocalStatusLogDB's insert/list/delete-by-ids shape rather
+    # than LocalSavedCommandDB's name-keyed upsert, since history entries have no name unless/
+    # until the operator promotes one into a saved command from the History tab.
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = BASE_DIR / "rigcontrol_cmd_history.db"
+        self.db_path = Path(db_path)
+        self._conns = _ThreadLocalSQLiteConnections(self.db_path, self._ensure_table_for_thread, label="CmdHistoryDB")
+    def _get_connection(self):
+        return self._conns.get()
+    def _ensure_table_for_thread(self, conn):
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS cmd_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    command TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cmdhistory_created_at'")
+            if not cursor.fetchone():
+                cursor.execute('CREATE INDEX idx_cmdhistory_created_at ON cmd_history(created_at)')
+            conn.commit()
+            return True
+        except Exception as e:
+            log(f"[CmdHistoryDB] Error ensuring table: {e}")
+            return False
+    def connect(self):
+        try:
+            self._get_connection()
+            return True
+        except Exception as e:
+            log(f"[CmdHistoryDB] Error connecting: {e}")
+            return False
+    def insert_entry(self, command: str):
+        # Same auto-trim-on-insert cap as LocalStatusLogDB - a Send Cmd history is a convenience
+        # log, not an audit trail, so an unbounded table isn't worth the disk/scan cost.
+        MAX_ENTRIES = 500
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO cmd_history (command) VALUES (?)', (command,))
+            new_id = cursor.lastrowid
+            cursor.execute('''
+                DELETE FROM cmd_history
+                WHERE id NOT IN (
+                    SELECT id FROM cmd_history ORDER BY id DESC LIMIT ?
+                )
+            ''', (MAX_ENTRIES,))
+            conn.commit()
+            return new_id
+        except Exception as e:
+            log(f"[CmdHistoryDB] Insert error: {e}")
+            return None
+    def list_entries(self, limit: int = 500):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, command, created_at FROM cmd_history
+                ORDER BY id DESC LIMIT ?
+            ''', (limit,))
+            return [
+                {"id": row["id"], "command": row["command"], "created_at": row["created_at"]}
+                for row in cursor.fetchall()
+            ]
+        except Exception as e:
+            log(f"[CmdHistoryDB] List error: {e}")
+            return []
+    def delete_entries(self, ids: list) -> int:
+        if not ids:
+            return 0
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in ids)
+            cursor.execute(
+                f"DELETE FROM cmd_history WHERE id IN ({placeholders})",
+                list(ids),
+            )
+            conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            log(f"[CmdHistoryDB] Delete error: {e}")
+            return 0
+    def clear_all(self) -> int:
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM cmd_history')
+            conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            log(f"[CmdHistoryDB] Clear error: {e}")
+            return 0
+    def close_all(self):
+        self._conns.close_all()
+local_cmd_history_db = LocalCmdHistoryDB()
+local_cmd_history_db.connect()
 class LocalWatchdogProfileDB:
     def __init__(self, db_path: str = None):
         if db_path is None:
@@ -1627,6 +1732,39 @@ def _status_log_restore(items: List[Dict[str, Any]], missing_only: bool = False)
             continue
     conn.commit()
     return inserted
+def _cmd_history_scan() -> List[Dict[str, Any]]:
+    conn = local_cmd_history_db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, command, created_at FROM cmd_history ORDER BY id')
+    return [
+        {"id": row["id"], "command": row["command"], "created_at": row["created_at"]}
+        for row in cursor.fetchall()
+    ]
+def _cmd_history_restore(items: List[Dict[str, Any]], missing_only: bool = False) -> int:
+    conn = local_cmd_history_db._get_connection()
+    local_cmd_history_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    if not missing_only:
+        cursor.execute("DELETE FROM cmd_history")
+        conn.commit()
+    inserted = 0
+    for item in items:
+        try:
+            cursor.execute('''
+                INSERT OR IGNORE INTO cmd_history (id, command, created_at)
+                VALUES (?, ?, ?)
+            ''', (
+                item.get("id"),
+                item.get("command"),
+                item.get("created_at"),
+            ))
+            if cursor.rowcount > 0:
+                inserted += 1
+        except Exception as e:
+            log(f"[Backups] Cmd history restore insert error: {e}")
+            continue
+    conn.commit()
+    return inserted
 def _templates_file_path():
     return STATIC_DIR / "config" / "templates.json"
 class _JsonFileStub:
@@ -1676,6 +1814,12 @@ def _status_log_wipe() -> None:
     local_status_log_db._ensure_table_for_thread(conn)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM status_log_events")
+    conn.commit()
+def _cmd_history_wipe() -> None:
+    conn = local_cmd_history_db._get_connection()
+    local_cmd_history_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cmd_history")
     conn.commit()
 def _json_file_wipe(path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1734,6 +1878,22 @@ BACKUP_TARGETS = [
         "attr_defs": [
             {"AttributeName": "CommandId", "AttributeType": "S"},
             {"AttributeName": "EntryKey", "AttributeType": "S"},
+        ],
+    },
+    {
+        "id": "cmd_history",
+        "label": "Send Cmd History",
+        "file_name": "rigcontrol_cmd_history.db",
+        "local_db": lambda: local_cmd_history_db,
+        "scan_fn": _cmd_history_scan,
+        "restore_fn": lambda items, missing_only=False: _cmd_history_restore(items, missing_only),
+        "wipe_fn": _cmd_history_wipe,
+        "dynamo_table": "RigControlCmdHistory",
+        "key_schema": [
+            {"AttributeName": "id", "KeyType": "HASH"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "id", "AttributeType": "N"},
         ],
     },
     {
@@ -2987,6 +3147,51 @@ def delete_saved_command(command_id: str):
     except Exception as e:
         log(f"[CMD DELETE LOCAL ERROR] Error: {e}")
         raise HTTPException(500, f"Failed to delete command: {e}")
+@router.get("/api/cmd-history")
+def get_cmd_history():
+    try:
+        items = local_cmd_history_db.list_entries()
+        log(f"[CMDHISTORY GET] Returning {len(items)} history entries")
+        return items
+    except Exception as e:
+        log(f"[CMDHISTORY GET ERROR] Exception: {e}")
+        return []
+@router.post("/api/cmd-history")
+def post_cmd_history(payload: CmdHistoryEntryIn):
+    command = (payload.command or "").strip()
+    if not command:
+        raise HTTPException(400, "command is required")
+    try:
+        new_id = local_cmd_history_db.insert_entry(command)
+        return {"status": "ok", "id": new_id}
+    except Exception as e:
+        log(f"[CMDHISTORY POST ERROR] Exception: {e}")
+        raise HTTPException(500, f"Failed to record command history: {e}")
+@router.delete("/api/cmd-history")
+def delete_cmd_history(ids: str = None, clear_all: bool = False):
+    if clear_all:
+        try:
+            deleted = local_cmd_history_db.clear_all()
+            log(f"[CMDHISTORY DELETE] Cleared all history ({deleted} entries)")
+            return {"status": "deleted", "deleted_count": deleted}
+        except Exception as e:
+            log(f"[CMDHISTORY DELETE ERROR] Exception: {e}")
+            raise HTTPException(500, f"Failed to clear command history: {e}")
+    if not ids:
+        raise HTTPException(400, "ids or clear_all=true is required")
+    try:
+        id_list = [int(x) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "ids must be a comma-separated list of integers")
+    if not id_list:
+        raise HTTPException(400, "No ids provided")
+    try:
+        deleted = local_cmd_history_db.delete_entries(id_list)
+        log(f"[CMDHISTORY DELETE] Deleted {deleted}/{len(id_list)} requested entries")
+        return {"status": "deleted", "deleted_count": deleted, "requested_count": len(id_list)}
+    except Exception as e:
+        log(f"[CMDHISTORY DELETE ERROR] Exception: {e}")
+        raise HTTPException(500, f"Failed to delete command history: {e}")
 @router.get("/api/wallets")
 def get_wallets():
     try:
@@ -3690,6 +3895,7 @@ async def lifespan(app: FastAPI):
     local_flightsheet_db.close_all()
     local_overclock_db.close_all()
     local_saved_command_db.close_all()
+    local_cmd_history_db.close_all()
     local_watchdog_profile_db.close_all()
     local_status_log_db.close_all()
     local_wallet_db.close_all()

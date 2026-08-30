@@ -91,6 +91,7 @@ services:
       - /home/user/ha-docker/rigcontrol-ws/rigcontrol_overclocks.db:/app/rigcontrol_overclocks.db:rw
       - /home/user/ha-docker/rigcontrol-ws/rigcontrol_watchdog_profiles.db:/app/rigcontrol_watchdog_profiles.db:rw
       - /home/user/ha-docker/rigcontrol-ws/rigcontrol_status_log.db:/app/rigcontrol_status_log.db:rw
+      - /home/user/ha-docker/rigcontrol-ws/rigcontrol_cmd_history.db:/app/rigcontrol_cmd_history.db:rw
     environment:
       - API_BIND=${API_BIND}
       - API_PORT=${API_PORT}
