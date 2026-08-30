@@ -799,24 +799,133 @@ def docker_containers_running():
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
 _custom_miner_last_pid = {}
-# keryx-miner/keryxd are hardcoded into the grep_pattern below (unlike other custom miners,
-# which only get grepped for once resolve_custom_miner() registers their name) so ps aux
-# catches them even before any slot has been registered - see the "unregistered hint" handling
-# in detect_running_miners() for why that matters.
-_UNREGISTERED_CUSTOM_HINT_NAMES = ("keryx-miner", "keryxd")
+_RIG_CONF_SLOT_PATHS = (
+    ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
+    ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
+    ("aux", "/etc/rigcontrol/rig-aux.conf"),
+)
+def _read_conf_key(path, *keys, gpu_id="0"):
+    """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a
+    2-column KEY "value" variant, stored under an ALL fallback), returning the first key in
+    priority order with a resolved value. Duplicated from rigcontrol_agent.sh's identically-named
+    helper (there's no import path from here back into the agent) so detect_running_miners()
+    below can resolve a custom miner's slot straight from the flightsheet itself, instead of
+    only knowing about a slot once rigcontrol_agent.sh's resolve_custom_miner() has separately
+    registered it."""
+    if not os.path.isfile(path):
+        return ""
+    def _strip_quotes(v):
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+            v = v[1:-1]
+        return v
+    try:
+        rows = {}
+        with open(path, "r") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                parts = line.split(None, 2)
+                if len(parts) < 2:
+                    continue
+                file_key = parts[0]
+                if len(parts) == 2:
+                    rows.setdefault(file_key, {})["ALL"] = _strip_quotes(parts[1])
+                else:
+                    file_gpu = parts[1]
+                    value = _strip_quotes(parts[2])
+                    rows.setdefault(file_key, {})[file_gpu] = value
+        for key in keys:
+            entry = rows.get(key, {})
+            val = entry.get(gpu_id)
+            if not val:
+                val = entry.get("ALL")
+            if val:
+                return val
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+    return ""
+def _read_conf_key_json(path, *keys):
+    """JSON counterpart to _read_conf_key() - see that function's docstring for why this is
+    duplicated from rigcontrol_agent.sh rather than shared/imported."""
+    if not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        items = data.get("items") or []
+        if not items:
+            return ""
+        it = items[0]
+        miner = (it.get("miner") or "").strip()
+        miner_alt = (it.get("miner_alt") or "").strip()
+        mc = it.get("miner_config") or {}
+        mc_miner = (mc.get("miner") or "").strip()
+        is_custom = miner.lower() == "custom"
+        resolved = {
+            "CUSTOM_MINER": (miner_alt or mc_miner) if is_custom else "",
+            "MINER": "" if is_custom else (miner_alt or miner),
+        }
+        for key in keys:
+            val = resolved.get(key, "")
+            if val:
+                return val
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+    return ""
+_rig_slot_conf_cache = {"cpu": {"mtime": None, "name": ""}, "gpu": {"mtime": None, "name": ""}, "aux": {"mtime": None, "name": ""}}
+def _resolve_custom_name_for_slot(slot, conf_path):
+    """Returns the flightsheet-configured custom-miner process name for one slot
+    ("cpu"/"gpu"/"aux"), or "" if that slot isn't running a custom (unrecognized-by-name)
+    miner - i.e. its MINER field names something already in _BUILTIN_MINER_PROCESS_MAP (or is
+    unset). Mirrors rigcontrol_agent.sh's resolve_custom_miner() resolution order (CUSTOM_MINER_
+    BIN_<SLOT> override, then rig-<slot>.json, then rig-<slot>.conf) but is mtime-cached per slot
+    (checks the newer of the .json/.conf files) so detect_running_miners() can call this on every
+    single poll for free - only re-parses when the flightsheet actually changes. Called BEFORE
+    the ps aux scan below (not reactively after failing to match a line) so a slot's custom-miner
+    name is always known going into the match loop, whether or not that miner has ever been seen
+    running before."""
+    override_bin = _read_agent_conf_val(f"CUSTOM_MINER_BIN_{slot.upper()}").strip()
+    if override_bin:
+        return os.path.basename(override_bin.rstrip("/"))
+    json_path = conf_path[:-len(".conf")] + ".json"
+    try:
+        mtime = max(
+            os.path.getmtime(json_path) if os.path.isfile(json_path) else 0,
+            os.path.getmtime(conf_path) if os.path.isfile(conf_path) else 0,
+        )
+    except OSError:
+        mtime = 0
+    cache = _rig_slot_conf_cache[slot]
+    if mtime and cache["mtime"] == mtime:
+        return cache["name"]
+    resolved = _read_conf_key_json(json_path, "CUSTOM_MINER", "MINER") or _read_conf_key(conf_path, "CUSTOM_MINER", "MINER")
+    resolved_lower = resolved.strip().lower()
+    if resolved_lower in _BUILTIN_MINER_PROCESS_MAP or resolved_lower in set(_BUILTIN_MINER_PROCESS_MAP.values()):
+        resolved = ""  # a known built-in miner, not custom - same "already known" check resolve_custom_miner() does
+    cache["mtime"] = mtime
+    cache["name"] = resolved
+    return resolved
 def consume_miners_changed_flag():
     """Returns True if detect_running_miners() has observed the running-miner
     set change since this was last called, then clears the flag (one-shot).
-    Lets callers (e.g. custom-miner re-resolution in the agent) react only
-    when the running set actually changed instead of re-checking blindly
-    on every cycle."""
+    No longer used to gate custom-miner slot registration - detect_running_miners() below
+    resolves each slot's custom-miner name straight from the (cached) flightsheet on every
+    call now, so there's nothing left to gate on a "did the process set change" signal for.
+    Still available for any other caller that only cares about the running set changing."""
     global _miners_set_changed_flag
     changed = _miners_set_changed_flag
     _miners_set_changed_flag = False
     return changed
 def detect_running_miners():
     """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
-    Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of that
+    Resolves each slot's custom-miner name from the flightsheet (via _resolve_custom_name_for_slot(),
+    mtime-cached) BEFORE building the ps aux grep pattern, so a brand-new custom miner - keryx-miner
+    or anything else - gets matched to the right slot on the very same poll its process first shows
+    up, instead of needing a separate caller (rigcontrol_agent.sh's resolve_custom_miner()) to have
+    already registered it first.
+    Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of the
     set-membership flag: a miner that crashes and restarts (or gets reinstalled to a new
     version) keeps the same "custom_log_<slot>" key the whole time, so the set never changes
     and consume_miners_changed_flag() alone would never notice. Comparing PIDs catches that
@@ -828,22 +937,17 @@ def detect_running_miners():
     re-read rigcontrol-agent.conf from disk immediately rather than waiting for its normal
     mtime-diff check - a miner restart is exactly the moment a conf edit (e.g. adding the
     matching API port for a version that just enabled its stats API) is most likely to need to
-    take effect right away, without waiting on the next incidental conf write.
-    A process line that matches _UNREGISTERED_CUSTOM_HINT_NAMES but not any registered slot
-    (i.e. the flightsheet's custom miner hasn't been resolved into a slot yet - fresh agent
-    start racing the miner, a flightsheet edit while the agent was already running, etc.) is
-    recorded under a synthetic "_unregistered_hint_<name>" key purely so its
-    appearance/disappearance still changes new_set below and flips the changed-flag - a
-    slot-unaware match would otherwise be silently dropped every single poll, so
-    consume_miners_changed_flag() would never fire and resolve_custom_miner() would never get
-    a chance to register it, requiring a full agent restart to ever pick up hashrate. Once
-    resolve_custom_miner() runs and registers the slot, later polls match it as
-    "custom_log_<slot>" instead and the hint key naturally drops out of the set."""
+    take effect right away, without waiting on the next incidental conf write."""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     try:
-        with _custom_miner_lock:
-            custom_names = dict(_CUSTOM_MINER_PROCESS_NAMES)
+        custom_names = {}
+        for _slot, _path in _RIG_CONF_SLOT_PATHS:
+            _cname = _resolve_custom_name_for_slot(_slot, _path)
+            custom_names[_slot] = _cname
+            with _custom_miner_lock:
+                if _CUSTOM_MINER_PROCESS_NAMES.get(_slot) != _cname:
+                    _CUSTOM_MINER_PROCESS_NAMES[_slot] = _cname
         grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
                          "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
         for _slot, _cname in custom_names.items():
@@ -857,31 +961,50 @@ def detect_running_miners():
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
                 line_lower = line.lower()
+                # Figure out which custom-miner NAME this line is (whether or not it's
+                # currently attributed to a slot) before touching PID tracking at all -
+                # _custom_miner_last_pid/_named_miner_version_cache are both keyed by name,
+                # not by slot, so PID-change detection shouldn't depend on slot resolution
+                # having succeeded. _matched_slot is only used below for the found[] key.
                 _matched_slot = None
+                _matched_name = None
                 for _slot, _cname in custom_names.items():
                     if _cname and _cname in line_lower:
                         _matched_slot = _slot
+                        _matched_name = _cname
                         break
-                if _matched_slot:
-                    found[f"custom_log_{_matched_slot}"] = True
+                if _matched_name is None:
+                    # keryx-miner/keryxd are the only names hardcoded into grep_pattern ahead
+                    # of any slot resolution (see the base pattern above) - matching one here
+                    # with no assigned slot means it's running but not named in any flightsheet
+                    # right now. Still worth tracking its PID/version; just nothing to attribute
+                    # it to in found[] until a flightsheet actually claims it.
+                    for _hint_name in ("keryx-miner", "keryxd"):
+                        if _hint_name in line_lower:
+                            _matched_name = _hint_name
+                            break
+                if _matched_name:
                     _pid_fields = line.split(None, 2)
                     _pid = _pid_fields[1] if len(_pid_fields) > 1 else None
-                    if _pid and _custom_miner_last_pid.get(_matched_slot) != _pid:
-                        _custom_miner_last_pid[_matched_slot] = _pid
+                    if not _pid:
+                        continue
+                    if _matched_slot:
+                        found[f"custom_log_{_matched_slot}"] = True
+                    if _custom_miner_last_pid.get(_matched_name) != _pid:
+                        _custom_miner_last_pid[_matched_name] = _pid
                         _agent_conf_cache["mtime"] = None
-                        _named_miner_version(custom_names[_matched_slot], force=True)
+                        # Also force _resolve_custom_name_for_slot()'s per-slot cache to
+                        # re-read rig-*.conf/.json on the next call - a restart is exactly
+                        # the moment a flightsheet reassignment is most likely to need to
+                        # take effect immediately rather than waiting on its own mtime check
+                        # (which only fires on an actual file edit, not a miner restart).
+                        for _c in _rig_slot_conf_cache.values():
+                            _c["mtime"] = None
+                        _named_miner_version(_matched_name, force=True)
                     continue
-                _matched_builtin = False
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
                     if proc_name in line_lower:
                         found[miner_name] = True
-                        _matched_builtin = True
-                        break
-                if _matched_builtin:
-                    continue
-                for _hint_name in _UNREGISTERED_CUSTOM_HINT_NAMES:
-                    if _hint_name in line_lower:
-                        found[f"_unregistered_hint_{_hint_name}"] = True
                         break
     except Exception as e:
         print(f"Error detecting native miner processes: {e}")

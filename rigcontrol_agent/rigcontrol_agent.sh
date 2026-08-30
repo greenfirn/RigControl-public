@@ -428,8 +428,16 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         if STATS_DB_ENABLED and (time.time() - _stats_db_last_save) >= STATS_DB_INTERVAL_SECONDS:
             effective_visible_groups = None
         try:
-            if telemetry.consume_miners_changed_flag():
-                await asyncio.to_thread(resolve_custom_miner)
+            # Unconditional every cycle (not gated behind telemetry.consume_miners_changed_flag())
+            # - that flag only flips when detect_running_miners()'s found-set changes, which
+            # requires a process to already be recognized (a registered custom slot, or a builtin)
+            # before its appearance/disappearance can register as a "change" at all. A brand-new
+            # custom-miner name configured while the agent is already running is invisible to that
+            # detection loop until IT'S resolved, so gating registration behind it is a chicken-
+            # and-egg that only self-heals via an unrelated flag flip or a full agent restart.
+            # resolve_custom_miner() itself is just a couple of small conf/json file reads (no
+            # network calls), cheap enough to run on every ~5s telemetry cycle unconditionally.
+            await asyncio.to_thread(resolve_custom_miner)
         except Exception as e:
             log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
         payload = await asyncio.to_thread(
@@ -637,8 +645,9 @@ async def stats_db_periodic_loop():
             continue
         try:
             try:
-                if telemetry.consume_miners_changed_flag():
-                    await asyncio.to_thread(resolve_custom_miner)
+                # See the matching call in the main telemetry-pull path for why this is
+                # unconditional now instead of gated behind telemetry.consume_miners_changed_flag().
+                await asyncio.to_thread(resolve_custom_miner)
             except Exception as e:
                 log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
             payload = await asyncio.to_thread(telemetry.collect_full_stats)
