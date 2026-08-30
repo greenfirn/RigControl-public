@@ -1634,6 +1634,41 @@ def collect_keryx_stats():
         synced=data.get("synced"),
         mining_address=data.get("mining_address", ""),
     )
+# Real "Accepted N blocks"/"N via submit block" batches seen in practice
+# top out in the low tens - never anywhere close to thousands. A captured
+# digit group this large almost certainly isn't a real batch count; it's
+# a corrupted/torn line. Discarding rather than trusting it stops a
+# single bad line from permanently poisoning the cumulative counter (on
+# top of, not instead of, the line-anchoring and PID-restart fixes below).
+_KERYXD_MAX_PLAUSIBLE_BATCH = 1000
+
+# A real keryxd restart used to be inferred purely from the log file
+# getting smaller (see _read_new_log_bytes). That heuristic silently
+# misses a restart when keryxd's service wrapper appends to the *same*
+# log file across restarts instead of truncating/replacing it - the file
+# never shrinks, so share_state["reset"] never fires, and any bad
+# accepted_shares total already accumulated (e.g. from a single corrupted
+# regex capture on a torn/interleaved log write) survives the restart
+# forever. PID is a much more direct signal: if keryxd's PID changed
+# since the last poll, it restarted, full stop, independent of what its
+# log file looks like.
+_keryxd_pid_cache = {"pid": None}
+
+
+def _get_keryxd_pid():
+    """Return keryxd's current PID (int), or None if it's not running."""
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                if proc.info['name'] and proc.info['name'].lower().startswith('keryxd'):
+                    return proc.info['pid']
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception:
+        pass
+    return None
+
+
 def collect_keryxd_stats():
     """
     keryxd (the Keryx node itself, not the miner) logs to stdout. On
@@ -1654,34 +1689,58 @@ def collect_keryxd_stats():
     Each line reports a COUNT of blocks accepted in that batch (not
     always 1), so unlike keryx-miner's OPoI lines (one line = one
     accepted share), here we extract the number and sum it across all
-    new lines seen since the last poll.
+    new lines seen since the last poll. The line regex is anchored to the
+    real line shape - timestamp + "[LEVEL]" + "Accepted N blocks" -
+    rather than just "digits near the right words" anywhere in the tail
+    window, so a corrupted/torn line can only match if it also happens to
+    start with a well-formed timestamp.
     The cumulative block count is piggybacked onto hashrate_hs/
     total_hashrate_hs (no separate accepted_shares field) so the
     dashboard's existing fmtRateHs() display path - which already
     auto-scales through kH/s, MH/s, GH/s, TH/s, PH/s for arbitrarily
     large numbers - picks this up for free. Resets to 0 whenever keryxd
-    itself restarts (log file replaced/truncated) - a new keryxd session
-    starts a fresh count rather than carrying the old one forward.
+    itself restarts - detected two ways: the log file going small (a real
+    replace/truncate) OR keryxd's PID changing (catches restarts where
+    the service wrapper just keeps appending to the same log file, which
+    the file-size check alone would miss forever).
     """
     default_log_path = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "keryxd.log")
     log_path = os.environ.get("KERYXD_LOG_PATH", default_log_path)
     log_style = os.environ.get("KERYXD_LOG_STYLE", "").strip().lower()
-    accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
-    submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
-    count_re = submit_block_re if log_style == "blocks" else accepted_re
+    line_re = re.compile(
+        r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2}[ \t]+"
+        r"\[[A-Za-z]+\s*\][ \t]+Accepted[ \t]+(\d+)[ \t]+blocks?"
+        r"(?:[^\n]*?[ \t](\d+)[ \t]+via[ \t]+submit[ \t]+blocks?)?",
+        re.MULTILINE,
+    )
+    use_submit_only = (log_style == "blocks")
+
+    current_pid = _get_keryxd_pid()
+    keryxd_restarted = (
+        current_pid is not None
+        and _keryxd_pid_cache["pid"] is not None
+        and current_pid != _keryxd_pid_cache["pid"]
+    )
+    _keryxd_pid_cache["pid"] = current_pid
+
     share_state = _log_event_state.setdefault(
         log_path, {"offset": 0, "accepted_shares": 0}
     )
     new_text = _read_new_log_bytes(log_path, share_state)
     if new_text is None:
         return _build_miner_result("error", "keryxd", error=f"could not read log file '{log_path}'")
-    if share_state.get("reset"):
-        # keryxd's own log file resets on every keryxd restart (crash, manual, watchdog-
-        # triggered, or host reboot) - treat that as a genuinely new session and zero the
-        # count instead of carrying it forward.
+    if share_state.get("reset") or keryxd_restarted:
+        # A real restart - detected either way above - starts a genuinely
+        # new session; zero the count instead of carrying it forward.
         share_state["accepted_shares"] = 0
-    for match in count_re.finditer(new_text):
-        share_state["accepted_shares"] += int(match.group(1))
+    for match in line_re.finditer(new_text):
+        if use_submit_only:
+            n = int(match.group(2)) if match.group(2) else 0
+        else:
+            n = int(match.group(1))
+        if n > _KERYXD_MAX_PLAUSIBLE_BATCH:
+            continue
+        share_state["accepted_shares"] += n
     accepted_shares = share_state["accepted_shares"]
     return _build_miner_result(
         "ok", "keryxd",

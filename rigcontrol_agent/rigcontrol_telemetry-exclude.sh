@@ -2312,6 +2312,46 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
         synced=data.get("synced"),
         mining_address=data.get("mining_address", ""),
     )
+# Real "Accepted N blocks"/"N via submit block" batches seen in practice
+# top out in the low tens (e.g. 14, 4, 2) - never anywhere close to
+# thousands. A captured digit group this large almost certainly isn't a
+# real batch count; it's a corrupted/torn line (e.g. two concurrently-
+# written log lines interleaved so some unrelated large number ends up
+# right where a count was expected). Discarding rather than trusting it
+# stops a single bad line from permanently poisoning the cumulative
+# counter - on top of, not instead of, the line-anchoring and PID-restart
+# fixes below.
+_NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH = 1000
+
+# A real restart used to be inferred purely from the log file getting
+# smaller (see _read_new_log_bytes). That heuristic silently misses a
+# restart when the miner's service wrapper appends to the *same* log file
+# across restarts instead of truncating/replacing it - the file never
+# shrinks, so share_state["reset"] never fires, and any bad
+# accepted_shares/submit_block_shares total already accumulated (e.g.
+# from a single corrupted regex capture on a torn/interleaved log write)
+# survives the restart forever, no matter how many times the miner is
+# actually restarted. PID is a much more direct signal: if the miner's
+# PID changed since the last poll, it restarted, full stop, independent
+# of what its log file looks like. Keyed by name (not slot) so it works
+# the same way _named_miner_version_cache already does.
+_named_miner_block_stats_pid_cache = {}
+
+
+def _get_named_miner_pid(name):
+    """Return the PID (int) of the process named `name`, or None if it's
+    not currently running."""
+    try:
+        result = subprocess.run(
+            ["bash", "-c", f"ps -C {shlex.quote(name)} -o pid= | head -1"],
+            capture_output=True, text=True, timeout=2
+        )
+        pid_str = result.stdout.strip()
+        return int(pid_str) if pid_str else None
+    except Exception:
+        return None
+
+
 def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
     counts since the last poll, offset-tracked via _read_new_log_bytes -
@@ -2326,11 +2366,35 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     total and surfaced as accepted_shares/total_accepted_shares,
     alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
     total-blocks-accepted metric above. Both totals reset to 0 whenever
-    keryxd itself restarts (log file replaced/truncated) - a new keryxd
-    session starts a fresh count rather than carrying the old one forward.
+    the miner itself restarts - detected two ways: the log file going
+    small (a real replace/truncate) OR the miner's PID changing (catches
+    restarts where the service wrapper just keeps appending to the same
+    log file, which the file-size check alone would miss forever).
+
+    The line regex below is anchored to the real line shape - timestamp +
+    "[LEVEL]" + "Accepted N blocks" - rather than just "digits near the
+    right words" anywhere in the tail window. That means a corrupted/torn
+    line can only produce a match if it also happens to start with a
+    well-formed timestamp, which is far less likely than merely landing
+    next to "via submit block". group(1) is the total count, group(2) is
+    the submit-block sub-count (None on relay-only lines).
     """
-    accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
-    submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
+    line_re = re.compile(
+        r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2}[ \t]+"
+        r"\[[A-Za-z]+\s*\][ \t]+Accepted[ \t]+(\d+)[ \t]+blocks?"
+        r"(?:[^\n]*?[ \t](\d+)[ \t]+via[ \t]+submit[ \t]+blocks?)?",
+        re.MULTILINE,
+    )
+
+    current_pid = _get_named_miner_pid(name)
+    last_pid = _named_miner_block_stats_pid_cache.get(name)
+    miner_restarted = (
+        current_pid is not None
+        and last_pid is not None
+        and current_pid != last_pid
+    )
+    _named_miner_block_stats_pid_cache[name] = current_pid
+
     share_state = _log_event_state.setdefault(
         log_path, {"offset": 0, "accepted_shares": 0, "submit_block_shares": 0}
     )
@@ -2340,19 +2404,21 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
             "error", name, error=f"could not read log file '{log_path}'",
             miner_version=_named_miner_version(name),
         )
-    if share_state.get("reset"):
-        # keryxd's log file itself resets on every keryxd restart (crash, manual, watchdog-
-        # triggered, or host reboot) - treat that as a genuinely new session and zero both
-        # counts instead of carrying them forward.
+    if share_state.get("reset") or miner_restarted:
+        # A real restart - detected either way above - starts a genuinely
+        # new session; zero both counts instead of carrying them forward.
         share_state["accepted_shares"] = 0
         share_state["submit_block_shares"] = 0
-    for match in accepted_re.finditer(new_text):
-        share_state["accepted_shares"] += int(match.group(1))
-    for match in submit_block_re.finditer(new_text):
-        share_state["submit_block_shares"] += int(match.group(1))
+    for match in line_re.finditer(new_text):
+        total_n = int(match.group(1))
+        if total_n <= _NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH:
+            share_state["accepted_shares"] += total_n
+        submit_n = int(match.group(2)) if match.group(2) else 0
+        if submit_n <= _NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH:
+            share_state["submit_block_shares"] += submit_n
     accepted_shares = share_state["accepted_shares"]
     submit_block_shares = share_state["submit_block_shares"]
-    _named_miner_version(name, force=share_state.get("reset", False))
+    _named_miner_version(name, force=(share_state.get("reset") or miner_restarted))
     return _build_miner_result(
         "ok", name,
         miner_version=_named_miner_version_cache[name]["version"],
