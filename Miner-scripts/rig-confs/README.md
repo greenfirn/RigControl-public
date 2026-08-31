@@ -6,7 +6,10 @@
 
 [02-load_configs.sh](../lib/02-load_configs.sh): Worker name from hostname, upper case rig name x,t,s
 
-WORKER_NAME="$(cat /etc/hostname)"
+WORKER_NAME="$(cat /etc/hostname)"'
+
 WORKER_NAME="${WORKER_NAME//x/X}"
+
 WORKER_NAME="${WORKER_NAME//t/T}"
+
 WORKER_NAME="${WORKER_NAME//s/S}"
