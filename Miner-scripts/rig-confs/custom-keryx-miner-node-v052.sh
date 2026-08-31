@@ -1,6 +1,6 @@
 # -- keryx-miner v0.5.2-PoM (custom, download via miner_alt/install_url) write rig-gpu.json --
 # -- %URL% substitutes the first pool_urls[] entry into miner_config.url and any %URL% token   --
-# -- inside user_config (here, --keryxd-address); %WAL% substitutes miner_config.template       --
+# -- inside user_config (here, --keryxd-address); %WAL% substitutes miner_config.wallet_address       --
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
