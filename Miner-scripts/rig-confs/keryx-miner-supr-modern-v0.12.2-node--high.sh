@@ -1,4 +1,4 @@
-# -- keryx-miner-supr --high variant (suprnova pool) v0.12.2 modern, write rig-gpu.json --
+# -- keryx-miner-supr --high variant v0.12.2 modern, write rig-gpu.json                   --
 # -- same as keryx-miner-supr-modern-v0.12.2-node.sh but with --high added to user_config --
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
