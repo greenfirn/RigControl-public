@@ -486,7 +486,14 @@ fi
 echo "$(date): Starting Docker event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Docker events stream..."
-    docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
+    # KillMode=mixed (see [Service] block below) only signals this script itself, not this
+    # blocking `docker events` child - a bash script parked in wait() for a foreground pipe
+    # like this one does not act on a trapped signal until the pipe itself returns, so an
+    # un-timed-out `docker events` stream would leave the TERM trap (and this whole script)
+    # stuck indefinitely whenever no container events happen to be arriving. The timeout
+    # below bounds that wait so SHUTDOWN_REQUESTED gets rechecked - and any pending trap
+    # gets to run - at least every 15s even when the stream is idle.
+    timeout 15 docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
     while read -r type action name image; do
         if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
             echo "$(date): Shutdown requested, breaking event loop..."

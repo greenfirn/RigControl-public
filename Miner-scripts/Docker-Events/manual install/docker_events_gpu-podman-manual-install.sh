@@ -354,7 +354,14 @@ fi
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
-    docker exec podman podman events \
+    # KillMode=mixed (see [Service] block below) only signals this script itself, not this
+    # blocking `podman events` child - a bash script parked in wait() for a foreground pipe
+    # like this one does not act on a trapped signal until the pipe itself returns, so an
+    # un-timed-out `podman events` stream would leave the TERM trap (and this whole script)
+    # stuck indefinitely whenever no container events happen to be arriving. The timeout
+    # below bounds that wait so SHUTDOWN_REQUESTED gets rechecked - and any pending trap
+    # gets to run - at least every 15s even when the stream is idle.
+    timeout 15 docker exec podman podman events \
         --filter 'type=container' \
         --format '{{.Time}}|{{.Status}}|{{.Name}}' 2>&1 | \
     while IFS='|' read -r event_time status container_name; do
