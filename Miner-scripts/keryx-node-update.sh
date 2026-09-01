@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 # Bump this to update keryx-node - the download URL/zip/binary names below are all built
 # from it, so this is the only line that needs to change between updates.
-VERSION="v1.5.5-PoM"
+VERSION="v1.5.8-PoM"
 
 # Where keryx-node lives on this rig - matches keryxd.service's WorkingDirectory/ExecStart.
 INSTALL_DIR="/opt/miners"
@@ -14,6 +14,13 @@ URL="https://github.com/Keryx-Labs/keryx-node/releases/download/${VERSION}/${ZIP
 
 echo "$(date): stopping keryxd.service..."
 sudo systemctl stop keryxd.service
+
+echo "$(date): waiting for keryxd.service to fully stop..."
+while systemctl is-active --quiet keryxd.service; do
+    echo "$(date): keryxd.service still active - waiting 5s..."
+    sleep 5
+done
+echo "$(date): keryxd.service stopped."
 
 cd "$INSTALL_DIR"
 echo "$(date): downloading $URL..."

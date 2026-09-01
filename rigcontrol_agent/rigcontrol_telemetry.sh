@@ -2234,12 +2234,13 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
        ]}
     (claimed_outputs/claimed_sompi/escrow_pending_outputs/escrow_pending_sompi are Keryx-protocol
     wallet/escrow bookkeeping, not GPU or mining-rate data - not surfaced here, same as the Windows
-    agent's collect_keryx_stats(). power_w/core_mhz/mem_mhz/vram_total_mb/vram_used_mb/
-    efficiency_mhs_per_w below were never actually seen on a live response - kept only as harmless
-    fallbacks in case some other keryx-miner build/fork reports them under those older names.)
-    Older builds/other custom miners that don't report per-device fields at all just get None
-    there, and temp/fan/power for those still come from collect_nvidia_gpu_stats() (the frontend
-    already merges the system GPU list with each miner's own "gpus" list by index)."""
+    agent's collect_keryx_stats().)
+    Deliberately NOT used for temp/fan/power/clock/vram even when a build reports them (e.g.
+    0.11.10's per-device temp_c/fan_percent/power_draw_w/core_mhz/mem_mhz/vram_total_mb/
+    vram_used_mb) - those always come from collect_nvidia_gpu_stats() (nvidia-smi) instead, same
+    as the Windows agent's collect_keryx_stats(), so there's a single source of truth for GPU
+    sensor readings instead of the miner's own numbers disagreeing with it. The frontend merges
+    the system GPU list with each miner's own "gpus" list by index."""
     data = None
     last_err = None
     for path in ("/stats", "/v1/miner/stats"):
@@ -2262,8 +2263,8 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     # accepted_shares/rejected_shares fallback below handle both the old and new shape, so this keeps
     # working across the schema change either direction without needing to pin a version. That same
     # 0.11.10 response also includes real per-device core_mhz/mem_mhz/fan_pct/power_w/temp_c/
-    # vram_total_mb/vram_used_mb readings that were never being read before - extracted below into
-    # the same canonical gpu-entry key names the other Linux miner collectors already use.
+    # vram_total_mb/vram_used_mb readings, but those are never read here - see the docstring above
+    # for why GPU sensor readings always come from collect_nvidia_gpu_stats() instead.
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
     raw_devices = data.get("devices", []) or []
     parsed_devices = []
@@ -2308,20 +2309,14 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     # per device, so there's no way to honestly attribute them to a specific GPU on a multi-GPU
     # rig - but on a single-GPU rig there's no ambiguity, the one GPU IS the whole aggregate.
     single_gpu = len(parsed_devices) == 1
+    # No power/core_clock/mem_clock/temperature/mem_temp/fan_speed/vram_*/efficiency_mhs_per_w
+    # here even when a device reports them - see the docstring above, GPU sensor readings never
+    # come from this API, only from collect_nvidia_gpu_stats() (merged in by the frontend by index).
     gpus = [
         _build_gpu_entry(
             idx, name=gname, hashrate_hs=dev.get("hashrate_hs", 0),
             accepted_shares=dev.get("blocks_accepted", accepted_shares if single_gpu else None),
             rejected_shares=dev.get("blocks_rejected", rejected_shares if single_gpu else None),
-            # power_draw_w/fan_percent/memory_temp_c are the confirmed live field names (see
-            # docstring above) - power_w/fan_pct below are kept only as fallbacks for an older/
-            # different build that might still use those names.
-            power=dev.get("power_draw_w", dev.get("power_w")),
-            core_clock=dev.get("core_mhz"), mem_clock=dev.get("mem_mhz"),
-            temperature=dev.get("temp_c"), mem_temp=dev.get("memory_temp_c"),
-            fan_speed=dev.get("fan_percent", dev.get("fan_pct")),
-            vram_total_mb=dev.get("vram_total_mb"), vram_used_mb=dev.get("vram_used_mb"),
-            efficiency_mhs_per_w=dev.get("efficiency_mhs_per_w"),
         )
         for idx, gname, dev in parsed_devices
     ]
