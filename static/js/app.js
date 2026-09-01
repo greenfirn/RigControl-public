@@ -10537,6 +10537,15 @@ function buildOcScriptFromRows() {
     // to do here.
     return body + ocCfg.apply_script_footer;
 }
+function getOcCurrentAlgoNames() {
+    const names = [];
+    document.querySelectorAll("#oc-rows .oc-row .oc-algo").forEach(input => {
+        (input.value || "").split(",").map(a => a.trim()).filter(Boolean).forEach(n => {
+            if (!names.includes(n)) names.push(n);
+        });
+    });
+    return names;
+}
 function rebuildOcRawFromRows() {
     const el = document.getElementById("oc-raw");
     if (el) {
@@ -10544,6 +10553,17 @@ function rebuildOcRawFromRows() {
         if (ocApplyToRigs.size > 0) {
             text = `# APPLY_TO=${Array.from(ocApplyToRigs).join(",")}\n${text}`;
         }
+        // buildOcScriptFromRows() never emits the "Apply Algo" invoke line (sudo .../gpu_apply_ocs.sh
+        // <algo>) - it's tracked separately in ocApplyInvokeAlgo and was only ever written into the
+        // raw text by onOcAlgoApplySelectChange(). Any OTHER row edit (core clock, fan, algo rename,
+        // etc.) also runs through here though, which fully rebuilds the raw text from the rows alone -
+        // that was silently dropping an already-selected invoke line on every such edit. Re-insert it
+        // (or drop the selection first if it no longer matches any current row's algo name, e.g. the
+        // row it pointed to was renamed/removed) before writing the raw textarea.
+        if (ocApplyInvokeAlgo && !getOcCurrentAlgoNames().includes(ocApplyInvokeAlgo)) {
+            ocApplyInvokeAlgo = "";
+        }
+        text = setOcApplyInvokeLine(text, ocApplyInvokeAlgo);
         el.value = text;
     }
     autoResizeOcRaw();
@@ -10552,12 +10572,7 @@ function rebuildOcRawFromRows() {
 function populateOcAlgoApplySelect() {
     const select = document.getElementById("oc-algo-apply-select");
     if (!select) return;
-    const names = [];
-    document.querySelectorAll("#oc-rows .oc-row .oc-algo").forEach(input => {
-        (input.value || "").split(",").map(a => a.trim()).filter(Boolean).forEach(n => {
-            if (!names.includes(n)) names.push(n);
-        });
-    });
+    const names = getOcCurrentAlgoNames();
     select.innerHTML = "";
     const saveOnlyOpt = document.createElement("option");
     saveOnlyOpt.value = "";
@@ -10666,6 +10681,9 @@ function newOverclock() {
     }
     document.getElementById("oc-name").value = "";
     clearOcRows();
+    // rebuildOcRawFromRows() now re-applies ocApplyInvokeAlgo (see there) - reset it here so a
+    // brand-new profile doesn't inherit whatever algo was selected on the previously-loaded one.
+    ocApplyInvokeAlgo = "";
     addOcRow(null, { skipRebuild: true });
     rebuildOcRawFromRows();
 }
