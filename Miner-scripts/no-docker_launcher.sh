@@ -398,6 +398,12 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
+# KillMode=mixed (not the default control-group) so a stop/restart only signals this
+# tracked process - control-group would signal the screen session and the miner running
+# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
+# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
+# ever gets a chance to shut it down cleanly.
+KillMode=mixed
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
@@ -418,6 +424,12 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
+# KillMode=mixed (not the default control-group) so a stop/restart only signals this
+# tracked process - control-group would signal the screen session and the miner running
+# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
+# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
+# ever gets a chance to shut it down cleanly.
+KillMode=mixed
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
@@ -437,6 +449,12 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
+# KillMode=mixed (not the default control-group) so a stop/restart only signals this
+# tracked process - control-group would signal the screen session and the miner running
+# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
+# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
+# ever gets a chance to shut it down cleanly.
+KillMode=mixed
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
