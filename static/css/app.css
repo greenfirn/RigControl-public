@@ -4986,6 +4986,12 @@ h1 {
     margin-bottom: 6px;
     flex: 0 0 auto;
 }
+.stats-chart-title-total {
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: normal;
+    opacity: 0.7;
+}
 .stats-chart-box canvas {
     flex: 1 1 auto;
     min-height: 0;

@@ -752,6 +752,26 @@ def collect_memory():
         "free_mb": mem.available // (1024 * 1024),
         "percent": mem.percent
     }
+def collect_network():
+    """rx_bytes/tx_bytes are raw cumulative counters via psutil.net_io_counters() (reset on reboot) -
+    used for the Stats page's per-sample MB bar chart and running totals. rx_mbps/tx_mbps are a live
+    throughput figure measured over a short window right now (read, sleep briefly, read again) rather
+    than averaged across the gap since the previous stored history sample - same technique as the
+    Linux agent's collect_network(), so the Mbps line chart reflects the actual rate at the moment
+    each sample was taken regardless of which agent reported it."""
+    try:
+        c1 = psutil.net_io_counters()
+        sample_window_s = 0.5
+        time.sleep(sample_window_s)
+        c2 = psutil.net_io_counters()
+        rx_mbps = max(0.0, (c2.bytes_recv - c1.bytes_recv) * 8 / (sample_window_s * 1_000_000))
+        tx_mbps = max(0.0, (c2.bytes_sent - c1.bytes_sent) * 8 / (sample_window_s * 1_000_000))
+        return {
+            "rx_bytes": c2.bytes_recv, "tx_bytes": c2.bytes_sent,
+            "rx_mbps": round(rx_mbps, 3), "tx_mbps": round(tx_mbps, 3),
+        }
+    except Exception:
+        return {"rx_bytes": 0, "tx_bytes": 0, "rx_mbps": 0, "tx_mbps": 0}
 # ===== Shared result-shape helpers =====
 # Every collect_*_stats() function below returns through these three builders instead of hand-rolling
 # its own dict, so every miner - regardless of how different its own raw API/log format is - reports
@@ -1830,6 +1850,7 @@ def collect_full_stats():
         "cpu_usage": collect_cpu_usage(),
         "load": collect_load(),
         "memory": collect_memory(),
+        "network": collect_network(),
         "system_uptime_seconds": collect_system_uptime(),
         "gpu_present": gpu_present,
         "gpus": gpu_list,

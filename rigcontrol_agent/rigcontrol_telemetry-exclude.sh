@@ -629,6 +629,53 @@ def collect_system_uptime():
     """Reads uptime from /proc/uptime."""
     with open("/proc/uptime") as f:
         return float(f.read().split()[0])
+# Virtual/tunnel interface name prefixes to exclude from collect_network()'s totals - docker/podman
+# bridges, veth pairs, and VPN/tunnel adapters all carry the same bytes as the real physical link
+# underneath them (or aren't real link traffic at all), so summing them in would double-count or
+# inflate the rig's actual upload/download usage.
+_NETWORK_IGNORE_PREFIXES = ("lo", "docker", "veth", "br-", "virbr", "tun", "tap", "wg", "podman")
+def _read_network_bytes():
+    """Sums RX/TX byte counters from /proc/net/dev across all non-virtual interfaces at this instant.
+    These are raw cumulative counters that reset on reboot/link reset - collect_network() below takes
+    two of these readings a short interval apart to derive a live throughput figure, the same
+    sleep-then-diff technique collect_cpu_usage() already uses for %CPU."""
+    rx_total = 0
+    tx_total = 0
+    try:
+        with open("/proc/net/dev") as f:
+            lines = f.readlines()[2:]  # first two lines are headers
+        for line in lines:
+            if ":" not in line:
+                continue
+            iface, rest = line.split(":", 1)
+            iface = iface.strip()
+            if any(iface.startswith(p) for p in _NETWORK_IGNORE_PREFIXES):
+                continue
+            fields = rest.split()
+            if len(fields) < 9:
+                continue
+            rx_total += int(fields[0])  # bytes column
+            tx_total += int(fields[8])  # bytes column
+    except Exception:
+        pass
+    return rx_total, tx_total
+def collect_network():
+    """rx_bytes/tx_bytes are the raw cumulative counters (reset on reboot/link reset) - used for the
+    Stats page's per-sample MB bar chart and running totals. rx_mbps/tx_mbps are a live, freshly-
+    measured throughput figure taken over a short window right now, NOT averaged across the (much
+    longer, ~90s by default) gap since the previous stored history sample - same "read, sleep
+    briefly, read again" technique as collect_cpu_usage(), so the Mbps line chart reflects the actual
+    rate at the moment each sample was taken instead of a smoothed-out average."""
+    rx1, tx1 = _read_network_bytes()
+    sample_window_s = 0.5
+    time.sleep(sample_window_s)
+    rx2, tx2 = _read_network_bytes()
+    rx_mbps = max(0.0, (rx2 - rx1) * 8 / (sample_window_s * 1_000_000))
+    tx_mbps = max(0.0, (tx2 - tx1) * 8 / (sample_window_s * 1_000_000))
+    return {
+        "rx_bytes": rx2, "tx_bytes": tx2,
+        "rx_mbps": round(rx_mbps, 3), "tx_mbps": round(tx_mbps, 3),
+    }
 def collect_docker_containers():
     containers = []
     rc, out, _ = run(
@@ -2476,7 +2523,7 @@ def _collect_named_miner_generic_log_stats(name, key, log_path, mining_type="AUX
         total_rejected_shares=rejected_shares,
     )
 ALL_TELEMETRY_GROUPS = {
-    "cpu_temp", "cpu_usage", "load", "memory", "uptime", "gpu", "miner", "docker",
+    "cpu_temp", "cpu_usage", "load", "memory", "uptime", "gpu", "miner", "docker", "network",
     "cpu_service", "gpu_service", "aux_service", "watchdog_service",
 }
 def collect_full_stats(visible_groups=None):
@@ -2498,6 +2545,7 @@ def collect_full_stats(visible_groups=None):
         "load":                  collect_load() if "load" in active_groups else None,
         "memory":                collect_memory() if "memory" in active_groups else None,
         "system_uptime_seconds": collect_system_uptime() if "uptime" in active_groups else None,
+        "network":               collect_network() if "network" in active_groups else None,
     }
     if "gpu" in active_groups:
         skip_gpu = docker_containers_running() and not _docker_published_miners()

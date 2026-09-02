@@ -1644,6 +1644,14 @@ nvidia-smi
                         <div class="stats-chart-title">CPU Temp (&deg;C)</div>
                         <canvas id="stats-chart-cpu-temp"></canvas>
                     </div>
+                    <div class="stats-chart-box stats-chart-wide">
+                        <div class="stats-chart-title">Network Usage (Mbps)</div>
+                        <canvas id="stats-chart-network"></canvas>
+                    </div>
+                    <div class="stats-chart-box stats-chart-wide">
+                        <div class="stats-chart-title" title="Raw MB transferred since the previous sample, per data point">Network Usage (MB per Sample) <span id="stats-network-total" class="stats-chart-title-total"></span></div>
+                        <canvas id="stats-chart-network-bar"></canvas>
+                    </div>
                 </div>
             </div>
         </div>

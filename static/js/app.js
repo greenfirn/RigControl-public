@@ -13766,6 +13766,109 @@ function populateStatsAlgoSelect(entries) {
         sel.value = sortedNames.includes(mostRecent) ? mostRecent : "all";
     }
 }
+// network.rx_bytes/tx_bytes are raw cumulative counters (see collect_network() on every agent) that
+// reset on reboot/link reset, so plotting them directly would just show "bytes since last reboot"
+// climbing forever (and dropping to ~0 on every reboot) rather than actual usage. This derives "how
+// much was transferred since the previous sample" (MB) for the bar chart and the chart-title totals,
+// from the delta between consecutive history samples - one point per raw sample, same granularity as
+// every other Stats chart, no hour/day bucketing. A negative delta (counter reset) is treated as
+// zero rather than subtracted, so a reboot just shows as a zero point instead of going negative.
+// This is NOT where the Mbps line chart's data comes from - that reads rx_mbps/tx_mbps straight off
+// each entry, a live rate the agent itself measured at collection time (see collect_network()),
+// rather than an average derived here across the (much longer) gap between stored samples.
+function buildNetworkPerSampleUsage(entries) {
+    const labels = [];
+    const downloadMb = [];
+    const uploadMb = [];
+    let totalDownloadMb = 0;
+    let totalUploadMb = 0;
+    const MB = 1024 * 1024;
+    for (let i = 1; i < entries.length; i++) {
+        const prev = entries[i - 1].data?.network;
+        const cur = entries[i].data?.network;
+        if (!prev || !cur) continue;
+        const rxMb = Math.max(0, cur.rx_bytes - prev.rx_bytes) / MB;
+        const txMb = Math.max(0, cur.tx_bytes - prev.tx_bytes) / MB;
+        totalDownloadMb += rxMb;
+        totalUploadMb += txMb;
+        labels.push(statsTimestampToLocalLabel(entries[i].timestamp));
+        downloadMb.push(rxMb);
+        uploadMb.push(txMb);
+    }
+    return { labels, downloadMb, uploadMb, totalDownloadMb, totalUploadMb };
+}
+function formatNetworkTotalMb(totalMb) {
+    return totalMb >= 1024 ? `${(totalMb / 1024).toFixed(2)} GB` : `${totalMb.toFixed(0)} MB`;
+}
+// Separate bar chart, alongside the Mbps line chart above - shows the same underlying deltas but
+// as the raw "how much was transferred since the previous sample" amount (MB) rather than
+// normalized to a rate, which is more useful for spotting exactly which sample a burst happened in.
+function renderStatsNetworkBarChart(labels, downloadMb, uploadMb) {
+    const canvasId = "stats-chart-network-bar";
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === "undefined") return;
+    if (statsCharts[canvasId]) {
+        statsCharts[canvasId].destroy();
+        delete statsCharts[canvasId];
+    }
+    if (labels.length === 0) return;
+    statsCharts[canvasId] = new Chart(canvas.getContext("2d"), {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [
+                { label: "Download (MB)", data: downloadMb, backgroundColor: STATS_CHART_COLORS[0] },
+                { label: "Upload (MB)", data: uploadMb, backgroundColor: STATS_CHART_COLORS[1] },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", axis: "x", intersect: false },
+            scales: {
+                x: {
+                    afterBuildTicks: (axis) => {
+                        if (axis.ticks.length > 2) {
+                            axis.ticks = [axis.ticks[0], axis.ticks[axis.ticks.length - 1]];
+                        }
+                    },
+                    ticks: { maxRotation: 0, color: "#9aa4b2" }, grid: { color: "rgba(255,255,255,0.06)" }
+                },
+                y: { title: { display: true, text: "MB", color: "#9aa4b2" }, ticks: { color: "#9aa4b2" }, grid: { color: "rgba(255,255,255,0.06)" }, beginAtZero: true }
+            },
+            plugins: {
+                legend: { display: true, labels: { color: "#c9d1d9", boxWidth: 12 } }
+            }
+        }
+    });
+}
+// Reuses the same renderStatsChart() line-chart helper every other Stats chart goes through
+// (tension, spanGaps, first/last-tick trimming, legend/tooltip styling) instead of a one-off bar
+// chart, so this one looks and behaves consistently with the rest of the page.
+function renderStatsNetworkChart(entries) {
+    // True Mbps at plot time - read straight off each entry (the agent's own short-window
+    // measurement, see collect_network()), same simple per-sample pattern as cpu_usage/cpu_temp,
+    // NOT an average derived across the gap between stored history samples. Only set a key when the
+    // field is actually present (older history rows recorded before this agent update won't have
+    // rx_mbps/tx_mbps at all) - buildLabelsAndSeries maps an absent key to null, which spanGaps
+    // renders as a proper break in the line, instead of `undefined` rendering as a false zero.
+    const mbps = buildLabelsAndSeries(entries, (d) => {
+        const out = {};
+        if (typeof d.network?.rx_mbps === "number") out["Download (Mbps)"] = d.network.rx_mbps;
+        if (typeof d.network?.tx_mbps === "number") out["Upload (Mbps)"] = d.network.tx_mbps;
+        return out;
+    });
+    renderStatsChart("stats-chart-network", mbps.labels, mbps.seriesMap, "Mbps");
+    const { labels, downloadMb, uploadMb, totalDownloadMb, totalUploadMb } = buildNetworkPerSampleUsage(entries);
+    renderStatsNetworkBarChart(labels, downloadMb, uploadMb);
+    const totalEl = document.getElementById("stats-network-total");
+    if (totalEl) {
+        totalEl.textContent = labels.length > 0
+            ? `— Total: ${formatNetworkTotalMb(totalDownloadMb)} down, ${formatNetworkTotalMb(totalUploadMb)} up`
+            : "";
+    }
+}
 function renderStatsCharts(resp) {
     const entries = resp.entries || [];
     populateStatsAlgoSelect(entries);
@@ -13846,6 +13949,7 @@ function renderStatsCharts(resp) {
         return { "1m": l["1m"], "5m": l["5m"], "15m": l["15m"] };
     });
     renderStatsChart("stats-chart-load", load.labels, load.seriesMap, "Load");
+    renderStatsNetworkChart(entries);
     let maxHashrateHs = 0;
     entries.forEach((entry) => {
         (DataHelper.getAllAlgorithms(entry.data) || []).forEach((algo) => {

@@ -69,6 +69,45 @@ def collect_memory():
         "free_mb": avail // 1024,
         "percent": round((used / total * 100), 1) if total else 0.0
     }
+_NETWORK_IGNORE_PREFIXES = ("lo", "docker", "veth", "br-", "virbr", "tun", "tap", "wg", "podman")
+def _read_network_bytes():
+    """Sums RX/TX byte counters from /proc/net/dev across all non-virtual interfaces at this instant
+    - same shape and interface-filtering as the main rig telemetry collector."""
+    rx_total = 0
+    tx_total = 0
+    try:
+        with open("/proc/net/dev") as f:
+            lines = f.readlines()[2:]  # first two lines are headers
+        for line in lines:
+            if ":" not in line:
+                continue
+            iface, rest = line.split(":", 1)
+            iface = iface.strip()
+            if any(iface.startswith(p) for p in _NETWORK_IGNORE_PREFIXES):
+                continue
+            fields = rest.split()
+            if len(fields) < 9:
+                continue
+            rx_total += int(fields[0])  # bytes column
+            tx_total += int(fields[8])  # bytes column
+    except Exception:
+        pass
+    return rx_total, tx_total
+def collect_network():
+    """rx_bytes/tx_bytes are raw cumulative counters; rx_mbps/tx_mbps are a live throughput figure
+    measured over a short window right now (read, sleep briefly, read again) rather than averaged
+    across the gap since the previous stored history sample - same approach as the main rig
+    telemetry collector, so the Stats page network chart works identically for a Pi controller."""
+    rx1, tx1 = _read_network_bytes()
+    sample_window_s = 0.5
+    time.sleep(sample_window_s)
+    rx2, tx2 = _read_network_bytes()
+    rx_mbps = max(0.0, (rx2 - rx1) * 8 / (sample_window_s * 1_000_000))
+    tx_mbps = max(0.0, (tx2 - tx1) * 8 / (sample_window_s * 1_000_000))
+    return {
+        "rx_bytes": rx2, "tx_bytes": tx2,
+        "rx_mbps": round(rx_mbps, 3), "tx_mbps": round(tx_mbps, 3),
+    }
 def collect_docker_containers():
     containers = []
     rc, out, err = run(
@@ -157,6 +196,7 @@ def collect_full_stats():
         "cpu_usage": collect_cpu_usage(),
         "load": collect_load(),
         "memory": collect_memory(),
+        "network": collect_network(),
         "gpu_present": gpu_present,
         "gpus": collect_gpu_stats() if gpu_present else [],
     }
