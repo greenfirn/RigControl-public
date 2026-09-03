@@ -13615,6 +13615,14 @@ function buildLabelsAndSeries(entries, extractFn) {
     return { labels, seriesMap };
 }
 // opts (all optional): axisForName(name) -> "y"|"y1" to overlay a series on a second axis; y1Label for its title; dashForName(name) -> borderDash array.
+// Hides a chart's whole box (title + canvas) rather than leaving an empty, axis-only chart visible
+// when a rig has nothing to show for that metric - e.g. every GPU chart on a CPU-only rig, or the
+// hashrate chart before any miner has ever reported in. Toggled every render since which charts
+// are empty can change per rig (switching the Stats page's rig dropdown) or over time.
+function setStatsChartBoxVisible(canvas, visible) {
+    const box = canvas.closest(".stats-chart-box");
+    if (box) box.style.display = visible ? "" : "none";
+}
 function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opts) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === "undefined") return;
@@ -13623,7 +13631,11 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
         delete statsCharts[canvasId];
     }
     const names = Object.keys(seriesMap);
-    if (names.length === 0) return;
+    if (names.length === 0) {
+        setStatsChartBoxVisible(canvas, false);
+        return;
+    }
+    setStatsChartBoxVisible(canvas, true);
     const { axisForName, y1Label, dashForName, externalTooltip, segmentColorForName } = opts || {};
     const datasets = names.map((name, i) => ({
         label: name,
@@ -13811,7 +13823,11 @@ function renderStatsNetworkBarChart(labels, downloadMb, uploadMb) {
         statsCharts[canvasId].destroy();
         delete statsCharts[canvasId];
     }
-    if (labels.length === 0) return;
+    if (labels.length === 0) {
+        setStatsChartBoxVisible(canvas, false);
+        return;
+    }
+    setStatsChartBoxVisible(canvas, true);
     statsCharts[canvasId] = new Chart(canvas.getContext("2d"), {
         type: "bar",
         data: {
