@@ -13781,20 +13781,21 @@ function populateStatsAlgoSelect(entries) {
 // network.rx_bytes/tx_bytes are raw cumulative counters (see collect_network() on every agent) that
 // reset on reboot/link reset, so plotting them directly would just show "bytes since last reboot"
 // climbing forever (and dropping to ~0 on every reboot) rather than actual usage. This derives "how
-// much was transferred since the previous sample" (MB) for the bar chart and the chart-title totals,
-// from the delta between consecutive history samples - one point per raw sample, same granularity as
-// every other Stats chart, no hour/day bucketing. A negative delta (counter reset) is treated as
-// zero rather than subtracted, so a reboot just shows as a zero point instead of going negative.
+// much was transferred since the previous sample" (MB) from the delta between consecutive history
+// samples, then sums those deltas into one bar per clock hour (in the viewer's local time zone) -
+// deliberate hourly bucketing rather than one bar per raw sample, so the bar chart reads as "MB per
+// hour" regardless of how often the agent happens to be saving samples. A negative delta (counter
+// reset) is treated as zero rather than subtracted, so a reboot just contributes zero to its hour's
+// bucket instead of going negative.
 // This is NOT where the Mbps line chart's data comes from - that reads rx_mbps/tx_mbps straight off
 // each entry, a live rate the agent itself measured at collection time (see collect_network()),
 // rather than an average derived here across the (much longer) gap between stored samples.
-function buildNetworkPerSampleUsage(entries) {
-    const labels = [];
-    const downloadMb = [];
-    const uploadMb = [];
+function buildNetworkHourlyUsage(entries) {
+    const MB = 1024 * 1024;
+    const buckets = new Map(); // hour label -> { downloadMb, uploadMb }; Map preserves insertion order, and
+                                // entries are walked oldest-to-newest, so this comes out chronological for free.
     let totalDownloadMb = 0;
     let totalUploadMb = 0;
-    const MB = 1024 * 1024;
     for (let i = 1; i < entries.length; i++) {
         const prev = entries[i - 1].data?.network;
         const cur = entries[i].data?.network;
@@ -13803,9 +13804,24 @@ function buildNetworkPerSampleUsage(entries) {
         const txMb = Math.max(0, cur.tx_bytes - prev.tx_bytes) / MB;
         totalDownloadMb += rxMb;
         totalUploadMb += txMb;
-        labels.push(statsTimestampToLocalLabel(entries[i].timestamp));
-        downloadMb.push(rxMb);
-        uploadMb.push(txMb);
+        const ts = entries[i].timestamp;
+        if (!ts) continue;
+        const d = new Date(ts.replace(" ", "T") + "Z");
+        if (isNaN(d.getTime())) continue;
+        const pad = (n) => String(n).padStart(2, "0");
+        const bucketLabel = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:00`;
+        const bucket = buckets.get(bucketLabel) || { downloadMb: 0, uploadMb: 0 };
+        bucket.downloadMb += rxMb;
+        bucket.uploadMb += txMb;
+        buckets.set(bucketLabel, bucket);
+    }
+    const labels = [];
+    const downloadMb = [];
+    const uploadMb = [];
+    for (const [label, bucket] of buckets) {
+        labels.push(label);
+        downloadMb.push(bucket.downloadMb);
+        uploadMb.push(bucket.uploadMb);
     }
     return { labels, downloadMb, uploadMb, totalDownloadMb, totalUploadMb };
 }
@@ -13813,8 +13829,10 @@ function formatNetworkTotalMb(totalMb) {
     return totalMb >= 1024 ? `${(totalMb / 1024).toFixed(2)} GB` : `${totalMb.toFixed(0)} MB`;
 }
 // Separate bar chart, alongside the Mbps line chart above - shows the same underlying deltas but
-// as the raw "how much was transferred since the previous sample" amount (MB) rather than
-// normalized to a rate, which is more useful for spotting exactly which sample a burst happened in.
+// summed into one bar per clock hour (see buildNetworkHourlyUsage) rather than normalized to a
+// rate, which is more useful for spotting which hour a burst happened in. One bar per hour (rather
+// than one per raw sample) also means there are few enough bars to just label every one, unlike the
+// other Stats charts' first/last-tick-only trimming.
 function renderStatsNetworkBarChart(labels, downloadMb, uploadMb) {
     const canvasId = "stats-chart-network-bar";
     const canvas = document.getElementById(canvasId);
@@ -13844,12 +13862,7 @@ function renderStatsNetworkBarChart(labels, downloadMb, uploadMb) {
             interaction: { mode: "index", axis: "x", intersect: false },
             scales: {
                 x: {
-                    afterBuildTicks: (axis) => {
-                        if (axis.ticks.length > 2) {
-                            axis.ticks = [axis.ticks[0], axis.ticks[axis.ticks.length - 1]];
-                        }
-                    },
-                    ticks: { maxRotation: 0, color: "#9aa4b2" }, grid: { color: "rgba(255,255,255,0.06)" }
+                    ticks: { maxRotation: 45, minRotation: 0, autoSkip: true, color: "#9aa4b2" }, grid: { color: "rgba(255,255,255,0.06)" }
                 },
                 y: { title: { display: true, text: "MB", color: "#9aa4b2" }, ticks: { color: "#9aa4b2" }, grid: { color: "rgba(255,255,255,0.06)" }, beginAtZero: true }
             },
@@ -13876,7 +13889,7 @@ function renderStatsNetworkChart(entries) {
         return out;
     });
     renderStatsChart("stats-chart-network", mbps.labels, mbps.seriesMap, "Mbps");
-    const { labels, downloadMb, uploadMb, totalDownloadMb, totalUploadMb } = buildNetworkPerSampleUsage(entries);
+    const { labels, downloadMb, uploadMb, totalDownloadMb, totalUploadMb } = buildNetworkHourlyUsage(entries);
     renderStatsNetworkBarChart(labels, downloadMb, uploadMb);
     const totalEl = document.getElementById("stats-network-total");
     if (totalEl) {
