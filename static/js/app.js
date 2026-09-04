@@ -8136,6 +8136,25 @@ function buildRigGpuItemObject(values, stash) {
     if (minerCommand) {
         item.miner_command = minerCommand;
     }
+    // item still carries whatever `pool` label fsRigGpuItemOriginal had (spread in above at the
+    // top of this function), even after Manage Pools/the editor changed which pool is actually
+    // primary now - addPoolSlugForClipboard below no-ops whenever item.pool is already set, so
+    // without this check the label would silently keep pointing at the pool this flightsheet USED
+    // to use. Only clear it when it still matches what would have been auto-derived from the OLD
+    // primary pool address (i.e. it was never a deliberate override to begin with) - refresh it
+    // from the pool being saved now in that case, but leave a genuinely custom label (one that
+    // doesn't match the old pool's derived slug) alone, same as addPoolSlugForClipboard respects
+    // an explicit value everywhere else it's called.
+    {
+        const originalPoolUrls = stash.fsRigGpuItemOriginal && Array.isArray(stash.fsRigGpuItemOriginal.pool_urls)
+            ? stash.fsRigGpuItemOriginal.pool_urls
+            : [];
+        const originalPrimary = originalPoolUrls.length > 0 ? (originalPoolUrls[0] || "").trim() : "";
+        const originalDerivedSlug = originalPrimary ? derivePoolSlugForClipboard(originalPrimary) : null;
+        if (item.pool && originalDerivedSlug && String(item.pool).trim() === originalDerivedSlug) {
+            delete item.pool;
+        }
+    }
     // Same pool short-name / coin ticker auto-fill "Copy JSON" already does (addPoolSlugForClipboard/
     // addCoinTickerForClipboard below) - applied here too so the LIVE raw content (what Send/Save
     // actually uses) carries them, instead of only the separate clipboard export. Both no-op if the
@@ -8695,7 +8714,15 @@ function fsFieldsFromRigGpuJsonItem(item) {
             resolvedUrl = resolveHiveosServerPortTokens(mc.server || "", mc.port || "", item.pool_urls);
         }
         if (resolvedUrl) {
-            pool = item.pool_ssl === true ? "stratum+ssl://" + resolvedUrl : resolvedUrl;
+            // resolvedUrl came straight out of pool_urls (or a server/port pair), and pool_urls
+            // entries already carry whatever scheme, or lack of one, the user typed - same
+            // verbatim-storage convention as everywhere else pool_urls is touched. pool_ssl is
+            // only a signal to ADD a scheme when the resolved address doesn't already have one
+            // (e.g. bare host:port pool_urls from an older/HiveOS-style config); if it's already
+            // scheme-wrapped, prepending here again would double it up
+            // ("stratum+ssl://stratum+ssl://...") instead of respecting the address as-is.
+            const hasScheme = /^stratum\+(ssl|tcp):\/\//i.test(resolvedUrl);
+            pool = (!hasScheme && item.pool_ssl === true) ? "stratum+ssl://" + resolvedUrl : resolvedUrl;
         }
     }
     return {
