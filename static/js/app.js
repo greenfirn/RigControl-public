@@ -7886,6 +7886,120 @@ function saveManagePoolsDialog() {
     if (poolEl) updateRawFromFieldChange(poolEl);
     closeManagePoolsDialog();
 }
+// Bulk custom-miner-URL editor: unlike everything else in the flightsheet editor, this operates
+// directly on the checked flightsheets in the LIST (selectedFlightsheetIds), not just the single
+// entry currently loaded - it's meant for updating a custom miner's download URL across many
+// flightsheets at once (e.g. after re-hosting the binary somewhere else) without opening each one
+// individually. Falls back to whichever single flightsheet is currently loaded/clicked
+// (selectedFlightsheetId) if nothing is checked, same fallback deleteFlightsheet() uses.
+function fsCustomUrlTargetIds() {
+    if (selectedFlightsheetIds.size > 0) return [...selectedFlightsheetIds];
+    return selectedFlightsheetId ? [selectedFlightsheetId] : [];
+}
+// Finds every install_url value in a flightsheet's raw content - a dual/triple-mode flightsheet
+// (GPU+CPU+AUX) can have more than one embedded JSON block, each with its own custom-miner
+// install_url, or none at all if none of its services use a custom miner.
+function customMinerUrlsInRaw(rawText) {
+    const urls = [];
+    const re = /"install_url"\s*:\s*"([^"]*)"/g;
+    let m;
+    while ((m = re.exec(rawText || "")) !== null) urls.push(m[1]);
+    return urls;
+}
+// Replaces every install_url value found, leaving everything else in the raw content - formatting,
+// key order, other fields, any other embedded service block - untouched. A direct text
+// substitution rather than a full JSON re-parse/rebuild, since this needs to work uniformly across
+// whatever arbitrary raw content each selected flightsheet happens to have (custom-edited, HiveOS-
+// imported, dual-mode, etc.) without risking a lossy round-trip through the structured editor's own
+// rebuild logic.
+function replaceCustomMinerUrlsInRaw(rawText, newUrl) {
+    return (rawText || "").replace(/("install_url"\s*:\s*")[^"]*(")/g, (_m, pre, post) => `${pre}${newUrl}${post}`);
+}
+function openFsCustomUrlDialog() {
+    const ids = fsCustomUrlTargetIds();
+    if (ids.length === 0) {
+        alert("No flightsheet selected");
+        return;
+    }
+    const byId = new Map(flightsheets.map((fs) => [fs.FlightsheetId, fs]));
+    let withUrlCount = 0;
+    const distinctUrls = new Set();
+    for (const id of ids) {
+        const urls = customMinerUrlsInRaw(byId.get(id)?.Value || "");
+        if (urls.length > 0) {
+            withUrlCount++;
+            urls.forEach((u) => distinctUrls.add(u));
+        }
+    }
+    if (withUrlCount === 0) {
+        alert(`None of the ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom miner URL to edit.`);
+        return;
+    }
+    const summaryEl = document.getElementById("fs-custom-url-summary");
+    if (summaryEl) {
+        const skipped = ids.length - withUrlCount;
+        summaryEl.textContent =
+            `${withUrlCount} of ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom miner URL.`
+            + (skipped > 0 ? ` The other ${skipped} (no custom miner) will be left unchanged.` : "");
+    }
+    // Prefill with the shared value when every selected flightsheet's custom miner URL already
+    // agrees - leave it blank (placeholder only) when they differ, rather than guessing which one
+    // to show.
+    const input = document.getElementById("fs-custom-url-input");
+    if (input) input.value = distinctUrls.size === 1 ? [...distinctUrls][0] : "";
+    document.getElementById("fs-custom-url-modal")?.classList.remove("hidden");
+}
+function closeFsCustomUrlDialog() {
+    document.getElementById("fs-custom-url-modal")?.classList.add("hidden");
+}
+async function applyFsCustomUrlDialog() {
+    const newUrl = (document.getElementById("fs-custom-url-input")?.value || "").trim();
+    if (!newUrl) {
+        alert("Enter a URL first");
+        return;
+    }
+    const ids = fsCustomUrlTargetIds();
+    let updated = 0;
+    let skipped = 0;
+    const failed = [];
+    for (const id of ids) {
+        const fs = flightsheets.find((f) => f.FlightsheetId === id);
+        const raw = fs?.Value || "";
+        if (customMinerUrlsInRaw(raw).length === 0) {
+            skipped++;
+            continue;
+        }
+        const newRaw = replaceCustomMinerUrlsInRaw(raw, newUrl);
+        try {
+            await saveFlightsheet(id, [{ key: "RAW_COMMAND", gpu: 0, value: newRaw }]);
+            updated++;
+        } catch (err) {
+            failed.push(id);
+        }
+    }
+    await loadFlightsheets();
+    // Keep the editor in sync if the flightsheet currently loaded there was one of the ones just
+    // updated - otherwise it'd keep showing the pre-edit install_url until reselected.
+    if (selectedFlightsheetId && ids.includes(selectedFlightsheetId)) {
+        const refreshed = flightsheets.find((f) => f.FlightsheetId === selectedFlightsheetId);
+        if (refreshed) {
+            const rawEl = document.getElementById("fs-raw");
+            if (rawEl) rawEl.value = refreshed.Value || "";
+            populateFsFieldsFromRaw(refreshed.Value || "");
+            autoResizeFsRaw();
+        }
+    }
+    const status = document.getElementById("fs-status");
+    if (status) {
+        status.textContent = `Custom miner URL updated in ${updated} flightsheet${updated === 1 ? "" : "s"}`
+            + (skipped > 0 ? `, skipped ${skipped} (no custom miner)` : "")
+            + (failed.length > 0 ? `, failed ${failed.length}` : "");
+    }
+    if (failed.length > 0) {
+        alert(`Updated ${updated}. Failed: ${failed.join(", ")}`);
+    }
+    closeFsCustomUrlDialog();
+}
 function collectFsFieldValues() {
     const val = (id) => document.getElementById(id)?.value ?? "";
     const boolVal = (id) => (document.getElementById(id)?.checked ? "true" : "false");
@@ -14722,6 +14836,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-fs-pools-save")?.addEventListener("click", saveManagePoolsDialog);
     document.getElementById("btn-fs-pools-cancel")?.addEventListener("click", closeManagePoolsDialog);
     document.getElementById("btn-fs-pools-close-x")?.addEventListener("click", closeManagePoolsDialog);
+    document.getElementById("btn-fs-custom-url")?.addEventListener("click", openFsCustomUrlDialog);
+    document.getElementById("btn-fs-custom-url-cancel")?.addEventListener("click", closeFsCustomUrlDialog);
+    document.getElementById("btn-fs-custom-url-close-x")?.addEventListener("click", closeFsCustomUrlDialog);
+    document.getElementById("btn-fs-custom-url-apply")?.addEventListener("click", applyFsCustomUrlDialog);
     document.getElementById("btn-save-fs-wallet")?.addEventListener("click", openFsWalletSaveDialog);
     document.getElementById("btn-fs-wallet-save-confirm")?.addEventListener("click", confirmFsWalletSave);
     document.getElementById("btn-fs-wallet-save-cancel")?.addEventListener("click", closeFsWalletSaveDialog);
