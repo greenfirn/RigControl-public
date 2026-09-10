@@ -167,12 +167,26 @@
     </div>
     <div class="cmd-modal hidden" id="fs-custom-url-modal">
         <div class="cmd-dialog">
+            <div class="dialog-resize-handle-right" title="Drag to resize width"></div>
             <div class="cmd-header">
-                <span>Edit Custom Miner URL</span>
+                <span>Edit Custom Miner</span>
                 <button type="button" class="cmd-header-close" id="btn-fs-custom-url-close-x" title="Close">&#10005;</button>
+            </div>
+            <div class="fs-miner-config-tabs" id="fs-custom-url-tabs">
+                <button type="button" class="fs-miner-config-tab active" data-service="gpu">GPU</button>
+                <button type="button" class="fs-miner-config-tab" data-service="cpu">CPU</button>
+                <button type="button" class="fs-miner-config-tab" data-service="aux">AUX</button>
             </div>
             <div class="cmd-body">
                 <p class="unlock-explainer" id="fs-custom-url-summary"></p>
+                <input
+                    type="text"
+                    id="fs-custom-miner-name-input"
+                    class="unlock-code-input"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Miner name (binary file name)"
+                />
                 <input
                     type="text"
                     id="fs-custom-url-input"
@@ -1883,7 +1897,7 @@ nvidia-smi
                             <div class="field-group field-half">
                                 <input type="text" id="fs-field-target-name" class="fs-field-input" autocomplete="off" placeholder="TARGET_NAME" aria-label="TARGET_NAME" />
                             </div>
-                            <button type="button" id="btn-fs-custom-url" class="fs-pool-add-btn" title="Edit selected custom miner url(s)">&#128279;</button>
+                            <button type="button" id="btn-fs-custom-url" class="fs-pool-add-btn" title="Edit selected custom miner url(s)/name(s)">&#128279;</button>
                             <label class="checkbox-label fs-checkbox-inline fs-mc-portal-hidden" title="SSL">
                                 <input type="checkbox" id="fs-field-ssl">
                                 <span class="checkbox-text">SSL</span>

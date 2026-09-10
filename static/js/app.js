@@ -7664,15 +7664,109 @@ function fsCustomUrlTargetIds() {
     if (selectedFlightsheetIds.size > 0) return [...selectedFlightsheetIds];
     return selectedFlightsheetId ? [selectedFlightsheetId] : [];
 }
-function customMinerUrlsInRaw(rawText) {
-    const urls = [];
-    const re = /"install_url"\s*:\s*"([^"]*)"/g;
-    let m;
-    while ((m = re.exec(rawText || "")) !== null) urls.push(m[1]);
-    return urls;
+// A flightsheet's raw content can hold up to 3 separate "tee ... rig-<gpu|cpu|aux>.json <<'EOF'
+// ... EOF" heredoc blocks (dual/triple-mode), each an independent miner config - the GPU miner and
+// CPU miner in the same flightsheet are almost always different binaries entirely, so bulk-editing
+// name/URL has to target one service's blocks at a time rather than every block in the raw text.
+// This walks each such block (across every selected flightsheet's raw content) and only lets
+// `transform` touch the ones whose filename matches the given service.
+const FS_SERVICE_BLOCK_RE = () => /(tee\s+\S*rig-(gpu|cpu|aux)\.json[^\n]*<<'EOF'\n)([\s\S]*?)(\n[ \t]*EOF[ \t]*)(?=\n|$)/g;
+function mapFsServiceBlocks(rawText, service, transform) {
+    return (rawText || "").replace(FS_SERVICE_BLOCK_RE(), (whole, pre, svc, jsonBody, post) => {
+        if (svc !== service) return whole;
+        return pre + transform(jsonBody) + post;
+    });
 }
-function replaceCustomMinerUrlsInRaw(rawText, newUrl) {
-    return (rawText || "").replace(/("install_url"\s*:\s*")[^"]*(")/g, (_m, pre, post) => `${pre}${newUrl}${post}`);
+function collectFromFsServiceBlocks(rawText, service, extractFn) {
+    const out = [];
+    let m;
+    const re = FS_SERVICE_BLOCK_RE();
+    while ((m = re.exec(rawText || "")) !== null) {
+        const [, , svc, jsonBody] = m;
+        if (svc === service) out.push(...extractFn(jsonBody));
+    }
+    return out;
+}
+function customMinerUrlsInRaw(rawText, service) {
+    return collectFromFsServiceBlocks(rawText, service, (body) => {
+        const urls = [];
+        const re = /"install_url"\s*:\s*"([^"]*)"/g;
+        let m;
+        while ((m = re.exec(body)) !== null) urls.push(m[1]);
+        return urls;
+    });
+}
+function replaceCustomMinerUrlsInRaw(rawText, service, newUrl) {
+    return mapFsServiceBlocks(rawText, service, (body) =>
+        body.replace(/("install_url"\s*:\s*")[^"]*(")/g, (_m, pre, post) => `${pre}${newUrl}${post}`)
+    );
+}
+function customMinerNamesInRaw(rawText, service) {
+    return collectFromFsServiceBlocks(rawText, service, (body) => {
+        const names = [];
+        const re = /"miner_alt"\s*:\s*"([^"]*)"/g;
+        let m;
+        while ((m = re.exec(body)) !== null) if (m[1]) names.push(m[1]);
+        return names;
+    });
+}
+function replaceCustomMinerNamesInRaw(rawText, service, newName) {
+    // miner_config.miner and item.miner_alt hold the custom binary name and are safe to match by
+    // key alone - "miner_alt" is unique to custom entries, never used any other way. But the bare
+    // "miner" key is NOT unique: for a non-custom entry it holds the known-miner name instead
+    // (e.g. "bzminer") - already excluded here by only touching blocks for the target service, but
+    // even within a single custom block "miner" only ever means the binary name when its own value
+    // isn't the literal "custom" marker, so that's checked too before replacing.
+    return mapFsServiceBlocks(rawText, service, (body) => {
+        if (!/"miner"\s*:\s*"custom"/.test(body)) return body;
+        let out = body.replace(/("miner_alt"\s*:\s*")[^"]*(")/g, (_m, p1, p2) => `${p1}${newName}${p2}`);
+        out = out.replace(/("miner"\s*:\s*")([^"]*)(")/g, (m2, p1, val, p2) => (val === "custom" ? m2 : `${p1}${newName}${p2}`));
+        return out;
+    });
+}
+// Which service's blocks Apply targets - switched via the GPU/CPU/AUX tabs, same tab pattern as
+// the Miner Configuration modal. Always resets to "gpu" on open so reopening the dialog doesn't
+// silently carry over whatever tab was last active.
+let fsCustomUrlActiveService = "gpu";
+function fsCustomUrlSetActiveTabUI(service) {
+    document.querySelectorAll("#fs-custom-url-tabs .fs-miner-config-tab").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.service === service);
+    });
+}
+// Re-scans just the currently-targeted flightsheets' <service> blocks and refreshes the summary
+// text + prefilled inputs - shared by both the initial open and every tab switch, since which
+// flightsheets have a custom miner (and what its current name/url is) can differ per service.
+function refreshFsCustomUrlDialogForService(ids, service) {
+    const byId = new Map(flightsheets.map((fs) => [fs.FlightsheetId, fs]));
+    let withEitherCount = 0;
+    const distinctUrls = new Set();
+    const distinctNames = new Set();
+    for (const id of ids) {
+        const raw = byId.get(id)?.Value || "";
+        const urls = customMinerUrlsInRaw(raw, service);
+        const names = customMinerNamesInRaw(raw, service);
+        if (urls.length > 0) urls.forEach((u) => distinctUrls.add(u));
+        if (names.length > 0) names.forEach((n) => distinctNames.add(n));
+        if (urls.length > 0 || names.length > 0) withEitherCount++;
+    }
+    const summaryEl = document.getElementById("fs-custom-url-summary");
+    if (summaryEl) {
+        const skipped = ids.length - withEitherCount;
+        summaryEl.textContent = withEitherCount === 0
+            ? `None of the ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom ${service.toUpperCase()} miner to edit.`
+            : `${withEitherCount} of ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom ${service.toUpperCase()} miner url and/or name.`
+                + (skipped > 0 ? ` The other ${skipped} will be left unchanged.` : "");
+    }
+    const nameInput = document.getElementById("fs-custom-miner-name-input");
+    if (nameInput) nameInput.value = distinctNames.size === 1 ? [...distinctNames][0] : "";
+    const urlInput = document.getElementById("fs-custom-url-input");
+    if (urlInput) urlInput.value = distinctUrls.size === 1 ? [...distinctUrls][0] : "";
+}
+function fsCustomUrlSwitchTab(service) {
+    if (!["gpu", "cpu", "aux"].includes(service) || service === fsCustomUrlActiveService) return;
+    fsCustomUrlActiveService = service;
+    fsCustomUrlSetActiveTabUI(service);
+    refreshFsCustomUrlDialogForService(fsCustomUrlTargetIds(), service);
 }
 function openFsCustomUrlDialog() {
     const ids = fsCustomUrlTargetIds();
@@ -7680,40 +7774,22 @@ function openFsCustomUrlDialog() {
         alert("No flightsheet selected");
         return;
     }
-    const byId = new Map(flightsheets.map((fs) => [fs.FlightsheetId, fs]));
-    let withUrlCount = 0;
-    const distinctUrls = new Set();
-    for (const id of ids) {
-        const urls = customMinerUrlsInRaw(byId.get(id)?.Value || "");
-        if (urls.length > 0) {
-            withUrlCount++;
-            urls.forEach((u) => distinctUrls.add(u));
-        }
-    }
-    if (withUrlCount === 0) {
-        alert(`None of the ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom miner URL to edit.`);
-        return;
-    }
-    const summaryEl = document.getElementById("fs-custom-url-summary");
-    if (summaryEl) {
-        const skipped = ids.length - withUrlCount;
-        summaryEl.textContent =
-            `${withUrlCount} of ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom miner URL.`
-            + (skipped > 0 ? ` The other ${skipped} (no custom miner) will be left unchanged.` : "");
-    }
-    const input = document.getElementById("fs-custom-url-input");
-    if (input) input.value = distinctUrls.size === 1 ? [...distinctUrls][0] : "";
+    fsCustomUrlActiveService = "gpu";
+    fsCustomUrlSetActiveTabUI("gpu");
+    refreshFsCustomUrlDialogForService(ids, "gpu");
     document.getElementById("fs-custom-url-modal")?.classList.remove("hidden");
 }
 function closeFsCustomUrlDialog() {
     document.getElementById("fs-custom-url-modal")?.classList.add("hidden");
 }
 async function applyFsCustomUrlDialog() {
+    const newName = (document.getElementById("fs-custom-miner-name-input")?.value || "").trim();
     const newUrl = (document.getElementById("fs-custom-url-input")?.value || "").trim();
-    if (!newUrl) {
-        alert("Enter a URL first");
+    if (!newName && !newUrl) {
+        alert("Enter a miner name or URL first");
         return;
     }
+    const service = fsCustomUrlActiveService;
     const ids = fsCustomUrlTargetIds();
     let updated = 0;
     let skipped = 0;
@@ -7721,11 +7797,19 @@ async function applyFsCustomUrlDialog() {
     for (const id of ids) {
         const fs = flightsheets.find((f) => f.FlightsheetId === id);
         const raw = fs?.Value || "";
-        if (customMinerUrlsInRaw(raw).length === 0) {
+        const hasUrl = customMinerUrlsInRaw(raw, service).length > 0;
+        const hasName = customMinerNamesInRaw(raw, service).length > 0;
+        if (!hasUrl && !hasName) {
             skipped++;
             continue;
         }
-        const newRaw = replaceCustomMinerUrlsInRaw(raw, newUrl);
+        let newRaw = raw;
+        if (newUrl && hasUrl) newRaw = replaceCustomMinerUrlsInRaw(newRaw, service, newUrl);
+        if (newName && hasName) newRaw = replaceCustomMinerNamesInRaw(newRaw, service, newName);
+        if (newRaw === raw) {
+            skipped++;
+            continue;
+        }
         try {
             await saveFlightsheet(id, [{ key: "RAW_COMMAND", gpu: 0, value: newRaw }]);
             updated++;
@@ -7745,8 +7829,8 @@ async function applyFsCustomUrlDialog() {
     }
     const status = document.getElementById("fs-status");
     if (status) {
-        status.textContent = `Custom miner URL updated in ${updated} flightsheet${updated === 1 ? "" : "s"}`
-            + (skipped > 0 ? `, skipped ${skipped} (no custom miner)` : "")
+        status.textContent = `Custom ${service.toUpperCase()} miner updated in ${updated} flightsheet${updated === 1 ? "" : "s"}`
+            + (skipped > 0 ? `, skipped ${skipped} (no custom ${service.toUpperCase()} miner)` : "")
             + (failed.length > 0 ? `, failed ${failed.length}` : "");
     }
     if (failed.length > 0) {
@@ -14161,6 +14245,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-fs-custom-url-cancel")?.addEventListener("click", closeFsCustomUrlDialog);
     document.getElementById("btn-fs-custom-url-close-x")?.addEventListener("click", closeFsCustomUrlDialog);
     document.getElementById("btn-fs-custom-url-apply")?.addEventListener("click", applyFsCustomUrlDialog);
+    document.getElementById("fs-custom-url-tabs")?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".fs-miner-config-tab");
+        if (!btn) return;
+        fsCustomUrlSwitchTab(btn.dataset.service);
+    });
+    restoreResizableDialogWidth("fs-custom-url-modal", "rigcontrol_fs_custom_url_modal_width");
+    setupResizableDialogWidthSaving("fs-custom-url-modal", "rigcontrol_fs_custom_url_modal_width");
     document.getElementById("btn-save-fs-wallet")?.addEventListener("click", openFsWalletSaveDialog);
     document.getElementById("btn-fs-wallet-save-confirm")?.addEventListener("click", confirmFsWalletSave);
     document.getElementById("btn-fs-wallet-save-cancel")?.addEventListener("click", closeFsWalletSaveDialog);
