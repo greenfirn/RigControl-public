@@ -1900,7 +1900,7 @@ const DataHelper = {
             stats.activeAlgorithms.add(DataHelper.getAlgorithmName(algo));
             if (algo.pool) stats.activePools.add(algo.pool);
             const minerName = algo.minerName;
-            stats.minerCounts[minerName] = (stats.minerCounts[mininerName] || 0) + 1;
+            stats.minerCounts[minerName] = (stats.minerCounts[minerName] || 0) + 1;
         });
         stats.activeMiners = DataHelper.getActiveMiners(data).length;
         stats.activeAlgorithms = Array.from(stats.activeAlgorithms);
