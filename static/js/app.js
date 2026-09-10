@@ -18,11 +18,6 @@ const TEMPLATES_CONFIG = {
             "sudo systemctl restart docker_events_aux",
     },
     overclocking: {
-        // These 3 keys mirror static/config/templates.json's "overclocking" section exactly (kept
-        // in sync by hand) - they're the fallback used only if that file's fetch fails below, so
-        // buildOcScriptFromRows() never reads an undefined key and silently breaks OC raw generation.
-        // fan-curve.service itself is intentionally NOT one of these keys - it's installed once,
-        // separately, via Fan-control/py-nvtool/install_fan-curve.sh (see apply_script_footer below).
         apply_script_header:
             "tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n" +
             "#!/bin/bash\n" +
@@ -69,10 +64,6 @@ const TEMPLATES_CONFIG = {
             "\"${CMD[@]}\"\n" +
             "\n" +
             "\n" +
-            // fan-curve.service is installed ONCE, separately (Fan-control/py-nvtool/install_fan-curve.sh) -
-            // this only ever updates its --curve value in place, and only restarts the already-running
-            // daemon when that value actually changed, instead of rewriting/bouncing the whole service on
-            // every single miner (re)start regardless of whether the curve differs from before.
             "if [[ \"$FAN_MODE\" == \"curve\" ]]; then\n" +
             "    FAN_SVC=/etc/systemd/system/fan-curve.service\n" +
             "    if [[ -f \"$FAN_SVC\" ]]; then\n" +
@@ -99,11 +90,6 @@ const TEMPLATES_CONFIG = {
         conf_path: "/etc/rigcontrol/rigcontrol-agent.conf",
         restart_command: "sudo systemctl restart rigcontrol-agent.service",
     },
-    // Lookup tables used by the Flightsheets auto-fill (pool short-name / coin ticker) - see
-    // deriveCoinForClipboard()/derivePoolSlugForClipboard() below. Editing these in templates.json
-    // (instead of here) lets new algo->coin mappings, pool hints, etc. be added without an app.js
-    // redeploy. Each key here is a FULL replacement if present in templates.json, not a per-entry
-    // merge - so an edit there should include the whole map, not just the new entries.
     flightsheet_derivation: {
         algo_to_coin: {
             autolykos2: "ERG",
@@ -130,8 +116,6 @@ const TEMPLATES_CONFIG = {
             ["pearl", "PRL"],
             ["etica", "ETI"],
         ],
-        // Algos deliberately mapped to null - shared by multiple coins, so guessing one would be
-        // more misleading than leaving "coin" blank for the user to fill in themselves.
         ambiguous_algo_defaults: {
             "rx/0": null,
             kawpow: null,
@@ -142,28 +126,6 @@ const TEMPLATES_CONFIG = {
             pearlhash: "pearlhash.xyz",
         },
     },
-    // Per-known-miner pool/algo flag layouts, used by buildKnownMinerPoolArgs()/knownMinerAlgoFlag()
-    // below to build the FULL command line for known miners (see buildKnownMinerCommand()) - editing
-    // these in templates.json (instead of here) lets a miner's flag syntax be fixed, or a brand new
-    // miner added, without an app.js redeploy. Unlike flightsheet_derivation above, each miner name
-    // here is its own top-level key, so templates.json only needs to include the miner(s) actually
-    // being changed/added - it does NOT need to repeat every other miner's entry to keep it.
-    //   algo_flag: the flag placed before the algo value, e.g. "-a" -> "-a kawpow".
-    //   url_mode: "bare" (scheme stripped, e.g. "pool.example.com:3333") or "full" (scheme kept
-    //     exactly as stored in pool_urls, e.g. "stratum+ssl://pool.example.com:3333") - depends on
-    //     whether that miner's CLI accepts an inline stratum+tcp/ssl:// scheme on its pool flag.
-    //   pool_join: "repeat" (pool_template repeated once per pool_urls entry, space-joined - most
-    //     miners, for failover pool support), "comma" or "space" (pool_template used ONCE, with
-    //     %POOL% filled by every pool address joined with that separator into a single flag value).
-    //   pool_template: the flag(s) for one pool entry (repeat mode) or the whole pool flag (comma/
-    //     space mode) - %POOL% is replaced with the real address (or the joined list); %WALLET%/
-    //     %PASS% are left exactly as-is, since only the rig can resolve them (see resolve_wallet/
-    //     resolve_pass rig-side) - never replace those two here.
-    //   suffix_template (optional): appended once at the very end, after all pool_template
-    //     repetitions - for miners whose wallet/pass flag isn't part of the per-pool repeat.
-    //   conditional_flag (optional): a TLS/SSL flag inserted as a PREFIX, only if `detect` isn't
-    //     already found in the user's own extra args (so a manually-typed flag is never duplicated).
-    //     when_true/when_false pick the value based on pool_ssl || the flightsheet's TLS checkbox.
     known_miners: {
         xmrig: {
             algo_flag: "-a",
@@ -272,10 +234,6 @@ const TEMPLATES_CONFIG = {
         },
     },
 };
-// Fetches static/config/templates.json and merges it over the hardcoded defaults above (section by
-// section, key by key - see the TEMPLATES_CONFIG comment). Named (not an IIFE) so the Settings
-// modal's Templates tab can re-run this after a successful save, refreshing TEMPLATES_CONFIG in
-// this page immediately instead of only taking effect on the next page load.
 async function loadTemplatesConfig() {
     try {
         const res = await fetch(`${TEMPLATES_CONFIG_URL}?_=${Date.now()}`);
@@ -490,9 +448,6 @@ const COLOR_SCHEME_MAP = {
     "color-button-send-it-bg": ["--button-send-it-bg"],
     "color-button-send-it-border": ["--button-send-it-border"],
     "color-button-send-it-hover-bg": ["--button-send-it-hover-bg"],
-    // No separate "color-wd-toggle-text" entry - --wd-toggle-text is aliased in app.css to
-    // --rig-name-watchdog-active-text (var() reference), so editing "WD Active Text" below
-    // keeps the toggle button's active-state text color in sync automatically.
     "color-wd-toggle-bg": ["--wd-toggle-bg"],
     "color-wd-toggle-border": ["--wd-toggle-border"],
     "color-wd-toggle-hover-bg": ["--wd-toggle-hover-bg"],
@@ -658,12 +613,12 @@ function saveStatPanelImageSettings(settings) {
 }
 const STAT_PANEL_IMAGE_FIT_DEFAULT = "cover";
 const STAT_PANEL_IMAGE_FIT_MAP = {
-    cover: { size: "cover", repeat: "no-repeat" },          
-    contain: { size: "contain", repeat: "no-repeat" },      
-    stretch: { size: "100% 100%", repeat: "no-repeat" },    
-    center: { size: "auto", repeat: "no-repeat" },          
-    tile: { size: "auto", repeat: "repeat" },                
-    "tile-contain": { size: "contain", repeat: "repeat" },  
+    cover: { size: "cover", repeat: "no-repeat" },
+    contain: { size: "contain", repeat: "no-repeat" },
+    stretch: { size: "100% 100%", repeat: "no-repeat" },
+    center: { size: "auto", repeat: "no-repeat" },
+    tile: { size: "auto", repeat: "repeat" },
+    "tile-contain": { size: "contain", repeat: "repeat" },
 };
 function applyStatPanelImageSettings(settings) {
     const root = document.documentElement;
@@ -1059,7 +1014,7 @@ const HASHRATE_UNIT_MULTIPLIERS = {
 };
 let _lastStatsResp = null;
 let wdHashrateUnit = "MH/s";
-const WD_STOP_AFTER_FAILS_DEFAULT = 5; // per-algo/per-term default, matches DEFAULT_ALGO_SETTINGS on the backend
+const WD_STOP_AFTER_FAILS_DEFAULT = 5;
 const WD_LOG_WATCHER_SLOT_IDS = ["cpu", "gpu", "aux"];
 const WD_LOG_WATCHER_INTERVAL_DEFAULT = 10;
 const WD_MINING_INTERVAL_DEFAULT = 30;
@@ -1075,10 +1030,6 @@ const WD_LOG_TERM_ACTION_DEFS = [
     ["reboot", "ACTION_REBOOT_RIG", "Reboot"],
     ["script", "ACTION_CUSTOM_SCRIPT", "Script"],
 ];
-// Same action IDs/keys as WD_LOG_TERM_ACTION_DEFS above, just paired with the "When Triggered"
-// section's checkbox element ids instead of table-cell ones - the checkboxes moved out of the
-// per-row table cell into their own section (mirroring how Mining's "When Triggered" works),
-// edited for whichever term row is currently selected below.
 const WD_LOGTERM_ACTION_CHECKBOX_DEFS = [
     ["wdconfig-logterm-action-restart-cpu", "ACTION_RESTART_CPU"],
     ["wdconfig-logterm-action-restart-gpu", "ACTION_RESTART_GPU"],
@@ -1092,12 +1043,7 @@ const WD_LOGTERM_ACTION_CHECKBOX_DEFS = [
 let wdLogTermRowIdCounter = 0;
 let selectedWdLogTermRowId = null;
 let wdLogTermScripts = new Map();
-// Actions for whichever term row isn't currently selected - the selected row's actions live in
-// the "When Triggered" checkboxes themselves and get saved back in here on selection change
-// (see saveWdLogTermScriptFromPanel()/loadWdLogTermScriptIntoPanel()).
 let wdLogTermActions = new Map();
-// Per-term "times actually acted" counts, read from the worker via Refresh Counts - keyed by
-// row id like the maps above, purely informational/display, never sent back to the worker.
 let wdLogTermTakenCounts = new Map();
 let pendingLogWatcherCountsFetchRig = null;
 let pendingMiningCountsFetchRig = null;
@@ -1133,14 +1079,7 @@ const WD_ACTION_RAW_KEYS = [
 ];
 let pendingWdConfigFetchRig = null;
 let pendingAgentConfFetchRig = null;
-// Which *.conf the Settings modal's Conf tab dropdown currently has selected - see CONF_EDIT_TYPES
-// below for the full list. Defaults to agent.conf, matching this tab's original single-purpose behavior.
 let selectedConfEditType = "agent.conf";
-// Real-world example starting point for a rig that doesn't have a rigcontrol-agent.conf yet -
-// loaded by the "Clear" button on the Conf tab (only offered when agent.conf is selected - the
-// other conf types don't have an equivalent bundled blank example). Mirrors an actual production conf, with
-// BROKER_PASS left blank (never ship a real password in a template) and broker host/miner slots
-// as illustrative examples to edit before sending.
 const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_HOST=10.10.0.10\n" +
     "BROKER_PORT=1883\n" +
@@ -1229,11 +1168,6 @@ const LOGS_COMMAND_BUILDERS = {
     "sys.df": () => "df -h",
     "sys.top": (n) => `ps -eo pid,user,pri,ni,vsz,rss,stat,pcpu,pmem,time,args --sort=-pcpu | head -n ${n}`,
 };
-// Backs the Settings modal's Conf tab (formerly "Agent Conf" - now a dropdown-selectable editor
-// for any of the *.conf files below, not just rigcontrol-agent.conf). Read uses the matching
-// LOGS_COMMAND_BUILDERS[type]() cat command above (same file, same command, kept in one place);
-// this table only adds what reading alone doesn't need: where to write it back to, and what to
-// restart afterward so the change actually takes effect.
 const CONF_EDIT_TYPES = {
     "agent.conf": {
         dir: () => TEMPLATES_CONFIG.agentconf.conf_dir,
@@ -1259,18 +1193,9 @@ const CONF_EDIT_TYPES = {
     "watchdog.conf": {
         dir: () => TEMPLATES_CONFIG.watchdog.conf_dir,
         path: () => TEMPLATES_CONFIG.watchdog.conf_path,
-        // The dedicated Watchdog Config modal restarts via the "watchdog.restart" pseudo-command
-        // (rigcontrol_cmd.sh's own case statement, matched on the whole command being exactly that
-        // literal string) - that only works standalone, not as a second line tacked onto a raw shell
-        // blob, so this uses the equivalent literal systemctl call instead (same default service
-        // name rigcontrol_cmd.sh itself falls back to: WATCHDOG_SERVICE_NAME unset -> rigcontrol_watchdog.service).
         restartCmd: () => "sudo systemctl restart rigcontrol_watchdog.service",
     },
     "fancurve.conf": {
-        // fan-curve.service is a systemd UNIT file, not a /etc/rigcontrol app conf - editing it here
-        // is a deliberate escape hatch for a one-off manual tweak; the normal way to manage it is
-        // still install_fan-curve.sh once, then Overclock's per-algo curve value (see templates.json's
-        // apply_script_footer, which only touches the --curve line, not the rest of the unit).
         dir: () => "/etc/systemd/system",
         path: () => "/etc/systemd/system/fan-curve.service",
         restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart fan-curve.service",
@@ -1614,13 +1539,6 @@ const DataHelper = {
         "miner_gminer": "GMiner",
         "miner_teamredminer": "TeamRedMiner",
         "miner_trex": "T-Rex",
-        // "miner_keryx" deliberately NOT in this table (unlike every other entry here) - the
-        // "keryx" collector key covers TWO distinct binaries (plain keryx-miner and
-        // keryx-miner-supr) that can each be running under it depending on the rig/time, so there's
-        // no single correct static label the way there is for e.g. xmrig. Falling through to the
-        // live minerData.miner value below (which both the Linux and Windows agents resolve to
-        // whichever binary is actually running) is what shows the correct one instead of always
-        // showing a generic "Keryx" regardless of which variant is live.
 		"miner_peakminer": "PeakMiner"
     },
     getMinerDisplayName: (minerKey, minerData) => {
@@ -2060,7 +1978,6 @@ DataHelper.getGpuShares = (data) => {
         if (algo.minerKey === "miner_xmrig") return;
         if (algo.minerKey === "miner_srbminer" && algo.mining_type !== "GPU") return;
         if (algo.minerKey === "miner_bzminer" && algo.mining_type !== "GPU") return;
-        // Only the GPU slot (or legacy slot-less key) counts here.
         if (algo.minerKey.startsWith("miner_custom_log_") && algo.minerKey !== "miner_custom_log_gpu") return;
         accepted += DataHelper.getAcceptedShares(algo) || 0;
         rejected += DataHelper.getRejectedShares(algo) || 0;
@@ -2428,8 +2345,6 @@ function setupResizableDialogWidthSaving(containerId, storageKey) {
     });
     observer.observe(dialog);
 }
-// Like restoreResizableDialogWidth/setupResizableDialogWidthSaving above, but for dialogs
-// resized via a .dialog-resize-handle-corner (both width and height), e.g. #raw-content-modal.
 function restoreResizableDialogSize(containerId, storageKey) {
     const dialog = document.querySelector(`#${containerId} .cmd-dialog`);
     if (!dialog) return;
@@ -2485,10 +2400,6 @@ function initDialogResizeHandles() {
     document.querySelectorAll(".dialog-resize-handle-corner").forEach(handle => {
         handle.addEventListener("mousedown", (e) => {
             e.preventDefault();
-            // closest(), not parentElement - #raw-content-modal's handle sits inside
-            // .raw-content-slot (overlaying the textarea's own corner) rather than being a
-            // direct child of .cmd-dialog like the other modals' corner handles, but it still
-            // needs to resize the whole dialog, not just the slot it visually sits in.
             const dialog = handle.closest(".cmd-dialog");
             if (!dialog) return;
             const startX = e.clientX;
@@ -2516,11 +2427,6 @@ function initDialogResizeHandles() {
     });
 }
 const STATUSLOG_LIST_WIDTH_KEY = "rigcontrol_statuslog_list_width";
-// Draggable divider between the Status Log entry list and its details pane (#statuslog-col-resizer)
-// - separate from initDialogResizeHandles() above, which only resizes the whole dialog. Same
-// mousedown/mousemove/mouseup drag mechanics, but clamps against the list panel's own min/max-width
-// (see app.css) and persists the chosen width to localStorage, same pattern as
-// AGENTCONF_RAW_HEIGHT_KEY/CMD_INPUT_HEIGHT_KEY use for other manually-resized elements.
 function initStatuslogColResizer() {
     const handle = document.getElementById("statuslog-col-resizer");
     const listPanel = document.querySelector("#statuslog-modal .fs-list-panel");
@@ -2551,11 +2457,6 @@ function restoreStatuslogListWidth() {
     const saved = localStorage.getItem(STATUSLOG_LIST_WIDTH_KEY);
     if (listPanel && saved) listPanel.style.width = saved;
 }
-// Shared "Raw Content" popup used by Flightsheets/Overclocking/Watchdog - each module's raw
-// textarea lives at rest inside a hidden .raw-content-home wrapper in its own modal; clicking
-// the "> Raw Content <" trigger portals that exact textarea element (same id, same listeners,
-// same value) into #raw-content-slot and shows the popup. Closing portals it right back to
-// where it came from. Only one can be open at a time.
 let rawContentPortalRecord = null;
 function openRawContentModal(textareaId, title) {
     const textarea = document.getElementById(textareaId);
@@ -2566,9 +2467,6 @@ function openRawContentModal(textareaId, title) {
     slot.appendChild(textarea);
     const titleEl = document.getElementById("raw-content-title");
     if (titleEl) titleEl.textContent = title || "Raw Content";
-    // Only Flightsheets have per-category raw content - CPU/GPU/AUX are independent configs
-    // (see handleFsServiceSwitch()), so #fs-raw's content genuinely changes with the active tab.
-    // Overclock/Watchdog raw content doesn't vary by category, so no switcher for those.
     const tabsEl = document.getElementById("raw-content-service-tabs");
     if (tabsEl) tabsEl.classList.toggle("hidden", textareaId !== "fs-raw");
     if (textareaId === "fs-raw") fsSyncServiceTabsUI();
@@ -2592,11 +2490,6 @@ function initRawContentTriggers() {
     });
     document.getElementById("btn-raw-content-close-x")?.addEventListener("click", closeRawContentModal);
     document.getElementById("btn-raw-content-close")?.addEventListener("click", closeRawContentModal);
-    // GPU/CPU/AUX switcher living inside the popup header - only visible/wired for fs-raw
-    // (see openRawContentModal). Routes through the same fsSwitchServiceTab() as the main-page
-    // tabs, so the two tab bars and #fs-raw's content always agree no matter which one you use;
-    // the active tab's own highlight is what shows which category you're looking at, so the
-    // title itself stays a plain, unchanging label.
     document.getElementById("raw-content-service-tabs")?.addEventListener("click", (e) => {
         const btn = e.target.closest(".fs-service-tab");
         if (!btn) return;
@@ -2738,7 +2631,7 @@ function initColorSchemeControls() {
     });
     colorSchemeJsonFileInput?.addEventListener("change", () => {
         const file = colorSchemeJsonFileInput.files?.[0];
-        colorSchemeJsonFileInput.value = ""; 
+        colorSchemeJsonFileInput.value = "";
         if (!file) return;
         if (!/\.json$/i.test(file.name)) {
             alert("Please choose a .json file.");
@@ -2827,7 +2720,7 @@ function initWallpaperControls() {
             alert("Failed to read that image file.");
         };
         reader.readAsDataURL(file);
-        fileInput.value = ""; 
+        fileInput.value = "";
     });
     const nudgeOpacity = (delta) => {
         const current = loadWallpaperSettings();
@@ -3159,7 +3052,7 @@ function initToolbarIconPickerList() {
             alert("Failed to read that image file.");
         };
         reader.readAsDataURL(file);
-        toolbarIconFileInput.value = ""; 
+        toolbarIconFileInput.value = "";
     });
     document.getElementById("btn-toolbar-icons-reset-all")?.addEventListener("click", () => {
         if (!confirm("Reset all toolbar button icons/text back to the defaults?")) return;
@@ -3618,11 +3511,6 @@ function stripBlankLines(text) {
         .join("\n");
 }
 function fmtShareCount(n) {
-    // Share/block counts can climb well past 1M on long-uptime rigs (keryx-style block
-    // counting especially) - past 6 digits, switch to a K/M/B/T short form (same convention
-    // as the hashrate formatters below) so the stat tile stays a fixed, glanceable width
-    // instead of pushing other panel content around. Exact counts are still available in the
-    // surrounding tooltip/title text wherever one exists.
     if (typeof n !== "number" || !isFinite(n)) return n;
     const abs = Math.abs(n);
     if (abs < 1e6) return String(n);
@@ -3657,15 +3545,6 @@ function fmtUptime(sec) {
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
 }
-// Every save/load/delete/clear/etc title-bar status span (Wallets, Flightsheets, Overclock,
-// Watchdog, Send Cmd, Backups, Status Log, Settings' Conf/Templates/General tabs) should
-// show a local-time timestamp after its message (Logs/Config's status is excluded - it fires too
-// often, e.g. on every auto-refresh tick, for a timestamp there to be useful). Rather than
-// touching every one of the 70+ call sites that do `someStatusEl.textContent = "..."` throughout
-// the file, redefine
-// `.textContent` on just these elements so any assignment - existing or future - automatically
-// gets " H:MM:SS AM/PM" appended for you. The getter still returns exactly what's on screen
-// (timestamp included), so nothing reading it back sees anything unexpected.
 const STATUS_TIMESTAMP_IDS = [
     "fs-status", "oc-status", "wdconfig-status", "wallet-status",
     "saved-cmd-status", "backups-status", "statuslog-status",
@@ -3811,10 +3690,6 @@ function initWebSocket() {
                     const evtRig = msg.status_log_event?.rig;
                     if (evtRig) {
                         statusLogCounts[evtRig] = (statusLogCounts[evtRig] || 0) + 1;
-                        // Same [CRITICAL]/[WARN] title tag regex as renderStatusLogList() - updates
-                        // the badge instantly instead of waiting on the next fetchStatusLogSeverity()
-                        // poll. Only ever flips flags on (matches the DB being append-only here);
-                        // a full refetch after delete/clear is what can turn them back off.
                         const evtSevMatch = /\[(WARN|CRITICAL)\]/.exec(msg.status_log_event?.title || "");
                         if (evtSevMatch) {
                             const sev = statusLogSeverityByRig[evtRig] || (statusLogSeverityByRig[evtRig] = {});
@@ -3936,10 +3811,6 @@ function handleCommandResponse(response) {
         pendingWdConfigFetchRig = null;
         const statusEl = document.getElementById("wdconfig-status");
         if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
-            // r.stdout here is the literal `cat` output of the conf file on the rig - i.e. the bare
-            // body, no wrapper - so wrap it the same way rebuildWdRawFromSettings() does before
-            // displaying it, to keep "loaded from rig" and "rebuilt from fields" showing the same
-            // full-command shape instead of one being wrapped and the other not.
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("wdconfig-raw");
             if (rawEl) rawEl.value = wrapWdConfigCommand(raw);
@@ -3964,8 +3835,6 @@ function handleCommandResponse(response) {
                 if (statusEl) statusEl.textContent = `Couldn't parse term counts from ${r.rig}`;
             }
         } else {
-            // No file yet usually just means the worker's watchdog service hasn't started its
-            // log watcher loop since it last (re)started - not necessarily an error.
             if (statusEl) statusEl.textContent = `No term counts yet on ${r.rig} (watchdog may not have run a log-watcher cycle since it last started)`;
         }
         return;
@@ -3983,8 +3852,6 @@ function handleCommandResponse(response) {
                 if (statusEl) statusEl.textContent = `Couldn't parse algo counts from ${r.rig}`;
             }
         } else {
-            // No file yet usually just means the worker's watchdog service hasn't taken any
-            // mining-health action since it last (re)started - not necessarily an error.
             if (statusEl) statusEl.textContent = `No algo counts yet on ${r.rig} (watchdog hasn't acted on anything since it last started)`;
         }
         return;
@@ -3995,8 +3862,6 @@ function handleCommandResponse(response) {
         const confType = selectedConfEditType;
         const confLabel = LOGS_TYPE_LABELS[confType] || confType;
         if (r.returncode === 0 && r.stdout && r.stdout.trim()) {
-            // raw here is the literal `cat` output - the bare file body, no wrapper - so wrap it
-            // for display the same way loadDefaultConfEditTemplate()/the checkbox handler do.
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("agentconf-raw");
             const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
@@ -4004,10 +3869,6 @@ function handleCommandResponse(response) {
             resizeAgentConfRaw();
             if (statusEl) statusEl.textContent = `Loaded current ${confLabel} from ${r.rig}`;
         } else {
-            // Clear the box instead of leaving whatever was previously loaded sitting there - with
-            // the type dropdown now able to switch between six different files, stale content left
-            // over from the last successful load would otherwise look like it belongs to this
-            // rig/type when it doesn't exist here at all.
             const rawEl = document.getElementById("agentconf-raw");
             if (rawEl) rawEl.value = "";
             resizeAgentConfRaw();
@@ -4050,21 +3911,21 @@ function cleanupWebSocket() {
     }
 }
 const COLUMN_TELEMETRY_GROUPS = {
-    1: "cpu_temp",   
-    2: "cpu_usage",  
-    3: "load",       
-    4: "memory",     
-    5: "uptime",     
-    6: "gpu",        
-    7: "gpu",        
-    8: "gpu",        
-    9: "gpu",        
-    10: "gpu",       
-    11: "gpu",       
-    12: "gpu",       
-    13: "gpu",       
-    14: "miner",     
-    15: "docker",    
+    1: "cpu_temp",
+    2: "cpu_usage",
+    3: "load",
+    4: "memory",
+    5: "uptime",
+    6: "gpu",
+    7: "gpu",
+    8: "gpu",
+    9: "gpu",
+    10: "gpu",
+    11: "gpu",
+    12: "gpu",
+    13: "gpu",
+    14: "miner",
+    15: "docker",
 };
 const ALWAYS_VISIBLE_TELEMETRY_GROUPS = ["cpu_service", "gpu_service", "aux_service", "watchdog_service"];
 function getVisibleTelemetryGroups() {
@@ -4294,7 +4155,7 @@ function render() {
         const gpuMemTempStr = gpuMemTempFormatted.value;
         const gpuMemTempClass = gpuMemTempFormatted.class;
         const gpuUtil = gpuAgg.util;
-        const gpuPower = gpuAgg.power > 0 ? gpuAgg.power.toFixed(0) : "--"; 
+        const gpuPower = gpuAgg.power > 0 ? gpuAgg.power.toFixed(0) : "--";
         const gpuFan = gpuAgg.fan;
         const fanFormatted = DataHelper.getFormattedFan(gpuFan);
         const fanClass = fanFormatted.class;
@@ -4712,12 +4573,6 @@ function render() {
                     </tr>`;
             });
             gpuPaneHtml += `</tbody></table>`;
-            // Some miners (e.g. keryx-miner-supr) only ever report accepted/rejected shares in
-            // AGGREGATE, never broken out per device - on a multi-GPU rig every row above then has
-            // no per-GPU number to show (gpuAcceptedMap/gpuRejectedMap stay empty), which used to
-            // just look like "shares reporting is broken" for that miner rather than "this miner's
-            // API doesn't support per-GPU attribution". If NO GPU got a per-device number but the
-            // miner-level total is non-zero, show that total once instead of leaving every row blank.
             if (Object.keys(gpuAcceptedMap).length === 0 && Object.keys(gpuRejectedMap).length === 0) {
                 let totalAccepted = 0, totalRejected = 0, haveTotal = false;
                 DataHelper.getAllAlgorithms(d).forEach(algo => {
@@ -4768,7 +4623,7 @@ function render() {
 }
 const RIG_AUTOSIZE_COL_START = 1;
 const RIG_AUTOSIZE_COL_END = 16;
-const RIG_AUTOSIZE_PADDING_PX = 6; 
+const RIG_AUTOSIZE_PADDING_PX = 6;
 function autoSizeRigColumns() {
     const headerGrid = document.querySelector('.rig-header-grid');
     if (!headerGrid) return;
@@ -5987,39 +5842,22 @@ function switchSettingsMainTab(tabName) {
     document.querySelectorAll("#refresh-modal .settings-main-tab-panel").forEach((panel) => {
         panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
     });
-    // general-settings-status/agentconf-status/templates-config-status/backups-status all live in
-    // the shared modal-level .cmd-header now (alongside the "(N workers selected)" text), not
-    // inside their own tab-panel, so a leftover message from one tab would otherwise stay visible
-    // after switching to another - clear all four up front; whichever tab we're switching into
-    // re-sets its own below if relevant.
     ["general-settings-status", "agentconf-status", "templates-config-status", "backups-status"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.textContent = "";
     });
     if (tabName === "agentconf") {
-        // Opening the tab no longer auto-reloads from the worker - Reload/edit/Send is a manual
-        // sequence (the Reload button itself says what it does), and silently overwriting an
-        // in-progress edit just from switching tabs away and back (e.g. to check Templates, then
-        // back here) was surprising. lastSyncedAgentConfRig is still updated here so a genuine
-        // rig-selection change made WHILE this tab is open still auto-reloads via
-        // syncOpenModulesToSelection() below - that's a different, expected case (you picked a
-        // different rig to edit).
         lastSyncedAgentConfRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
         updateConfEditTypeUi();
     }
     if (tabName === "templates") {
         const rawEl = document.getElementById("templates-config-raw");
-        // Only auto-load the first time this tab is opened in a page session - once loaded,
-        // switching away and back shouldn't silently discard an in-progress unsaved edit.
         if (rawEl && !rawEl.dataset.loaded) {
             rawEl.dataset.loaded = "1";
             loadTemplatesConfigTab();
         }
     }
     if (tabName === "backups") {
-        // Unlike Agent Conf/Templates above, Backups always re-fetches the file list on open -
-        // matches its old behavior as a standalone tab (clicking it always refreshed), and there's
-        // no in-progress edit here that a refresh could silently clobber.
         const previewEl = document.getElementById("backups-preview-textarea");
         if (previewEl) previewEl.value = "";
         initBackupsVSizer();
@@ -6091,15 +5929,6 @@ function openRefreshModal() {
     switchViewTab("settings");
     switchSettingsMainTab("general");
 }
-// Apply To picker for the Stats DB settings footer - same "-Workers-"/"-Select All-"/
-// "-Clear Selected-" popup pattern as Flightsheets/Overclock/Watchdog's Apply To (see
-// fsApplyToRigs and friends), but standalone rather than tied to a saved profile's raw text.
-// Empty selection defers to whatever's checked in the main worker list, same as "-Workers-"
-// there.
-// Shared by all 5 Apply-To pickers (Flightsheets/Overclock/Watchdog/Stats/Configs). They sit in
-// different spots within their dialog - fs/oc/wd are in a top toolbar row, stats/agentconf are
-// in a bottom footer row - so a fixed popup direction clips against whichever dialog edge that
-// particular widget isn't near. Flips to .open-upward only when there isn't enough room below.
 function positionApplyToDropdown(toggleId, listId) {
     const toggle = document.getElementById(toggleId);
     const list = document.getElementById(listId);
@@ -6178,8 +6007,6 @@ function selectAllStatsApplyTo() {
     updateStatsSettingsTargetCount();
 }
 function updateStatsSettingsTargetCount() {
-    // statsApplyToRigs takes priority when non-empty (explicit picker choice), same "-Workers-"
-    // fallback-to-main-list convention as fs/oc/wd Apply To.
     const count = statsApplyToRigs.size > 0 ? statsApplyToRigs.size : selectedRigs.size;
     const countEl = document.getElementById("stats-settings-target-count");
     const labelEl = document.getElementById("stats-settings-target-label");
@@ -6720,9 +6547,6 @@ async function sendCommandToSelectedRigs(command) {
     });
 }
 function getActiveCmdText() {
-    // The Send tab's textarea and the History tab's read-only preview are two different
-    // elements sharing one toolbar - Send/Save both need "whichever one the operator is
-    // currently looking at", not always cmd-input.
     if (cmdActiveTab === "history") {
         return (document.getElementById("cmd-history-textarea")?.value || "").trim();
     }
@@ -6735,8 +6559,6 @@ async function recordCmdHistoryEntry(command) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ command })
         });
-        // Only re-fetch the visible list if the History tab is actually open - no need to
-        // reload it every time a command is sent while the operator is looking at Send.
         if (cmdActiveTab === "history") {
             loadCmdHistory();
         }
@@ -6748,8 +6570,6 @@ function submitCmd() {
     const cmd = getActiveCmdText();
     if (!cmd) return;
     sendCommandToSelectedRigs(cmd).then((result) => {
-        // sendCommandToSelectedRigs resolves to null (after its own "No workers selected"
-        // alert) when nothing was actually sent - don't log a history entry for that.
         if (result !== null) {
             recordCmdHistoryEntry(cmd);
         }
@@ -6759,8 +6579,6 @@ function submitCmd() {
     });
 }
 function deleteActiveCmdSelection() {
-    // Delete is one shared button - which list it acts on depends on which tab is showing,
-    // same as Send/Save above.
     if (cmdActiveTab === "history") {
         deleteSelectedCmdHistoryEntries();
     } else {
@@ -6768,9 +6586,6 @@ function deleteActiveCmdSelection() {
     }
 }
 function handleCmdClearAll() {
-    // On the History tab "Clear All" means wipe the persisted history (with its own confirm,
-    // handled inside clearAllCmdHistoryWithConfirm) - it's destructive in a way the Send tab's
-    // "clear the current fields" never was, so the two can't share one code path.
     if (cmdActiveTab === "history") {
         clearAllCmdHistoryWithConfirm();
         return;
@@ -7034,11 +6849,6 @@ function collectFlightsheetEntries() {
         { key: "RAW_COMMAND", gpu: 0, value: cmd }
     ];
 }
-// Apply To picker for Flightsheets - the "-Workers-"/"-Select All-"/"-Clear Selected-" dropdown
-// pattern that Overclock/Watchdog/Stats/Configs's own Apply To all follow. Flightsheet raw content
-// is JSON, so the selection round-trips as a real apply_to_workers array key in that body (see
-// syncFsRawAfterApplyToChange()/extractFsApplyToFromRaw() below) instead of the leading
-// "# APPLY_TO=..." comment-line hack Overclock/Watchdog need for their plain-shell-script raw content.
 let fsApplyToRigs = new Set();
 function isFsApplyToDropdownOpen() {
     const list = document.getElementById("fs-apply-to-list");
@@ -7280,7 +7090,7 @@ function measureFsListTextWidth(text, font) {
         __fsListMeasureCanvas = document.createElement("canvas");
     }
     const ctx = __fsListMeasureCanvas.getContext && __fsListMeasureCanvas.getContext("2d");
-    if (!ctx) return (text || "").length * 7; 
+    if (!ctx) return (text || "").length * 7;
     ctx.font = font;
     return ctx.measureText(text || "").width;
 }
@@ -7481,10 +7291,6 @@ async function saveFlightsheetFromDialog() {
         alert(`Error saving flightsheet: ${err.message}`);
     }
 }
-// fsPrimaryPoolUrl/fsExtraPoolUrls are stored verbatim, exactly as typed (with whatever
-// scheme, or lack of one, each individual line had) - Manage Pools Save never adds, strips,
-// or reflows scheme onto these based on a single set-wide flag. Each entry's own scheme
-// presence is checked fresh, per entry, wherever it matters (e.g. the SSL checkbox flip).
 let fsExtraPoolUrls = [];
 let fsPoolUrlsExplicitlySet = false;
 let fsPrimaryPoolUrl = "";
@@ -7501,49 +7307,28 @@ let fsRigGpuItemOriginal = null;
 let fsMinerRawOriginal = "";
 let fsDualModeActive = false;
 let fsDualModeSlots = { gpu: null, cpu: null, aux: null };
-// Tracks which service (gpu/cpu/aux) is "current" independently of the <select>'s live DOM value.
 let fsCurrentServiceType = "gpu";
 function bareFsPoolUrl(url) {
     return (url || "").trim()
         .replace(/^stratum\+ssl:\/\//, "")
         .replace(/^stratum\+tcp:\/\//, "");
 }
-// Whether an address gets a stratum+tcp://\/stratum+ssl:// scheme at all is entirely up to the
-// user, for every miner (some, like keryx-miner-supr, require an explicit scheme even for plain
-// TCP; most standard miners expect bare host:port). RigControl never invents a scheme that wasn't
-// there and never strips one the user explicitly typed - the SSL checkbox only flips an EXISTING
-// scheme between tcp and ssl. hasScheme should reflect whether the ORIGINAL text (before this
-// bareUrl was extracted from it) had a stratum+tcp:// or stratum+ssl:// prefix.
 function styledFsPoolUrlIfScheme(bareUrl, sslOn, hasScheme) {
     if (!bareUrl) return "";
     if (!hasScheme) return bareUrl;
     return (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bareUrl;
 }
-// If the Miner Configuration POOL override wraps %URL% in an explicit scheme (e.g.
-// "stratum+tcp://%URL%"), that's a deliberate, one-time instruction that every pool address
-// needs that same scheme - not just the one substituted into %URL% itself, since custom miners
-// can reference backup pools via %URL%[1], %URL%[2], etc. This is applied ONCE here, to
-// pool_urls itself, so ARGS resolution (resolve_url_indexed rig-side) can keep substituting
-// %URL%[N] as a plain, unwrapped lookup - the scheme is already baked into the stored address
-// by the time that substitution runs, so it's never added twice. Returns true/false for the
-// scheme to force onto every pool, or null if the override doesn't specify one (nothing changes).
 function forcedSchemeFromPoolToken(token) {
     const t = (token || "").trim();
     if (/^stratum\+ssl:\/\/.*%URL%/i.test(t)) return true;
     if (/^stratum\+tcp:\/\/.*%URL%/i.test(t)) return false;
     return null;
 }
-// Unlike styledFsPoolUrlIfScheme, this can ADD a scheme to a bare address - used only for the
-// forced-from-token case above, where writing the scheme into the override is explicit
-// permission to apply it across the whole pool set.
 function applyForcedPoolScheme(full, sslOn) {
     const bare = bareFsPoolUrl(full);
     return bare ? (sslOn ? "stratum+ssl://" : "stratum+tcp://") + bare : full;
 }
 const FS_POOL_ADDRESS_RE = /(?:stratum\+ssl:\/\/|stratum\+tcp:\/\/|ssl:\/\/|tcp:\/\/)?((?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3}):(\d{2,5})\b/g;
-// Like extractPoolAddressesFromText, but returns each match's full original text (including
-// any stratum+tcp://\/stratum+ssl:// prefix it had, verbatim) instead of just the bare
-// host:port - used wherever pasted/typed pool text should pass through unmodified.
 function extractPoolLinesFromText(text) {
     if (!text) return [];
     const seen = new Set();
@@ -7582,9 +7367,6 @@ function updateManagePoolsBtnLabel() {
         ? `Add/edit backup pools for failover (${count} backup pool${count === 1 ? "" : "s"} configured)`
         : "Add/edit backup pools for failover";
 }
-// Wraps each pool address (used exactly as stored - scheme untouched) in the flag syntax the
-// given miner's CLI expects. This only changes surrounding flags/formatting, never the address
-// text itself: no scheme is ever added, stripped, or flipped here.
 function buildFsPoolCmdPreview(minerName, urls) {
     const list = (urls.length > 0 ? urls : [""]).map((u) => (u || "").trim());
     const W = "%WALLET%";
@@ -7618,7 +7400,6 @@ function buildFsPoolCmdPreview(minerName, urls) {
         case "onezerominer":
             return list.join(",");
         default:
-            // Includes "custom" - no known flag syntax to convert to, so just list the pools.
             return list.join("  ");
     }
 }
@@ -7826,8 +7607,6 @@ function openManagePoolsDialog() {
     managePoolsDialogMode = "flightsheet";
     setManagePoolsExplainer("flightsheet");
     const poolEl = document.getElementById("fs-field-pool");
-    // Show pools exactly as stored - whatever scheme (or lack of one) each line has stays
-    // untouched here. Reopening this dialog must never change what was last saved.
     const primarySource = fsExtraPoolUrls.length > 0 ? fsPrimaryPoolUrl : (poolEl?.value || "");
     const lines = [primarySource, ...fsExtraPoolUrls]
         .map((v) => (v || "").trim())
@@ -7868,12 +7647,7 @@ function saveManagePoolsDialog() {
         closeManagePoolsDialog();
         return;
     }
-    // Pools are saved exactly as typed, line for line - RigControl never adds, strips, or
-    // flips a stratum+tcp://\/stratum+ssl:// scheme here, for any miner. Whatever's on each
-    // line becomes the pool list verbatim, both in state and in the main page's Pool field.
     const lines = rawText.split("\n").map((l) => l.trim()).filter((l) => l !== "");
-    // Purely cosmetic: keep the SSL checkbox in sync with the primary pool's own scheme, if
-    // it has one. This does not change any pool text.
     const sslEl = document.getElementById("fs-field-ssl");
     const explicitSsl = detectExplicitSslFromText(rawText);
     if (sslEl && explicitSsl !== null) sslEl.checked = explicitSsl;
@@ -7886,19 +7660,10 @@ function saveManagePoolsDialog() {
     if (poolEl) updateRawFromFieldChange(poolEl);
     closeManagePoolsDialog();
 }
-// Bulk custom-miner-URL editor: unlike everything else in the flightsheet editor, this operates
-// directly on the checked flightsheets in the LIST (selectedFlightsheetIds), not just the single
-// entry currently loaded - it's meant for updating a custom miner's download URL across many
-// flightsheets at once (e.g. after re-hosting the binary somewhere else) without opening each one
-// individually. Falls back to whichever single flightsheet is currently loaded/clicked
-// (selectedFlightsheetId) if nothing is checked, same fallback deleteFlightsheet() uses.
 function fsCustomUrlTargetIds() {
     if (selectedFlightsheetIds.size > 0) return [...selectedFlightsheetIds];
     return selectedFlightsheetId ? [selectedFlightsheetId] : [];
 }
-// Finds every install_url value in a flightsheet's raw content - a dual/triple-mode flightsheet
-// (GPU+CPU+AUX) can have more than one embedded JSON block, each with its own custom-miner
-// install_url, or none at all if none of its services use a custom miner.
 function customMinerUrlsInRaw(rawText) {
     const urls = [];
     const re = /"install_url"\s*:\s*"([^"]*)"/g;
@@ -7906,12 +7671,6 @@ function customMinerUrlsInRaw(rawText) {
     while ((m = re.exec(rawText || "")) !== null) urls.push(m[1]);
     return urls;
 }
-// Replaces every install_url value found, leaving everything else in the raw content - formatting,
-// key order, other fields, any other embedded service block - untouched. A direct text
-// substitution rather than a full JSON re-parse/rebuild, since this needs to work uniformly across
-// whatever arbitrary raw content each selected flightsheet happens to have (custom-edited, HiveOS-
-// imported, dual-mode, etc.) without risking a lossy round-trip through the structured editor's own
-// rebuild logic.
 function replaceCustomMinerUrlsInRaw(rawText, newUrl) {
     return (rawText || "").replace(/("install_url"\s*:\s*")[^"]*(")/g, (_m, pre, post) => `${pre}${newUrl}${post}`);
 }
@@ -7942,9 +7701,6 @@ function openFsCustomUrlDialog() {
             `${withUrlCount} of ${ids.length} selected flightsheet${ids.length === 1 ? "" : "s"} have a custom miner URL.`
             + (skipped > 0 ? ` The other ${skipped} (no custom miner) will be left unchanged.` : "");
     }
-    // Prefill with the shared value when every selected flightsheet's custom miner URL already
-    // agrees - leave it blank (placeholder only) when they differ, rather than guessing which one
-    // to show.
     const input = document.getElementById("fs-custom-url-input");
     if (input) input.value = distinctUrls.size === 1 ? [...distinctUrls][0] : "";
     document.getElementById("fs-custom-url-modal")?.classList.remove("hidden");
@@ -7978,8 +7734,6 @@ async function applyFsCustomUrlDialog() {
         }
     }
     await loadFlightsheets();
-    // Keep the editor in sync if the flightsheet currently loaded there was one of the ones just
-    // updated - otherwise it'd keep showing the pre-edit install_url until reselected.
     if (selectedFlightsheetId && ids.includes(selectedFlightsheetId)) {
         const refreshed = flightsheets.find((f) => f.FlightsheetId === selectedFlightsheetId);
         if (refreshed) {
@@ -8024,23 +7778,9 @@ function collectFsFieldValues() {
         CUSTOM_MINER_URL: val("fs-field-custom-miner-url"),
     };
 }
-// Rig-side used to build each known miner's pool/wallet/pass/TLS-SSL flags itself
-// (build_pool_cmd_args() plus per-miner TLS/SSL derivation in Miner-scripts/lib/02-load_configs.sh).
-// That decision-making now happens here, once, at Save time, so the rig-side scripts just load
-// this and run it - no flag-building, no scheme add/strip/flip left there for known miners.
-// %WALLET%/%PASS% are kept as literal tokens (not resolved here) because only the rig itself
-// knows their final values - %WALLET% in particular can have %WORKER_NAME% baked into it via
-// the flightsheet's TEMPLATE field, and only the rig knows its own hostname.
-// Fills a known-miner pool_template/suffix_template: %POOL% becomes the real address (or the
-// joined list, for comma/space join miners) - %WALLET%/%PASS% are deliberately left untouched,
-// since only the rig can resolve those (see resolve_wallet/resolve_pass rig-side).
 function fillKnownMinerPoolToken(tpl, poolValue) {
     return (tpl || "").split("%POOL%").join(poolValue);
 }
-// Data-driven: reads the miner's layout from TEMPLATES_CONFIG.known_miners (hardcoded defaults
-// here, overridable per-miner from static/config/templates.json with no app.js redeploy - see the
-// known_miners comment on TEMPLATES_CONFIG above for the field reference). An unrecognized miner
-// name (no entry in known_miners) returns "" the same as the old hardcoded switch's default case.
 function buildKnownMinerPoolArgs(minerName, poolUrls, poolSsl, tlsOn, argsText) {
     const miner = (minerName || "").trim().toLowerCase();
     const def = TEMPLATES_CONFIG.known_miners && TEMPLATES_CONFIG.known_miners[miner];
@@ -8054,7 +7794,6 @@ function buildKnownMinerPoolArgs(minerName, poolUrls, poolSsl, tlsOn, argsText) 
         const joined = useUrls.join(def.pool_join === "comma" ? "," : " ");
         poolPart = fillKnownMinerPoolToken(def.pool_template, joined);
     } else {
-        // "repeat" (or anything else/unset - matches every pre-existing miner's default behavior)
         poolPart = useUrls.map((u) => fillKnownMinerPoolToken(def.pool_template, u)).join(" ");
     }
     if (def.suffix_template) {
@@ -8070,16 +7809,6 @@ function knownMinerAlgoFlag(minerLower) {
     const def = TEMPLATES_CONFIG.known_miners && TEMPLATES_CONFIG.known_miners[minerLower];
     return def ? (def.algo_flag || "") : "";
 }
-// Dashboard builds the FULL known-miner command line (algo flag, pool/wallet/pass/TLS flags,
-// and the resolved extra args) once, at Save time. Rig-side just substitutes %WALLET%/%PASS%/
-// %WORKER_NAME% (and any other tokens) into this string and runs it - no per-miner flag
-// decisions, and no OC-JSON conversion, happen rig-side at all anymore. xmrig/bzminer ARGS can
-// be an OC-JSON blob (a series of "key": value lines - produced by a HiveOS flightsheet import,
-// or by the dashboard's own optional overclock/CPU editor for those two miners) instead of
-// plain CLI flags; resolveKnownMinerArgs converts that to real flags right here, via the same
-// convertBzminerOcJsonToArgs/convertXmrigUserConfigToArgs/convertXmrigCpuConfigToArgs helpers
-// used elsewhere in the dashboard, so the command is always complete and rig-side never has to
-// tell plain flags from an OC-JSON blob.
 function isOcJsonBlob(argsText) {
     return /^\s*"/.test(argsText || "");
 }
@@ -8104,14 +7833,7 @@ function buildKnownMinerCommand(minerName, algoText, poolUrls, poolSsl, tlsOn, a
 }
 function buildRigGpuItemObject(values, stash) {
     const isCustom = !!values.CUSTOM_MINER && values.CUSTOM_MINER !== "0";
-    // The Miner Configuration modal's own POOL field (fs-mc-pool-token) is a literal override -
-    // it applies the same way for custom and non-custom miners alike, since for custom miners
-    // it's the only POOL-labeled field visible while that modal is open.
     const poolUrlOverrideRaw = (stash.fsPoolUrlToken || "").trim();
-    // A scheme-wrapped template like "stratum+tcp://%URL%" still contains the %URL% token - it
-    // is NOT a resolved address, so pool_urls must keep holding the real pool address for that
-    // token to resolve to rig-side. Only an override with no %URL% left in it at all (a fully
-    // literal, already-resolved address) should replace pool_urls outright.
     const overrideHasUrlToken = poolUrlOverrideRaw.includes("%URL%");
     const hasLiteralPoolOverride = poolUrlOverrideRaw !== "" && !overrideHasUrlToken;
     let poolUrls;
@@ -8128,12 +7850,6 @@ function buildRigGpuItemObject(values, stash) {
         poolUrls = [values.POOL || "", ...originalExtras];
     }
     poolUrls = poolUrls.map((u) => (u || "").trim()).filter((u) => u !== "");
-    // pool_ssl is derived informationally from the primary pool's own scheme - it's what drives
-    // the separate --tls-style flag for miners whose CLI can't accept an inline scheme (xmrig,
-    // wildrig-multi, gminer, srbminer). pool_urls[0] itself is left exactly as stored, scheme
-    // and all, same as every other entry: miners that DO accept an inline scheme (trex,
-    // teamredminer, rigel, lolminer, bzminer, onezerominer) read it straight from pool_urls, so
-    // stripping it here would silently drop SSL for the primary pool on those miner types.
     let poolSsl = false;
     const poolUrl = poolUrls[0] || "";
     if (!poolUrl.includes("%URL%")) {
@@ -8145,19 +7861,10 @@ function buildRigGpuItemObject(values, stash) {
     }
     let resolvedMinerUrl;
     if (hasLiteralPoolOverride) {
-        // An explicit literal pool override was set via the Miner Configuration modal's POOL
-        // field - skip the backup/failover pool_urls list entirely and use the real address
-        // directly. Applies the same way for custom and non-custom miners.
         resolvedMinerUrl = poolUrl;
     } else if (overrideHasUrlToken) {
-        // A scheme-wrapped template such as "stratum+tcp://%URL%" - used verbatim, %URL% and
-        // all, so it resolves rig-side against the real address still sitting in pool_urls[0].
         resolvedMinerUrl = poolUrlOverrideRaw;
     } else {
-        // Default token, resolved at deploy time from the full pool_urls list (with backups).
-        // Custom miners also embed this same %URL% token inside user_config/ARGS and resolve
-        // it rig-side the same way, so miner_config.url should stay "%URL%" here too instead
-        // of being pinned to whatever the currently-resolved pool address happens to be.
         resolvedMinerUrl = "%URL%";
     }
     const minerConfig = {
@@ -8187,14 +7894,7 @@ function buildRigGpuItemObject(values, stash) {
     } else {
         delete minerConfig.user_config;
     }
-    // miner_command lives at the item ROOT, not nested in miner_config - it's assigned last,
-    // below, after pool_urls/miner_config are set on `item`, so it's the last field visible in
-    // Raw Content. Strip any stale nested copy a previously-saved flightsheet might carry.
     if ("miner_command" in minerConfig) delete minerConfig.miner_command;
-    // Rig-side just substitutes %WALLET%/%PASS%/%WORKER_NAME% tokens into this and runs it
-    // directly - it no longer decides algo flag syntax, pool flag format, TLS/SSL flags, or
-    // OC-JSON-vs-plain ARGS conversion for known miners at all; buildKnownMinerCommand resolves
-    // xmrig/bzminer ARGS (and xmrig's cpu_config) to real flags right here.
     const minerCommand = !isCustom
         ? buildKnownMinerCommand(values.MINER, values.ALGO || "", poolUrls, poolSsl, values.TLS === "true", userConfigForJson || "", stash.fsXmrigCpuConfigJson || "")
         : "";
@@ -8243,22 +7943,10 @@ function buildRigGpuItemObject(values, stash) {
     if (values.VERSION && values.VERSION.trim()) item.version = values.VERSION.trim();
     item.pool_urls = poolUrls;
     item.miner_config = minerConfig;
-    // Assigned last (via delete+reassign, so it lands at the end of key order regardless of
-    // where a previously-saved item had it) so miner_command is the last field visible in Raw
-    // Content - easy to spot as the one thing rig-side actually runs.
     if ("miner_command" in item) delete item.miner_command;
     if (minerCommand) {
         item.miner_command = minerCommand;
     }
-    // item still carries whatever `pool` label fsRigGpuItemOriginal had (spread in above at the
-    // top of this function), even after Manage Pools/the editor changed which pool is actually
-    // primary now - addPoolSlugForClipboard below no-ops whenever item.pool is already set, so
-    // without this check the label would silently keep pointing at the pool this flightsheet USED
-    // to use. Only clear it when it still matches what would have been auto-derived from the OLD
-    // primary pool address (i.e. it was never a deliberate override to begin with) - refresh it
-    // from the pool being saved now in that case, but leave a genuinely custom label (one that
-    // doesn't match the old pool's derived slug) alone, same as addPoolSlugForClipboard respects
-    // an explicit value everywhere else it's called.
     {
         const originalPoolUrls = stash.fsRigGpuItemOriginal && Array.isArray(stash.fsRigGpuItemOriginal.pool_urls)
             ? stash.fsRigGpuItemOriginal.pool_urls
@@ -8269,10 +7957,6 @@ function buildRigGpuItemObject(values, stash) {
             delete item.pool;
         }
     }
-    // Same pool short-name / coin ticker auto-fill "Copy JSON" already does (addPoolSlugForClipboard/
-    // addCoinTickerForClipboard below) - applied here too so the LIVE raw content (what Send/Save
-    // actually uses) carries them, instead of only the separate clipboard export. Both no-op if the
-    // item already has a real pool/coin value, so nothing here overrides an explicit user value.
     const [withPoolSlug] = addPoolSlugForClipboard([item]);
     const [withCoinTicker] = addCoinTickerForClipboard([withPoolSlug]);
     return withCoinTicker;
@@ -8285,13 +7969,6 @@ function buildRigGpuJsonBody(values) {
 }
 function parseNativeRigGpuItemsFromRaw(rawText) {
     if (!rawText) return null;
-    // The EOF marker's line tolerates stray horizontal whitespace ([ \t]* on both sides) and the
-    // trailing "\n" after it is a lookahead, not a required consumed character - a paste that ends
-    // right at "EOF" with no final newline, or picks up a trailing space/indentation from being
-    // copied out of a rendered box (both very common), must still be recognized as native format.
-    // Missing this previously made native parsing silently fail and fall through to the lossy
-    // any-format field-scraping importer, which mangled real flightsheets (dropped miner_alt/
-    // install_url/user_config, corrupted pool_urls to "%URL%").
     const match = rawText.match(/<<'EOF'\n([\s\S]*?)\n[ \t]*EOF[ \t]*(?=\n|$)/);
     const body = (match ? match[1] : rawText).trim();
     if (!body.startsWith("{")) return null;
@@ -8655,9 +8332,6 @@ function parseRigGpuJsonFromRaw(rawText) {
 }
 function resolveHiveosUrlToken(url, poolUrls) {
     if (!url) return url || "";
-    // Handles both a bare "%URL%" token and a scheme-wrapped one (e.g. "stratum+tcp://%URL%",
-    // used by miners like keryx-miner-supr that require an explicit scheme) - only the token
-    // itself gets substituted, any surrounding scheme prefix the user typed stays exactly as-is.
     if (url === "%URL%") {
         return Array.isArray(poolUrls) && poolUrls.length > 0 && typeof poolUrls[0] === "string"
             ? poolUrls[0]
@@ -8828,13 +8502,6 @@ function fsFieldsFromRigGpuJsonItem(item) {
             resolvedUrl = resolveHiveosServerPortTokens(mc.server || "", mc.port || "", item.pool_urls);
         }
         if (resolvedUrl) {
-            // resolvedUrl came straight out of pool_urls (or a server/port pair), and pool_urls
-            // entries already carry whatever scheme, or lack of one, the user typed - same
-            // verbatim-storage convention as everywhere else pool_urls is touched. pool_ssl is
-            // only a signal to ADD a scheme when the resolved address doesn't already have one
-            // (e.g. bare host:port pool_urls from an older/HiveOS-style config); if it's already
-            // scheme-wrapped, prepending here again would double it up
-            // ("stratum+ssl://stratum+ssl://...") instead of respecting the address as-is.
             const hasScheme = /^stratum\+(ssl|tcp):\/\//i.test(resolvedUrl);
             pool = (!hasScheme && item.pool_ssl === true) ? "stratum+ssl://" + resolvedUrl : resolvedUrl;
         }
@@ -8887,7 +8554,6 @@ function fsFieldsFromRigGpuJsonItem(item) {
         CUSTOM_MINER_URL: isCustom ? (mc.install_url || "") : "",
     };
 }
-// RESTART controls whether the block restarts docker_events_<svc> after writing the config; default unchecked is write-only.
 function fsApplyRestartLine(blockText, svc, restartOn) {
     const stripped = blockText.replace(new RegExp(`\\n?sudo systemctl restart docker_events_${svc}\\s*$`), "");
     return restartOn ? `${stripped}\nsudo systemctl restart docker_events_${svc}` : stripped;
@@ -8896,7 +8562,6 @@ function fsTemplateForService(svc) {
     const fsCfg = TEMPLATES_CONFIG.flightsheet;
     return svc === "cpu" ? fsCfg.cpu_template : svc === "aux" ? fsCfg.aux_template : fsCfg.gpu_template;
 }
-// Maps the app's internal miner name to its key in /etc/rigcontrol/miner.conf; unlisted miners fall back to an uppercased, alnum-only guess.
 const FS_MINER_VERSION_KEY_MAP = {
     "xmrig": "XMRIG",
     "wildrig-multi": "WILDRIG",
@@ -8922,13 +8587,11 @@ function fsMinerVersionKey(minerName) {
     const fallback = lower.replace(/[^a-z0-9]+/g, "").toUpperCase();
     return fallback || "MINER";
 }
-// Pins a miner's version by writing MINERNAME_VERSION "x.y.z" to /etc/rigcontrol/miner.conf; no-op when version is blank.
 function fsApplyVersionBlock(blockText, version, minerName) {
     const v = (version || "").trim().replace(/'/g, "");
     if (!v) return blockText;
     const key = `${fsMinerVersionKey(minerName)}_VERSION`;
     const line = `${key} "${v}"`;
-    // Updates the line in place via sed if present, appends otherwise; other miners' lines are untouched.
     const sedReplacement = line.replace(/[\\/&]/g, "\\$&");
     const confBlock =
         "sudo mkdir -p /etc/rigcontrol\n" +
@@ -8948,7 +8611,6 @@ function buildFsBlock(mode) {
     const withRestart = fsApplyRestartLine(block, mode, values.RESTART === "true");
     return fsApplyVersionBlock(withRestart, values.VERSION, values.MINER);
 }
-// Builds the raw content sent on "Send it": one tee/systemctl block per configured service (gpu/cpu/aux).
 function buildFsCombinedBlock() {
     const activeService = getCurrentFsServiceType();
     const blocks = [];
@@ -8976,18 +8638,15 @@ function buildFsCombinedBlock() {
     }
     return blocks.join("\n");
 }
-// Whether a service OTHER than the given one has real stashed content; decides if a full rebuild is needed.
 function fsHasOtherRealSlot(activeService) {
     return ["gpu", "cpu", "aux"].some((svc) => svc !== activeService && !!fsDualModeSlots[svc]);
 }
-// Live-editing preview: shows only the currently active tab's block. Full multi-service combine happens at Save/Send.
 function buildFsActivePreview() {
     const activeService = getCurrentFsServiceType();
     const values = collectFsFieldValues();
     if (!fsSlotHasRealContent(values)) return "";
     return buildFsBlock(activeService);
 }
-// Called right before Save/Send to recombine every populated service into the raw box.
 function fsFinalizeRawForAction() {
     const rawEl = document.getElementById("fs-raw");
     if (!rawEl) return "";
@@ -9008,9 +8667,6 @@ function resolveUrlTokenForClipboard(items) {
             ? (item.pool_urls[0] || "").trim()
             : "";
         if (!realUrl) return item;
-        // If the template itself already wraps the token in a scheme (e.g. "stratum+tcp://%URL%"),
-        // and the resolved pool address also happens to carry one, substitute the bare address so
-        // the template's own scheme wins instead of doubling up (e.g. "stratum+tcp://stratum+ssl://...").
         if (/^stratum\+(ssl|tcp):\/\/%URL%/i.test(url) && /^stratum\+(ssl|tcp):\/\//i.test(realUrl)) {
             realUrl = bareFsPoolUrl(realUrl);
         }
@@ -9025,9 +8681,6 @@ function deriveHostLabelForClipboard(poolUrlValue) {
     const token = String(poolUrlValue).trim().split(/[\s,]+/)[0] || "";
     const host = token.replace(/^stratum\+(ssl|tcp):\/\//, "").split(":")[0].trim();
     if (!host) return null;
-    // An IPv4 address (a local node, a private pool proxy, etc.) has no real hostname structure to
-    // pull a label from - picking one octet (e.g. "0" out of "10.10.0.126") and calling it a pool/coin
-    // name is actively misleading rather than merely unhelpful, so bail out instead of guessing.
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null;
     const labels = host.split(".").filter(Boolean);
     if (labels.length === 0) return null;
@@ -9042,10 +8695,6 @@ function addPoolSlugForClipboard(items) {
     return items.map((item) => {
         if (!item || typeof item !== "object") return item;
         if (item.pool && String(item.pool).trim()) return item;
-        // Custom miners (miner: "custom", real identity in miner_alt) used to be skipped here on the
-        // assumption they'd rarely need this label - in practice most real fleets run custom binaries
-        // almost exclusively, so this left the "Copy JSON" pool slug blank for nearly every flightsheet.
-        // pool_urls is populated the same way regardless of miner type, so derive it here too.
         const primary = Array.isArray(item.pool_urls) && item.pool_urls.length > 0
             ? (item.pool_urls[0] || "").trim()
             : "";
@@ -9071,10 +8720,6 @@ function vowelStrippedFallback(text) {
     return stripped || null;
 }
 function deriveCoinForClipboard(algo, poolUrlValue) {
-    // Unlike derivePoolSlugForClipboard() (pool-address-only, no algo needed), this used to bail out
-    // entirely with an empty algo before ever looking at the pool address - so a flightsheet whose
-    // ALGO field wasn't populated yet (or a custom miner with no dedicated algo field) got "pool"
-    // filled but never "coin", even though the pool-hint/vowel-fallback checks below don't need algo.
     const deriv = TEMPLATES_CONFIG.flightsheet_derivation;
     const algoKey = algo ? String(algo).trim().toLowerCase() : "";
     if (algoKey && deriv.algo_to_coin[algoKey]) return deriv.algo_to_coin[algoKey];
@@ -9092,7 +8737,6 @@ function addCoinTickerForClipboard(items) {
     return items.map((item) => {
         if (!item || typeof item !== "object") return item;
         if (item.coin && String(item.coin).trim()) return item;
-        // See addPoolSlugForClipboard() above - same reasoning, custom miners shouldn't be excluded.
         const algo = item.miner_config && item.miner_config.algo;
         const primary = Array.isArray(item.pool_urls) && item.pool_urls.length > 0
             ? (item.pool_urls[0] || "").trim()
@@ -9102,13 +8746,6 @@ function addCoinTickerForClipboard(items) {
         return { coin, ...item };
     });
 }
-// Recomputes miner_command from an item's own algo/pool_urls/pool_ssl/tls/user_config, the same
-// way buildRigGpuItemObject does at Save time - used on LOAD (populateFsFieldsFromRaw), where the
-// raw box is otherwise just echoing whatever text was already stored. Without this, a flightsheet
-// saved before miner_command existed (or one edited/synced elsewhere) would sit there missing it,
-// or showing a stale value, until the user touched a field and triggered a live rebuild. Mirrors
-// addPoolSlugForClipboard/addCoinTickerForClipboard's pattern: returns the SAME item object back
-// (reference-equal) when nothing needs to change, so callers can detect "was anything enriched".
 function addMinerCommandForClipboard(items) {
     return items.map((item) => {
         if (!item || typeof item !== "object") return item;
@@ -9212,7 +8849,6 @@ function setFsCurrentServiceType(v) {
     fsSyncServiceTabsUI();
 }
 function resetFsFieldInputsForNewSlot() {
-    // Same reset as clearFsFields(), but leaves fsDualModeSlots/fsApplyToRigs untouched so other tabs' stash survives.
     fsExtraPoolUrls = [];
     fsPrimaryPoolUrl = "";
     fsPoolUrlsExplicitlySet = false;
@@ -9248,7 +8884,6 @@ function syncFsMcPoolTokenField() {
 function fsSlotHasRealContent(values) {
     return !!((values.MINER && values.MINER.trim()) || (values.CUSTOM_MINER && values.CUSTOM_MINER.trim()));
 }
-// RESTART is disabled/cleared whenever the active tab has no miner configured.
 function fsUpdateRestartCheckboxDisabled() {
     const el = document.getElementById("fs-field-restart");
     if (!el) return;
@@ -9256,7 +8891,6 @@ function fsUpdateRestartCheckboxDisabled() {
     el.disabled = !hasContent;
     if (!hasContent) el.checked = false;
     fsSyncServiceTabsUI();
-    // VERSION shares the same gate, plus its own custom-miner check.
     updateFsMinerConfigCustomVisibility();
 }
 function handleFsServiceSwitch(newServiceRaw) {
@@ -9264,7 +8898,6 @@ function handleFsServiceSwitch(newServiceRaw) {
     const newService = rawNewService === "cpu" ? "cpu" : rawNewService === "aux" ? "aux" : "gpu";
     const oldService = getCurrentFsServiceType();
     if (newService === oldService) return;
-    // Stash whatever's live into its own slot, but only if a miner is actually configured.
     const oldValues = collectFsFieldValuesWithExtras();
     oldValues.SERVICE_TYPE = oldService;
     fsDualModeSlots[oldService] = fsSlotHasRealContent(oldValues)
@@ -9284,11 +8917,9 @@ function handleFsServiceSwitch(newServiceRaw) {
     if (serviceTypeEl) serviceTypeEl.value = newService;
     fsCurrentServiceType = newService;
     fsSyncServiceTabsUI();
-    // GPU/CPU/AUX combine into one multi-block raw output once more than one has real data.
     fsDualModeActive = fsHasOtherRealSlot(newService);
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // Live preview only shows the active tab; full combine happens at Save/Send.
         rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
     }
@@ -9330,7 +8961,6 @@ function updateFsMinerConfigCustomVisibility() {
     const isCustom = (document.getElementById("fs-field-miner")?.value || "").trim().toLowerCase() === "custom";
     const slot = document.getElementById("fs-mc-slot-custom");
     if (slot) slot.classList.toggle("hidden", !isCustom);
-    // VERSION doesn't apply to custom miners or when this tab has no miner defined yet.
     const versionEl = document.getElementById("fs-field-miner-version");
     if (versionEl) {
         const hasNoMiner = !fsSlotHasRealContent(collectFsFieldValues());
@@ -9360,7 +8990,6 @@ function fsMcRestoreCustomLabels() {
     }
     fsMcLabelOriginals = {};
 }
-// Whether a given service's RESTART checkbox is checked - the active tab's live checkbox, or its stashed value.
 function fsTabHasRestart(svc) {
     if (svc === getCurrentFsServiceType()) {
         return !!document.getElementById("fs-field-restart")?.checked;
@@ -9374,15 +9003,11 @@ function fsSyncServiceTabsUI() {
         btn.classList.toggle("active", btn.dataset.service === active);
         btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });
-    // Same sync for both the main-page tabs and their twin inside the Raw Content popup header
-    // (#raw-content-service-tabs) - only one is ever visible at a time, but keeping both in sync
-    // means whichever one you use next already shows the right active/restart-on state.
     document.querySelectorAll("#fs-service-tabs .fs-service-tab, #raw-content-service-tabs .fs-service-tab").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.service === active);
         btn.classList.toggle("restart-on", fsTabHasRestart(btn.dataset.service));
     });
 }
-// Click handler for the main-page GPU/CPU/AUX tabs.
 function fsSwitchServiceTab(service) {
     handleFsServiceSwitch(service);
     fsSyncServiceTabsUI();
@@ -9402,7 +9027,6 @@ function openFsMinerConfigModal() {
         fsMcMoveIntoSlot(label, "fs-mc-slot-checks");
     }
     {
-        // RESTART lives in the footer, not with the other checkboxes in the body.
         const restartEl = document.getElementById("fs-field-restart");
         const restartLabel = restartEl ? restartEl.closest("label.checkbox-label") : null;
         fsMcMoveIntoSlot(restartLabel, "fs-mc-slot-restart");
@@ -9459,7 +9083,6 @@ function fsMcClearCurrentTab() {
     fsSyncServiceTabsUI();
     const rawEl = document.getElementById("fs-raw");
     if (rawEl) {
-        // Clearing a tab leaves the live preview blank; other services' stashed data is unaffected.
         rawEl.value = buildFsActivePreview();
         autoResizeFsRaw();
     }
@@ -9543,13 +9166,6 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
     {
         const origUrlRaw = (jsonItem.miner_config || {}).url;
         const origUrlTrimmed = typeof origUrlRaw === "string" ? origUrlRaw.trim() : "";
-        // If the saved miner_config.url is just a mirror of the resolved pool address (bare
-        // comparison, ignoring stratum+ssl/tcp prefixes) rather than a genuinely different
-        // address, don't treat it as an explicit override - fall back to the "%URL%" token so
-        // it resolves from the live pool_urls list again instead of staying pinned to whatever
-        // address happened to be resolved when this was last saved (older saves, before the
-        // %URL% resolution fix, always wrote the literal address here even with no real
-        // override set).
         const looksLikeMirroredPool =
             origUrlTrimmed !== "" &&
             origUrlTrimmed !== "%URL%" &&
@@ -9577,16 +9193,12 @@ function applyFsItemToFields(jsonItem, hiveosName, rawTextHint) {
             if (bare === primaryBare) continue;
             if (seen.has(bare)) continue;
             seen.add(bare);
-            // Keep each entry exactly as saved (with whatever scheme, or none, it has) -
-            // loading a flightsheet must not strip or rewrite backup pool addresses.
             out.push(trimmed);
         }
         return out;
     })();
     fsPrimaryPoolUrl = fsExtraPoolUrls.length > 0 ? values.POOL : "";
     fsPoolUrlsExplicitlySet = false;
-    // Keep loaded flightsheets consistent with what Save now produces: if the loaded POOL
-    // override wraps %URL% in an explicit scheme, apply that scheme across every pool.
     {
         const sslOn = forcedSchemeFromPoolToken(fsPoolUrlToken);
         if (sslOn !== null) {
@@ -9631,17 +9243,8 @@ function populateFsFieldsFromRaw(rawText) {
     if (!rawText) return;
     const parsedItems = parseRigGpuItemsFromRaw(rawText);
     if (parsedItems) {
-        // Fill in a missing pool short-name / coin ticker right away on load/paste too - previously
-        // this only ran on the next field edit (buildRigGpuItemObject), so a pasted native flightsheet
-        // that already had pool_urls/algo just sat there missing "pool"/"coin" until something else
-        // triggered a rebuild. Reference-inequality here (addPoolSlugForClipboard/addCoinTickerForClipboard
-        // return the SAME object back when there's nothing to add) is what "wasFsItemsEnriched" below
-        // uses to decide whether the raw box text itself needs to be rewritten to match.
         const fsItemsWithPool = addPoolSlugForClipboard(parsedItems.items);
         const fsItemsWithCoin = addCoinTickerForClipboard(fsItemsWithPool);
-        // Also (re)computes miner_command on load - a flightsheet saved before that field existed,
-        // or edited/synced elsewhere, would otherwise sit there missing it (or showing a stale
-        // value) until the user touched a field and triggered a live rebuild.
         const fsItemsEnriched = addMinerCommandForClipboard(fsItemsWithCoin);
         const wasFsItemsEnriched = fsItemsEnriched.some((it, i) => it !== parsedItems.items[i]);
         parsedItems.items = fsItemsEnriched;
@@ -9678,20 +9281,12 @@ function populateFsFieldsFromRaw(rawText) {
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             if (isDual) {
-                // Multiple services loaded - narrow the live preview to just the active tab.
                 rawEl.value = buildFsActivePreview();
                 autoResizeFsRaw();
             } else if (!/<<'EOF'\n[\s\S]*?\n[ \t]*EOF[ \t]*(?=\n|$)/.test(rawText)) {
                 rawEl.value = buildFsBlock(activeValues.SERVICE_TYPE);
                 autoResizeFsRaw();
             } else {
-                // Native format, single service - always splice the enriched items (pool/coin/
-                // miner_command) back into the existing heredoc body so Raw Content reflects the
-                // freshly computed state on every load, not just when addPoolSlugForClipboard/
-                // addCoinTickerForClipboard/addMinerCommandForClipboard detected a change from
-                // the stored text. Everything else in the pasted text (the tee line, any trailing
-                // restart line) stays untouched. wasFsItemsEnriched is unused now but left in
-                // place above in case a future caller needs the "did anything change" signal.
                 const enrichedBody = { items: parsedItems.items };
                 if (fsApplyToRigs.size > 0) enrichedBody.apply_to_workers = Array.from(fsApplyToRigs);
                 rawEl.value = rawText.replace(
@@ -9745,19 +9340,11 @@ function updateRawFromFieldChange(target) {
     const mapping = FS_FIELD_ID_TO_KEY[target.id];
     if (!mapping) return;
     if (target.id === "fs-field-service-type") {
-        // Always route through handleFsServiceSwitch so GPU/CPU/AUX behave as independent configs.
         handleFsServiceSwitch(target.value);
         return;
     }
     if (target.id === "fs-field-restart") {
-        // Keep the tabs' green "will restart" indicator live as the checkbox is toggled.
         fsSyncServiceTabsUI();
-        // The trailing "sudo systemctl restart docker_events_X" line is added/removed by
-        // fsApplyRestartLine() operating on the WHOLE block, not a KEY "value" line the generic
-        // regex-replace path below can patch in place - that path's JSON-body branch only touches
-        // what's between <<'EOF' and EOF, so without this early return the restart line would never
-        // change in the raw box until Send (same bug just fixed for Watchdog/Agent Conf). Always do
-        // a full rebuild instead.
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             rawEl.value = buildFsActivePreview();
@@ -9769,7 +9356,6 @@ function updateRawFromFieldChange(target) {
         fsUpdateRestartCheckboxDisabled();
     }
     if (target.id === "fs-field-miner-version") {
-        // The miner.conf tee block sits before the JSON heredoc, outside the regex-replace path, so always do a full rebuild.
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             rawEl.value = buildFsActivePreview();
@@ -9844,9 +9430,6 @@ function wireUpFsTemplateToken(tokenId, tokenText) {
         e.stopPropagation();
     });
 }
-// Same insert-at-cursor idiom as wireUpFsTemplateToken above, but hardcoded to
-// #fs-pools-textarea instead of document.activeElement - it's the only field in the Manage
-// Pools modal, so there's no ambiguity about where a scheme prefix should land.
 function wireUpFsPoolsSchemeToken(tokenId, tokenText) {
     const el = document.getElementById(tokenId);
     const ta = document.getElementById("fs-pools-textarea");
@@ -10072,7 +9655,7 @@ function renderFsWalletSuggestions(query) {
     matches.slice(0, FS_WALLET_SUGGESTIONS_MAX).forEach(w => {
         const item = document.createElement("div");
         item.className = "fs-wallet-suggestion-item";
-        item.textContent = w.WalletId; 
+        item.textContent = w.WalletId;
         item.addEventListener("mousedown", (e) => {
             e.preventDefault();
             const walletInput = document.getElementById("fs-field-wallet");
@@ -10274,10 +9857,6 @@ function selectAllOcApplyTo() {
     populateOcApplyToWorkerList();
     syncOcRawAfterApplyToChange();
 }
-// Overclock raw content is a plain shell script (heredoc), not JSON like flightsheets, so "apply to"
-// has nowhere structured to live - it's persisted as a leading "# APPLY_TO=..." comment line placed
-// BEFORE the "tee ... <<'EOF'" line, so it never ends up inside the installed gpu_apply_ocs.sh
-// file on the rig and is a no-op if it's ever sent as-is (bash ignores comment lines).
 function getOcApplyToFromScript(scriptText) {
     const m = (scriptText || "").match(/^# APPLY_TO=(.*)$/m);
     if (!m) return [];
@@ -10672,10 +10251,6 @@ function buildOcScriptFromRows() {
             "Fan Value": fan.value,
         });
     }
-    // apply_script_footer is fully static now - fan-curve.service itself is installed once,
-    // separately (Fan-control/py-nvtool/install_fan-curve.sh); the footer just syncs its --curve
-    // value in place when curve mode is active, so there's no per-row template substitution left
-    // to do here.
     return body + ocCfg.apply_script_footer;
 }
 function getOcCurrentAlgoNames() {
@@ -10694,13 +10269,6 @@ function rebuildOcRawFromRows() {
         if (ocApplyToRigs.size > 0) {
             text = `# APPLY_TO=${Array.from(ocApplyToRigs).join(",")}\n${text}`;
         }
-        // buildOcScriptFromRows() never emits the "Apply Algo" invoke line (sudo .../gpu_apply_ocs.sh
-        // <algo>) - it's tracked separately in ocApplyInvokeAlgo and was only ever written into the
-        // raw text by onOcAlgoApplySelectChange(). Any OTHER row edit (core clock, fan, algo rename,
-        // etc.) also runs through here though, which fully rebuilds the raw text from the rows alone -
-        // that was silently dropping an already-selected invoke line on every such edit. Re-insert it
-        // (or drop the selection first if it no longer matches any current row's algo name, e.g. the
-        // row it pointed to was renamed/removed) before writing the raw textarea.
         if (ocApplyInvokeAlgo && !getOcCurrentAlgoNames().includes(ocApplyInvokeAlgo)) {
             ocApplyInvokeAlgo = "";
         }
@@ -10732,11 +10300,6 @@ function populateOcAlgoApplySelect() {
         select.value = "";
     }
 }
-// Tolerant of the whitespace variations seen in older/hand-edited Overclock profiles (extra
-// spaces, tabs) between "sudo", the path, and (for the invoke line) the algo name - a profile
-// saved with irregular spacing around either line used to go undetected/unmatched by the old
-// single-literal-space regexes below, which is why an older profile's already-saved invoke line
-// could silently fail to show up as selected when the profile was first loaded.
 const OC_INVOKE_LINE_RE = /sudo[ \t]+\/usr\/local\/bin\/gpu_apply_ocs\.sh[ \t]+(\S+)[ \t]*/;
 const OC_CHMOD_ANCHOR_RE = /sudo[ \t]+chmod[ \t]+\+x[ \t]+\/usr\/local\/bin\/gpu_apply_ocs\.sh[ \t]*/;
 function onOcAlgoApplySelectChange() {
@@ -10747,11 +10310,6 @@ function onOcAlgoApplySelectChange() {
     rawEl.value = setOcApplyInvokeLine(rawEl.value, ocApplyInvokeAlgo);
     autoResizeOcRaw();
 }
-// Strips any existing invoke line (wherever it appears - not just as the literal last line) and,
-// if an algo is picked, re-inserts one right after the "sudo chmod +x .../gpu_apply_ocs.sh"
-// anchor line rather than blindly at the very end of the raw text - so content a user has added
-// after that line (notes, extra commands) doesn't end up before the invoke line. Scripts with no
-// chmod +x anchor at all (fully custom/hand-written ones) fall back to appending at the end.
 function setOcApplyInvokeLine(scriptText, algo) {
     let text = (scriptText || "").replace(new RegExp("\\n*" + OC_INVOKE_LINE_RE.source + "\\s*"), "");
     if (!algo) {
@@ -10807,10 +10365,6 @@ function getOcScriptAlgoSummary(scriptText) {
     return names.join(", ");
 }
 function getOcApplyInvokeAlgoFromScript(scriptText) {
-    // Matches anywhere in the script, not just as the literal last line - older profiles that
-    // predate the "insert right after the chmod +x anchor" behavior in setOcApplyInvokeLine()
-    // above may have it elsewhere, and OC_INVOKE_LINE_RE's tolerant spacing means this also
-    // catches profiles saved with irregular whitespace.
     const m = (scriptText || "").match(OC_INVOKE_LINE_RE);
     return m ? m[1] : "";
 }
@@ -10822,8 +10376,6 @@ function newOverclock() {
     }
     document.getElementById("oc-name").value = "";
     clearOcRows();
-    // rebuildOcRawFromRows() now re-applies ocApplyInvokeAlgo (see there) - reset it here so a
-    // brand-new profile doesn't inherit whatever algo was selected on the previously-loaded one.
     ocApplyInvokeAlgo = "";
     addOcRow(null, { skipRebuild: true });
     rebuildOcRawFromRows();
@@ -11040,7 +10592,7 @@ function renderWalletNameSuggestions() {
     sorted.slice(0, FS_WALLET_SUGGESTIONS_MAX).forEach(w => {
         const item = document.createElement("div");
         item.className = "fs-wallet-suggestion-item";
-        item.textContent = w.WalletId; 
+        item.textContent = w.WalletId;
         item.addEventListener("mousedown", (e) => {
             e.preventDefault();
             box.classList.add("hidden");
@@ -11291,10 +10843,6 @@ function renderWdAlgoSuggestions(inputEl) {
     });
     box.classList.remove("hidden");
 }
-// Watchdog "Apply to", same as Overclocking, is persisted as a leading "# APPLY_TO=..." comment
-// line in wdconfig-raw, placed BEFORE the "tee ... <<'EOF'" line (see wrapWdConfigCommand()) so it
-// never ends up inside the conf file actually written on the rig. It round-trips through
-// save/load and drives cmdModalRigOverride at send time.
 let wdApplyToRigs = new Set();
 function isWdApplyToDropdownOpen() {
     const list = document.getElementById("wd-apply-to-list");
@@ -11485,7 +11033,6 @@ function selectFirstWdRow() {
     } else {
         selectedWdRowId = null;
         updateWdEditingAlgoLabel();
-        // No algorithm rows - rebuild explicitly since selectWdRow() won't run to do it.
         rebuildWdRawFromSettings();
     }
 }
@@ -11641,10 +11188,8 @@ function loadWdLogTermScriptIntoPanel(rowId) {
     updateWdLogTermScriptEnabled();
 }
 function updateWdLogTermScriptEnabled() {
-    // Editable as soon as a term row is selected, independent of the "Script" action checkbox.
     const el = document.getElementById("wdconfig-logwatcher-custom-script");
     if (el) el.disabled = !selectedWdLogTermRowId;
-    // Same for the When Triggered checkboxes themselves - nothing to check/uncheck until a term is selected.
     for (const [id] of WD_LOGTERM_ACTION_CHECKBOX_DEFS) {
         const cb = document.getElementById(id);
         if (cb) cb.disabled = !selectedWdLogTermRowId;
@@ -11761,9 +11306,6 @@ function collectWdLogTermRows() {
         const cooldown = Math.max(0, Number(tr.querySelector(".wdconfig-logterm-cooldown")?.value) || 0);
         const stopAfterFails = Math.max(0, Number(tr.querySelector(".wdconfig-logterm-stop-after")?.value) || 0);
         const rowId = tr.dataset.wdLogTermRowId;
-        // The selected row's actions live in the "When Triggered" checkboxes right now, not
-        // saved back into wdLogTermActions until selection changes - read from there instead so
-        // Send it/rebuild always reflects what's actually checked on screen.
         const actions = rowId === selectedWdLogTermRowId
             ? Object.fromEntries(WD_LOGTERM_ACTION_CHECKBOX_DEFS.map(([id, key]) => [key, !!document.getElementById(id)?.checked]))
             : (wdLogTermActions.get(rowId) || {});
@@ -11889,7 +11431,6 @@ function populateWdAlgoFilter() {
     }
     select.value = algos.includes(previousValue) ? previousValue : "";
 }
-// Header and list items are separate grid containers, so measure the widest content per column and publish it as a shared CSS var to keep rows aligned.
 function syncWdListColumnWidths() {
     const panel = document.querySelector("#wdconfig-modal .fs-list-panel");
     if (!panel) return;
@@ -11897,8 +11438,7 @@ function syncWdListColumnWidths() {
     if (!headerCols.length) return;
     const canvas = syncWdListColumnWidths._canvas || (syncWdListColumnWidths._canvas = document.createElement("canvas"));
     const ctx = canvas.getContext && canvas.getContext("2d");
-    if (!ctx) return; // no 2D canvas support - fall back to the CSS defaults
-    // measureText() ignores CSS text-transform/letter-spacing, so compensate manually for the uppercased header.
+    if (!ctx) return;
     function measuredWidth(el) {
         const cs = getComputedStyle(el);
         ctx.font = cs.font;
@@ -11922,8 +11462,6 @@ function syncWdListColumnWidths() {
             if (w > widths[col]) widths[col] = w;
         }
     });
-    // Apply To can grow unbounded (long worker lists) - cap it like flightsheet/overclock do,
-    // so one profile with many selected workers can't blow out the whole column layout.
     widths.applyto = Math.min(widths.applyto, FS_LIST_APPLYTO_MAX_PX);
     const PADDING = 16;
     for (const col of cols) {
@@ -11942,10 +11480,6 @@ function loadSelectedWatchdogProfile() {
         if (status) status.textContent = "Selected profile no longer exists";
         return;
     }
-    // Profiles saved before the raw box showed the full mkdir/tee/EOF command have a bare body
-    // stored (optionally with a leading "# APPLY_TO=..." line) - strip that comment, re-wrap the
-    // body, then re-add the comment outside the wrapper, so an old profile displays the same full
-    // command shape as a freshly-built one instead of showing stale, un-wrapped content forever.
     const storedValue = p.Value || "";
     const bare = stripWdApplyToComment(storedValue);
     document.getElementById("wdconfig-name").value = p.WatchdogProfileId;
@@ -12102,7 +11636,6 @@ function resetWdSettingsToDefaults() {
     updateWdLogTermScriptEnabled();
 }
 function updateWdCustomScriptEnabled() {
-    // Editable as soon as an algorithm row is selected, independent of the "Custom Script" action checkbox.
     const script = document.getElementById("wdconfig-custom-script");
     if (!script) return;
     script.disabled = !selectedWdRowId;
@@ -12116,7 +11649,6 @@ function buildWdConfigRawFromSettings() {
     const logWatcherIntervalEl = document.getElementById("wdconfig-logwatcher-interval");
     const logWatcherInterval = logWatcherIntervalEl ? Math.max(5, Number(logWatcherIntervalEl.value) || 60) : 60;
     const logTermRows = collectWdLogTermRows();
-    // Which logs need to be tailed, derived from the terms' own Slot dropdowns.
     const usedSlots = new Set(logTermRows.map(t => t.slot || "all"));
     const logWatcherSlots = (usedSlots.has("all") ? WD_LOG_WATCHER_SLOT_IDS : WD_LOG_WATCHER_SLOT_IDS.filter(s => usedSlots.has(s)))
         .join(",");
@@ -12177,11 +11709,6 @@ function buildWdConfigRawFromSettings() {
     }
     return lines.join("\n").replace(/\n+$/, "\n");
 }
-// Wraps the bare rigcontrol-watchdog.conf body in the actual mkdir/tee/heredoc command that gets
-// sent - matching Overclocking/Flightsheets, whose raw boxes already show the full command rather
-// than just the file body. Kept as its own function since 3 different places need to produce this
-// same wrapped text: a fresh rebuild from the row/settings fields, a profile loaded from storage,
-// and a live conf pulled from a rig via "cat".
 function wrapWdConfigCommand(bareContent) {
     const heredocTag = "RIGCONTROL_WATCHDOG_CONF_EOF";
     return (
@@ -12192,8 +11719,6 @@ function wrapWdConfigCommand(bareContent) {
         heredocTag
     );
 }
-// Strips a leading "# APPLY_TO=..." line, if present, so it can be re-added OUTSIDE the tee
-// heredoc instead of inside it - see the wdApplyToRigs comment above for why that placement matters.
 function stripWdApplyToComment(text) {
     return (text || "").replace(/^# APPLY_TO=.*\n?/, "");
 }
@@ -12208,7 +11733,6 @@ function rebuildWdRawFromSettings() {
     autoResizeWdRaw();
 }
 function setWdConfigTab(tab) {
-    // No-op: kept so existing call sites stay harmless.
 }
 function autoResizeWdRaw() {
 }
@@ -12268,14 +11792,12 @@ function populateWdSettingsFromRaw(rawText) {
         const im = rawText.match(/^LOG_WATCHER_INTERVAL_SECONDS\s+"(\d+)"\s*$/m);
         logWatcherIntervalEl.value = im ? Math.max(5, Number(im[1]) || WD_LOG_WATCHER_INTERVAL_DEFAULT) : WD_LOG_WATCHER_INTERVAL_DEFAULT;
     }
-    // LOG_WATCHER_SLOTS is derived output only; which logs get tailed comes from each term's Slot dropdown, parsed below.
     const legacySharedScriptMatch = rawText.match(/LOG_WATCHER_SCRIPT_BEGIN\n([\s\S]*?)\nLOG_WATCHER_SCRIPT_END/);
     const legacySharedScript = legacySharedScriptMatch ? legacySharedScriptMatch[1] : "";
     wdLogTermScripts.clear();
     wdLogTermActions.clear();
     wdLogTermTakenCounts.clear();
     selectedWdLogTermRowId = null;
-    // Each term's script is a LOG_WATCHER_TERM_SCRIPT_BEGIN <index>/END block, index = its position in LOG_WATCHER_TERMS.
     const termScriptBlocks = new Map();
     for (const m of rawText.matchAll(/LOG_WATCHER_TERM_SCRIPT_BEGIN (\d+)\n([\s\S]*?)\nLOG_WATCHER_TERM_SCRIPT_END/g)) {
         termScriptBlocks.set(Number(m[1]), m[2]);
@@ -12287,13 +11809,10 @@ function populateWdSettingsFromRaw(rawText) {
             const rawParts = entry.split("|");
             let contains, notContains, severityRaw, actionsRaw, slotRaw, legacyScriptB64 = "", graceRaw = "", cooldownRaw = "", stopAfterRaw = "";
             if (rawParts.length >= 8) {
-                // Current format: contains|notContains|severity|actions|slot|grace|cooldown|stopAfterFails
                 [contains, notContains, severityRaw, actionsRaw, slotRaw, graceRaw, cooldownRaw, stopAfterRaw] = rawParts;
             } else if (rawParts.length === 7) {
-                // Older format (pre-stop-after-fails): contains|notContains|severity|actions|slot|grace|cooldown
                 [contains, notContains, severityRaw, actionsRaw, slotRaw, graceRaw, cooldownRaw] = rawParts;
             } else if (rawParts.length === 6) {
-                // Older format (briefly shipped): contains|notContains|severity|actions|scriptB64|slot
                 [contains, notContains, severityRaw, actionsRaw, legacyScriptB64, slotRaw] = rawParts;
             } else {
                 const parts = rawParts.slice();
@@ -12404,11 +11923,6 @@ function buildWdConfigCommand() {
         alert("Add at least one algorithm row before applying, or uncheck \"Enable Mining Watchdog\" on the Mining tab if you only want the Log Watcher.");
         return null;
     }
-    // No rebuild and no re-wrapping here on purpose - the raw box already holds the FULL command
-    // (mkdir + tee heredoc-wrapped conf body + closing tag, via rebuildWdRawFromSettings()'s call to
-    // wrapWdConfigCommand()) and already reflects every field change (each row/checkbox handler calls
-    // rebuildWdRawFromSettings() itself), so what's sent is exactly what's on screen, including any
-    // direct manual edit to the raw box that a forced rebuild would otherwise clobber.
     return document.getElementById("wdconfig-raw").value;
 }
 function sendItWd() {
@@ -12442,15 +11956,8 @@ function autoLoadWdConfigForSelectedRig() {
         alert(`Failed to load current config from ${rig}`);
     });
 }
-// Matches watchdog/rigcontrol_watchdog.py's LOG_WATCHER_COUNTS_PATH - the in-memory-only per-term
-// action-taken counts get mirrored out there so this "Refresh Counts" flow can read them back
-// the same way Reload reads the conf file itself, just targeting a different file.
 const LOG_WATCHER_TERM_COUNTS_PATH = "/run/rigcontrol/log_watcher_term_counts.json";
 function applyLogWatcherTermCounts(countsObj) {
-    // Counts are keyed by term position (see _write_log_watcher_counts() on the worker), which
-    // lines up with DOM row order here since collectWdLogTermRows() builds LOG_WATCHER_TERMS in
-    // that same order - adding/removing/reordering rows without re-sending first can throw this
-    // off until the next Send it, same caveat as noted server-side.
     const rows = Array.from(document.querySelectorAll("#wdconfig-logterm-rows .wdconfig-logterm-row"));
     rows.forEach((tr, idx) => {
         const count = countsObj[String(idx)];
@@ -12460,12 +11967,8 @@ function applyLogWatcherTermCounts(countsObj) {
         if (cell) cell.textContent = count;
     });
 }
-// Matches watchdog/rigcontrol_watchdog.py's MINING_ALGO_COUNTS_PATH - same idea as the log
-// watcher counts above, but keyed by algo name (a stable natural key) instead of row position.
 const MINING_ALGO_COUNTS_PATH = "/run/rigcontrol/mining_watchdog_algo_counts.json";
 function applyMiningAlgoCounts(countsObj) {
-    // Backend keys are whatever case the algo showed up as in telemetry (usually lowercase);
-    // match case-insensitively against whatever the user typed in the Algorithm field.
     const lowerCounts = {};
     for (const [k, v] of Object.entries(countsObj)) lowerCounts[k.toLowerCase()] = v;
     document.querySelectorAll("#wdconfig-rows .wdconfig-row").forEach(tr => {
@@ -12509,12 +12012,6 @@ function refreshLogWatcherTermCounts() {
 }
 const AGENTCONF_RAW_HEIGHT_KEY = "rigcontrol_agentconf_raw_height";
 function restoreAgentConfRawHeight() {
-    // Restores a manually-dragged height (native textarea resize handle, not the auto-fit
-    // below) so it survives a page reload - same localStorage-per-element pattern as
-    // CMD_INPUT_HEIGHT_KEY/CMD_OUTPUT_HEIGHT_KEY use for the Send Cmd modal's resizable boxes.
-    // Only matters until the next real content load/edit, since resizeAgentConfRaw() below
-    // will auto-fit over top of it then - that's fine, a saved height from a DIFFERENT rig's
-    // (likely different-length) conf shouldn't outlive an actual new load anyway.
     const el = document.getElementById("agentconf-raw");
     const saved = localStorage.getItem(AGENTCONF_RAW_HEIGHT_KEY);
     if (el && saved) el.style.height = saved;
@@ -12524,22 +12021,11 @@ function saveAgentConfRawHeight() {
     if (el && el.style.height) localStorage.setItem(AGENTCONF_RAW_HEIGHT_KEY, el.style.height);
 }
 function resizeAgentConfRaw() {
-    // Grows the textarea to fit its content instead of it having its own inner scrollbar -
-    // #refresh-modal .cmd-body is already the scrollable container for the whole modal, so a
-    // tall conf file scrolls the modal/page instead. Reset to "auto" first so shrinking (e.g.
-    // Clear replacing a long real conf with the shorter template) actually shrinks the box
-    // back down instead of scrollHeight staying pinned to the old, larger content.
     const el = document.getElementById("agentconf-raw");
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
 }
-// Wraps a bare rigcontrol-agent.conf body in the actual mkdir/tee/heredoc (+ optional restart)
-// command that gets sent - same reasoning as Watchdog's wrapWdConfigCommand(): the raw box should
-// always show the literal command Send Cmd will use, not just the file body with the wrapper
-// assembled invisibly elsewhere at send time.
-// Generic heredoc tag - fine for it to be shared across all CONF_EDIT_TYPES since only one type is
-// ever loaded into agentconf-raw at a time (the box holds one conf's write-command at once).
 const CONF_EDIT_HEREDOC_TAG = "RIGCONTROL_CONF_EDIT_EOF";
 function wrapConfEditCommand(confType, bareContent, includeRestart) {
     const cfg = CONF_EDIT_TYPES[confType];
@@ -12553,17 +12039,7 @@ function wrapConfEditCommand(confType, bareContent, includeRestart) {
     if (includeRestart) command += `\n${cfg.restartCmd()}`;
     return command;
 }
-// Reverse of the above - pulls just the heredoc body back out of a (possibly hand-edited) wrapped
-// command, for the one caller that wants the actual .conf file text rather than the send-command
-// shape: the DB Backups snapshot (agent.conf only), which stores "what did this rig's conf file
-// contain" for reference, not a shell command to replay. Falls back to the input unchanged if the
-// wrapper markers aren't found (e.g. the user rewrote the box into something else entirely).
 function unwrapConfEditCommand(text) {
-    // wrapConfEditCommand() always leaves exactly one "\n" right before the closing tag (either
-    // the body's own trailing newline, or one added for it) - that single newline is inherently
-    // ambiguous to reverse (a bodyless-of-trailing-newline input is indistinguishable from one
-    // that already had it), so this always re-adds it. Harmless: real conf files end in a newline
-    // anyway, and this is only used for the informational DB Backups snapshot, never for sending.
     const tag = CONF_EDIT_HEREDOC_TAG;
     const openIdx = text.indexOf(`<<'${tag}'\n`);
     if (openIdx === -1) return text || "";
@@ -12572,9 +12048,6 @@ function unwrapConfEditCommand(text) {
     if (closeIdx === -1) return text || "";
     return text.slice(bodyStart, closeIdx) + "\n";
 }
-// Apply To picker for the Configs tab footer - same pattern as statsApplyToRigs above (which see
-// for the full rationale). Wired into sendItConfEdit() via cmdModalRigOverride, same mechanism
-// Flightsheets/Overclock/Watchdog's Apply To already uses for their own "Send it!".
 let agentconfApplyToRigs = new Set();
 function isAgentconfApplyToDropdownOpen() {
     const list = document.getElementById("agentconf-apply-to-list");
@@ -12639,21 +12112,14 @@ function selectAllAgentconfApplyTo() {
     updateAgentconfApplyToToggleLabel();
     populateAgentconfApplyToWorkerList();
 }
-// Refreshes the Conf tab's chrome (path label, Clear button visibility) to match whatever's
-// currently selected in the type dropdown - called on dropdown change and whenever the tab is opened.
 function updateConfEditTypeUi() {
     const cfg = CONF_EDIT_TYPES[selectedConfEditType];
     const labelEl = document.getElementById("agentconf-raw-label");
     if (labelEl) labelEl.textContent = cfg ? cfg.path() : "";
-    // Only agent.conf has a bundled blank-example template to load - hide Clear for everything else
-    // rather than have it silently do nothing. Inline style, not a "hidden" class - app.css only
-    // defines that class scoped to specific parent selectors, not as a bare display:none utility.
     const clearBtn = document.getElementById("btn-agentconf-clear");
     if (clearBtn) clearBtn.style.display = cfg?.isAgent ? "" : "none";
 }
 function loadDefaultConfEditTemplate() {
-    // Only agent.conf has a bundled blank example - the Clear button is hidden for every other
-    // type (see updateConfEditTypeUi()), so this shouldn't normally be reachable otherwise.
     if (selectedConfEditType !== "agent.conf") return;
     const rawEl = document.getElementById("agentconf-raw");
     const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
@@ -12667,9 +12133,6 @@ function autoLoadConfForSelectedRig() {
     const statusEl = document.getElementById("agentconf-status");
     const confType = selectedConfEditType;
     const confLabel = LOGS_TYPE_LABELS[confType] || confType;
-    // Reload only ever reads from one worker. The "Apply to" picker can supply that worker too
-    // (so it doubles as a selector here), but only when it names exactly one - otherwise fall
-    // back to the main worker list.
     const targetRigs = agentconfApplyToRigs.size > 0 ? agentconfApplyToRigs : selectedRigs;
     if (targetRigs.size !== 1) {
         return;
@@ -12687,18 +12150,11 @@ function autoLoadConfForSelectedRig() {
     });
 }
 function buildConfEditCommand() {
-    // agentconf-raw already holds the full command (mkdir + tee heredoc-wrapped conf body +
-    // optional restart line, via wrapConfEditCommand()) - send it exactly as shown, no rebuilding.
     return document.getElementById("agentconf-raw")?.value ?? "";
 }
 function sendItConfEdit() {
     const confType = selectedConfEditType;
     const confLabel = LOGS_TYPE_LABELS[confType] || confType;
-    // agentconfApplyToRigs (the "Apply to" picker) lets this write go to several workers at once,
-    // same as Flightsheets/Overclock/Watchdog's Apply To - same content to each. Reload still only
-    // ever reads from a single worker (see autoLoadConfForSelectedRig()), so with the picker empty
-    // this keeps the original single-worker requirement: nothing here silently reads from one rig
-    // and writes to several without the picker being used on purpose.
     const overrideRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : null;
     if (!overrideRigs && selectedRigs.size !== 1) {
         alert(`Select exactly one worker (or use the "Apply to" picker below to target several) to write its ${confLabel}`);
@@ -12721,9 +12177,6 @@ function sendItConfEdit() {
         });
     }
 }
-// Settings modal's Templates tab - lets templates.json (flightsheet/overclocking/watchdog/
-// agentconf/flightsheet_derivation) be edited and saved from the dashboard itself instead of
-// hand-editing the file on the server. Same auto-grow-textarea pattern as Agent Conf above.
 function resizeTemplatesConfigRaw() {
     const el = document.getElementById("templates-config-raw");
     if (!el) return;
@@ -12754,17 +12207,12 @@ function applyTemplatesConfig() {
     const rawEl = document.getElementById("templates-config-raw");
     const statusEl = document.getElementById("templates-config-status");
     const content = rawEl?.value ?? "";
-    // Validate client-side first so a typo shows an immediate, specific error instead of a
-    // round-trip to the server just to get the same JSON.parse failure back.
     try {
         JSON.parse(content);
     } catch (err) {
         alert(`Not valid JSON: ${err.message}`);
         return;
     }
-    // This isn't a per-rig write like the rest of the Conf tab - it overwrites templates.json on
-    // the dashboard SERVER itself, which every open dashboard (and every rig's next-generated
-    // Flightsheet/Overclock/Watchdog script) picks up. Worth a confirm, unlike a single worker's conf.
     if (!confirm("Save this content to templates.json on the server? This affects every dashboard and rig, not just this one.")) {
         return;
     }
@@ -12781,8 +12229,6 @@ function applyTemplatesConfig() {
         })
         .then(() => {
             if (statusEl) statusEl.textContent = "Saved - reloading into this dashboard...";
-            // Re-run the same startup fetch/merge app.js uses on page load, so the new values
-            // take effect immediately here too, not just for the next person to open the page.
             return loadTemplatesConfig();
         })
         .then(() => {
@@ -12825,11 +12271,7 @@ function populateStatusLogRigSelect() {
         sel.value = prevValue;
     }
 }
-// ===== Backups Tab =====
 let selectedBackupFileIds = new Set();
-// Same save-on-mouseup / separate-restore pattern as STATUSLOG_LIST_WIDTH_KEY above - these 3
-// sizers were previously drag-only (in-memory, reset every reload); now persisted like every
-// other module sizer/handle in the app.
 const BACKUPS_HSIZER_WIDTH_KEY = "rigcontrol_backups_hsizer_width";
 const BACKUPS_TOP_HSIZER_WIDTH_KEY = "rigcontrol_backups_top_hsizer_width";
 const BACKUPS_VSIZER_HEIGHT_KEY = "rigcontrol_backups_vsizer_height";
@@ -13009,9 +12451,6 @@ function restoreCmdHistorySizers() {
         panel.style.height = savedPanelHeight;
     }
 }
-// Backups now lives as a Settings sub-tab (see switchSettingsMainTab()'s "backups" branch for
-// the actual sizer-init/list-load work) rather than its own top-level view-tab - this is kept
-// as a stable entry point in case anything wants to jump straight there.
 function openBackupsModal() {
     closeCmdModal();
     switchViewTab("settings");
@@ -13024,10 +12463,6 @@ function setBackupsStatus(msg, isError) {
         if (msg) alert(msg);
         return;
     }
-    // Plain muted text like every other title-bar status - no red/green color-coding (that used
-    // to come from toggling .ok/.error classes here, back when this had its own standalone
-    // dialog; left in place after the move to a shared Settings tab it would've been the only
-    // status span still changing color, which read as inconsistent next to the rest).
     if (!el) return;
     el.textContent = msg || "";
 }
@@ -13373,25 +12808,14 @@ function openStatusLogForRig(rigName) {
         sel.value = rigName;
     }
     lastSyncedStatuslogRig = rigName;
-    // Snapshot the checkbox selection as-is (which may well be a DIFFERENT rig than rigName - that's
-    // the whole point of clicking a specific rig's badge instead of relying on the checkbox) so
-    // syncOpenModulesToSelection() treats this as already-observed and doesn't immediately stomp the
-    // badge click back to whatever's checkbox-selected on its next tick.
     lastObservedStatuslogSelectionRig = selectedRigs.size === 1 ? Array.from(selectedRigs)[0] : null;
     const statusEl = document.getElementById("statuslog-status");
     if (statusEl) statusEl.textContent = "";
     loadStatusLogList();
 }
-// Mirrors get_status_log()'s default `limit: int = 200` in rigcontrol_dashboard_server.py - sent
-// explicitly (rather than just relying on the server's own default) so this stays in lockstep even
-// if that default is ever changed there without a matching edit here.
 const STATUSLOG_QUERY_LIMIT = 200;
-let statuslogPage = 0; // 0-indexed - reset to 0 whenever the rig/search filters change
+let statuslogPage = 0;
 const STATUSLOG_SEVERITY_LABELS = { GOOD: "Good", WARN: "Warn", IMPORTANT: "Important", CRITICAL: "Critical" };
-// Reads the severity filter checkbox list's current state - "Show" checkboxes are OR'd together
-// (only entries matching one of those severities show up at all), "Hide" checkboxes are
-// subtracted regardless of Show state (see .statuslog-severity-checkbox click handler below for
-// why the two are mutually exclusive per severity).
 function getStatusLogSeverityFilters() {
     const include = [];
     const exclude = [];
@@ -13452,14 +12876,9 @@ async function loadStatusLogList(autoSelectId) {
             if (statusEl) statusEl.textContent = "Failed to load";
             return;
         }
-        // {items, total} - total is the TRUE count matching the current rig/search filters across
-        // every page, not just how many came back on this one (see get_status_log() server-side).
         const data = await res.json();
         const items = data.items || [];
         const total = data.total ?? items.length;
-        // Deleting entries (e.g. all of page 2) can leave statuslogPage pointing past the new
-        // last page - that showed up as "list doesn't refresh" (an empty page render instead of
-        // snapping back). Clamp and refetch the now-valid last page instead of rendering nothing.
         if (items.length === 0 && total > 0 && statuslogPage > 0) {
             statuslogPage = Math.max(0, Math.ceil(total / STATUSLOG_QUERY_LIMIT) - 1);
             return loadStatusLogList(autoSelectId);
@@ -13474,8 +12893,6 @@ async function loadStatusLogList(autoSelectId) {
         if (statusEl) statusEl.textContent = "Failed to load";
     }
 }
-// Single combined status text (same span/style as before "N entries" always used) - now also
-// covers the Prev/Next page range instead of a separate page-count element.
 function updateStatuslogPageDisplay(shownCount, total) {
     const statusEl = document.getElementById("statuslog-status");
     const prevBtn = document.getElementById("btn-statuslog-prev-page");
@@ -13755,11 +13172,6 @@ function buildLabelsAndSeries(entries, extractFn) {
     });
     return { labels, seriesMap };
 }
-// opts (all optional): axisForName(name) -> "y"|"y1" to overlay a series on a second axis; y1Label for its title; dashForName(name) -> borderDash array.
-// Hides a chart's whole box (title + canvas) rather than leaving an empty, axis-only chart visible
-// when a rig has nothing to show for that metric - e.g. every GPU chart on a CPU-only rig, or the
-// hashrate chart before any miner has ever reported in. Toggled every render since which charts
-// are empty can change per rig (switching the Stats page's rig dropdown) or over time.
 function setStatsChartBoxVisible(canvas, visible) {
     const box = canvas.closest(".stats-chart-box");
     if (box) box.style.display = visible ? "" : "none";
@@ -13789,9 +13201,6 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
         tension: 0.15,
         spanGaps: true,
         yAxisID: axisForName ? axisForName(name) : "y",
-        // Per-segment coloring (hashrate chart only): overrides the flat per-algo borderColor
-        // above so the line itself changes color wherever the miner producing that algo's
-        // hashrate changes, instead of only surfacing that info in the hover tooltip.
         segment: segmentColorForName
             ? { borderColor: (ctx) => segmentColorForName(name, ctx.p1DataIndex) }
             : undefined
@@ -13820,9 +13229,6 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
             grid: { drawOnChartArea: false }
         };
     }
-    // externalTooltip (if provided) fully replaces the default box tooltip with our own
-    // absolutely-positioned div - used by the hashrate chart to list which miner(s) produced
-    // each algo's total, since the default tooltip can only show one flat "label: value" line.
     const tooltipPlugin = externalTooltip
         ? { enabled: false, external: externalTooltip }
         : undefined;
@@ -13842,10 +13248,6 @@ function renderStatsChart(canvasId, labels, seriesMap, yLabel, colorForName, opt
         }
     });
 }
-// Renders the custom hover box for the Hashrate chart, showing which miner(s) produced each
-// algo's total hashrate at that point in time - the default Chart.js tooltip only has room for
-// "algoName: value" and can't show a per-contributor breakdown, so this replaces it entirely via
-// the `external` tooltip hook. `contributors` is keyed [algoName][dataIndex] -> [{minerName, hs}].
 function buildHashrateTooltipHandler(contributors) {
     return (context) => {
         const { chart, tooltip } = context;
@@ -13909,32 +13311,15 @@ function populateStatsAlgoSelect(entries) {
         sel.appendChild(opt);
     });
     if (userTouched) {
-        // Respect whatever the person explicitly picked (including "-All-"), as long as it's
-        // still a valid option - only fall back if their choice disappeared from the list.
         sel.value = (prevValue === "all" || sortedNames.includes(prevValue)) ? prevValue : "all";
     } else {
-        // Never manually changed yet - default to the most recently active algorithm instead
-        // of "-All-", so the chart opens already focused on what's currently mining.
         const mostRecent = mostRecentStatsAlgoName(entries);
         sel.value = sortedNames.includes(mostRecent) ? mostRecent : "all";
     }
 }
-// network.rx_bytes/tx_bytes are raw cumulative counters (see collect_network() on every agent) that
-// reset on reboot/link reset, so plotting them directly would just show "bytes since last reboot"
-// climbing forever (and dropping to ~0 on every reboot) rather than actual usage. This derives "how
-// much was transferred since the previous sample" (MB) from the delta between consecutive history
-// samples, then sums those deltas into one bar per clock hour (in the viewer's local time zone) -
-// deliberate hourly bucketing rather than one bar per raw sample, so the bar chart reads as "MB per
-// hour" regardless of how often the agent happens to be saving samples. A negative delta (counter
-// reset) is treated as zero rather than subtracted, so a reboot just contributes zero to its hour's
-// bucket instead of going negative.
-// This is NOT where the Mbps line chart's data comes from - that reads rx_mbps/tx_mbps straight off
-// each entry, a live rate the agent itself measured at collection time (see collect_network()),
-// rather than an average derived here across the (much longer) gap between stored samples.
 function buildNetworkHourlyUsage(entries) {
     const MB = 1024 * 1024;
-    const buckets = new Map(); // hour label -> { downloadMb, uploadMb }; Map preserves insertion order, and
-                                // entries are walked oldest-to-newest, so this comes out chronological for free.
+    const buckets = new Map();
     let totalDownloadMb = 0;
     let totalUploadMb = 0;
     for (let i = 1; i < entries.length; i++) {
@@ -13969,11 +13354,6 @@ function buildNetworkHourlyUsage(entries) {
 function formatNetworkTotalMb(totalMb) {
     return totalMb >= 1024 ? `${(totalMb / 1024).toFixed(2)} GB` : `${totalMb.toFixed(0)} MB`;
 }
-// Separate bar chart, alongside the Mbps line chart above - shows the same underlying deltas but
-// summed into one bar per clock hour (see buildNetworkHourlyUsage) rather than normalized to a
-// rate, which is more useful for spotting which hour a burst happened in. One bar per hour (rather
-// than one per raw sample) also means there are few enough bars to just label every one, unlike the
-// other Stats charts' first/last-tick-only trimming.
 function renderStatsNetworkBarChart(labels, downloadMb, uploadMb) {
     const canvasId = "stats-chart-network-bar";
     const canvas = document.getElementById(canvasId);
@@ -14013,16 +13393,7 @@ function renderStatsNetworkBarChart(labels, downloadMb, uploadMb) {
         }
     });
 }
-// Reuses the same renderStatsChart() line-chart helper every other Stats chart goes through
-// (tension, spanGaps, first/last-tick trimming, legend/tooltip styling) instead of a one-off bar
-// chart, so this one looks and behaves consistently with the rest of the page.
 function renderStatsNetworkChart(entries) {
-    // True Mbps at plot time - read straight off each entry (the agent's own short-window
-    // measurement, see collect_network()), same simple per-sample pattern as cpu_usage/cpu_temp,
-    // NOT an average derived across the gap between stored history samples. Only set a key when the
-    // field is actually present (older history rows recorded before this agent update won't have
-    // rx_mbps/tx_mbps at all) - buildLabelsAndSeries maps an absent key to null, which spanGaps
-    // renders as a proper break in the line, instead of `undefined` rendering as a false zero.
     const mbps = buildLabelsAndSeries(entries, (d) => {
         const out = {};
         if (typeof d.network?.rx_mbps === "number") out["Download (Mbps)"] = d.network.rx_mbps;
@@ -14144,9 +13515,6 @@ function renderStatsCharts(resp) {
         });
         return out;
     });
-    // Tracks which miner(s) contributed to each algo's total at each point in time, so hovering
-    // the hashrate chart can show which miner software was actually producing that hashrate -
-    // buildLabelsAndSeries()'s extractFn shape only returns numbers, not enough to carry this too.
     const hashrateMiners = {};
     entries.forEach((entry, i) => {
         (DataHelper.getAllAlgorithms(entry.data) || []).forEach((algo) => {
@@ -14159,8 +13527,6 @@ function renderStatsCharts(resp) {
             hashrateMiners[algoName][i].push({ minerName: algo.minerName || "unknown" });
         });
     });
-    // Legend/base swatch color: use the most recently active miner's color for that algo (so it
-    // matches the color at the right-hand/current end of the line) rather than a flat algo color.
     const hashrateSegmentColor = buildHashrateSegmentColorFn(hashrateMiners);
     const hashrateLegendColorForName = (algoName) =>
         hashrateSegmentColor(algoName, hashrate.labels.length - 1);
@@ -14170,10 +13536,6 @@ function renderStatsCharts(resp) {
     });
     renderHashrateMinerLegend(hashrateMiners);
 }
-// Colors each segment of a hashrate line by whichever miner was producing that algo's hashrate at
-// that point, instead of one flat color per algo - walks backward from dataIndex to the nearest
-// point with a known contributor so a null/gap point (hr dropped to 0 briefly) doesn't fall back
-// to the generic algo color unnecessarily.
 function buildHashrateSegmentColorFn(contributors) {
     return (algoName, dataIndex) => {
         const byIndex = contributors[algoName];
@@ -14186,10 +13548,6 @@ function buildHashrateSegmentColorFn(contributors) {
         return stableColorForName(algoName);
     };
 }
-// Renders a swatch+name row under the Hashrate chart listing every distinct miner that shows up
-// anywhere in the current time range, using the same stableColorForName colors as the line
-// segments/tooltip above - lets someone match a color they see in the chart back to a miner name
-// without having to hover every point.
 function renderHashrateMinerLegend(contributors) {
     const el = document.getElementById("stats-hashrate-miner-legend");
     if (!el) return;
@@ -14323,9 +13681,6 @@ function resetModalCollapseState(modalId, buttonId) {
     if (btn) btn.textContent = "Collapse";
 }
 let statusLogCounts = {};
-// Per-rig {critical, warn} flags - not from a DB column, derived server-side from the same
-// "[CRITICAL]"/"[WARN]" title tag the client already parses in renderStatusLogList(). Drives the
-// worker status log badge color (critical beats warn if a worker has both - see updateStatusLogBadgeClass()).
 let statusLogSeverityByRig = {};
 function refreshStatusLogRigSelectIfOpen() {
     if (!document.getElementById("statuslog-modal")?.classList.contains("hidden")) {
@@ -14353,9 +13708,6 @@ async function fetchStatusLogSeverity() {
         console.error("Error fetching status log severity:", e);
     }
 }
-// Applies the right modifier class to an already-built badge element - shared by the main worker
-// list render and the live websocket update path so both stay in sync with the same priority
-// rule (critical > warn > plain).
 function updateStatusLogBadgeClass(badgeEl, rigName) {
     const sev = statusLogSeverityByRig[rigName];
     badgeEl.classList.toggle("has-critical", !!sev?.critical);
@@ -14363,15 +13715,6 @@ function updateStatusLogBadgeClass(badgeEl, rigName) {
 }
 let lastSyncedStatsRig = null;
 let lastSyncedStatuslogRig = null;
-// Tracks the checkbox-selected rig we've already reacted to, separately from
-// lastSyncedStatuslogRig (which tracks what rig the status log is currently showing). These used to
-// be the same variable, which broke openStatusLogForRig()'s circle-badge click: clicking a badge for
-// rig B while some other rig A was checkbox-selected set lastSyncedStatuslogRig to B, so the very
-// next syncOpenModulesToSelection() tick saw "checkbox-selected rig A !== lastSyncedStatuslogRig B"
-// and treated that as a fresh selection change, auto-syncing the dropdown right back to A - silently
-// overriding the badge click. Keeping a separate baseline that only openStatusLogForRig()/
-// openStatusLogModal() are allowed to move lets this function tell "the checkbox selection itself
-// changed" apart from "the displayed rig changed for some other reason".
 let lastObservedStatuslogSelectionRig = null;
 let lastSyncedWdConfigRig = null;
 let lastSyncedAgentConfRig = null;
@@ -14437,10 +13780,6 @@ function syncOpenModulesToSelection() {
     const statuslogModal = document.getElementById("statuslog-modal");
     if (statuslogModal && !statuslogModal.classList.contains("hidden") && count === 1) {
         const [onlyLog] = selectedRigs;
-        // Only auto-sync when the checkbox selection has itself actually changed since we last
-        // looked - NOT just whenever it happens to differ from whatever rig is currently displayed
-        // (lastSyncedStatuslogRig), which would also be true right after a circle-badge click on a
-        // different rig and would incorrectly stomp it back to the checkbox selection.
         if (onlyLog !== lastObservedStatuslogSelectionRig) {
             lastObservedStatuslogSelectionRig = onlyLog;
             if (onlyLog !== lastSyncedStatuslogRig) {
@@ -14478,15 +13817,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupCmdModalSizeSaving();
     restoreLogsModalSize();
     setupLogsModalSizeSaving();
-    // Width-only persistence - these all use .dialog-resize-handle-right (width-drag only), so
-    // there's no height to save. refresh-modal covers Backups too now that it's a Settings
-    // sub-tab rather than its own dialog. raw-content-modal still uses the -corner handle
-    // (width+height) instead and is wired below via restoreResizableDialogSize/
-    // setupResizableDialogSizeSaving. statuslog-modal used to as well, but its corner handle
-    // actually resized the *whole dialog* despite visually sitting on the details textarea -
-    // confusing - so it's now .dialog-resize-handle-right (width only) like the rest of this
-    // list, and the textarea gets its own native vertical-resize grip instead (see
-    // .statuslog-details in app.css).
     const RESIZABLE_TAB_MODALS = [
         ["stats-modal", "rigcontrol_stats_modal_width"],
         ["wallet-modal", "rigcontrol_wallet_modal_width"],
@@ -14618,7 +13948,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeFsMinerConfigModal();
     });
     document.getElementById("btn-fs-mc-apply")?.addEventListener("click", () => {
-        // Force a full rebuild from the live form state so the raw content reflects the modal's changes.
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
             rawEl.value = buildFsActivePreview();
@@ -14676,12 +14005,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("fs-fields-panel")?.addEventListener("input", (e) => {
         updateRawFromFieldChange(e.target);
     });
-    // Fields are relocated into the miner-config modal while open (see openFsMinerConfigModal), out from
-    // under #fs-fields-panel's delegated listener above - mirror it here so live sync keeps working.
     document.getElementById("fs-miner-config-modal")?.addEventListener("input", (e) => {
         updateRawFromFieldChange(e.target);
     });
-    // fs-mc-pool-token mirrors miner_config.url, not pool_urls, so it needs its own listener.
     document.getElementById("fs-mc-pool-token")?.addEventListener("input", (e) => {
         fsPoolUrlToken = e.target.value;
         const poolEl = document.getElementById("fs-field-pool");
@@ -14763,8 +14089,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (lines.length === 1 && lines[0] === text.trim()) return;
         e.preventDefault();
         const poolEl = e.target;
-        // Pasted addresses are used exactly as they appear in the clipboard - no scheme is
-        // added, stripped, or flipped here.
         if (lines.length === 1) {
             poolEl.value = lines[0];
             fsExtraPoolUrls = [];
@@ -14781,8 +14105,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         const poolEl = document.getElementById("fs-field-pool");
         if (!poolEl) return;
         const sslOn = e.target.checked;
-        // Flip the scheme only on entries that already have one - checked per entry, fresh
-        // off its own current text, so nothing gets invented and nothing gets left stale.
         const flip = (full) => {
             const hasScheme = /^stratum\+(ssl|tcp):\/\//i.test((full || "").trim());
             return styledFsPoolUrlIfScheme(bareFsPoolUrl(full), sslOn, hasScheme);
@@ -14815,7 +14137,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                         .replace(/\s+/g, " ")
                         .trim();
                 }
-                // Clear the stashed original user_config so it doesn't win over this TLS-corrected ARGS edit on rebuild.
                 fsSrbminerOriginalUserConfig = "";
             } else {
                 const hasTls = /(^|\s)--tls(\s|$)/.test(argsEl.value);
@@ -14857,8 +14178,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (lines.length === 0) return;
         if (lines.length === 1 && lines[0] === text.trim()) return;
         e.preventDefault();
-        // Pasted addresses are used exactly as they appear in the clipboard - no scheme is
-        // added, stripped, or flipped here, per line.
         const cleaned = lines.join("\n");
         const ta = e.target;
         const start = ta.selectionStart ?? ta.value.length;
@@ -14980,8 +14299,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("btn-stats-load")?.addEventListener("click", loadStatsForSelectedRig);
     document.getElementById("stats-rig-select")?.addEventListener("change", () => {
-        // Switching rigs - let the new rig auto-pick its own most-recent algo again
-        // instead of carrying over a choice that applied to the previous rig.
         const algoSel = document.getElementById("stats-algo-select");
         if (algoSel) delete algoSel.dataset.userSet;
         loadStatsForSelectedRig();
@@ -15027,18 +14344,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const debounceStatuslogSearch = () => {
         clearTimeout(statuslogSearchDebounceTimer);
         statuslogSearchDebounceTimer = setTimeout(() => {
-            statuslogPage = 0; // a new search should start back at page 1, not wherever you were
+            statuslogPage = 0;
             loadStatusLogList();
         }, 300);
     };
     document.getElementById("statuslog-search-title")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("statuslog-search-content")?.addEventListener("input", debounceStatuslogSearch);
     document.getElementById("statuslog-search-title-exclude")?.addEventListener("change", () => {
-        statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
+        statuslogPage = 0;
         loadStatusLogList();
     });
     document.getElementById("statuslog-search-content-exclude")?.addEventListener("change", () => {
-        statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
+        statuslogPage = 0;
         loadStatusLogList();
     });
     document.getElementById("btn-statuslog-prev-page")?.addEventListener("click", () => {
@@ -15069,7 +14386,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.target.value = "";
     });
     document.getElementById("statuslog-rig-select")?.addEventListener("change", () => {
-        statuslogPage = 0; // switching rigs should start back at page 1 of that rig's results
+        statuslogPage = 0;
         loadStatusLogList();
     });
     document.getElementById("btn-statuslog-severity-toggle")?.addEventListener("click", (evt) => {
@@ -15085,9 +14402,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelectorAll(".statuslog-severity-checkbox").forEach((cb) => {
         cb.addEventListener("change", () => {
             if (cb.checked) {
-                // Include and Hide are mutually exclusive per severity - checking one clears
-                // the other for that same row instead of leaving both checked (which would be
-                // a contradiction: "only show CRITICAL" + "hide CRITICAL").
                 const otherMode = cb.dataset.mode === "include" ? "exclude" : "include";
                 const other = document.querySelector(
                     `.statuslog-severity-checkbox[data-severity="${cb.dataset.severity}"][data-mode="${otherMode}"]`
@@ -15095,7 +14409,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 if (other) other.checked = false;
             }
             updateStatusLogSeverityToggleLabel();
-            statuslogPage = 0; // same reset-to-page-1 rule as the other filters above
+            statuslogPage = 0;
             loadStatusLogList();
         });
     });
@@ -15230,8 +14544,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (targetRigs.size === 1) {
             autoLoadConfForSelectedRig();
         } else {
-            // No single worker to auto-reload from - clear rather than leave the previous
-            // type's content sitting under the new type's path/placeholder.
             const rawEl = document.getElementById("agentconf-raw");
             if (rawEl) rawEl.value = "";
             pendingAgentConfFetchRig = null;
@@ -15241,9 +14553,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-templates-config-reload")?.addEventListener("click", loadTemplatesConfigTab);
     document.getElementById("btn-templates-config-apply")?.addEventListener("click", applyTemplatesConfig);
     document.getElementById("templates-config-raw")?.addEventListener("input", resizeTemplatesConfigRaw);
-    // Toggling "restart after apply" changes what actually gets sent, so re-wrap the raw box right
-    // away to add/remove the restart line - keeps the box showing the real command at all times
-    // instead of only reflecting the checkbox once Send is clicked.
     document.getElementById("agentconf-restart-after-apply")?.addEventListener("change", (e) => {
         const rawEl = document.getElementById("agentconf-raw");
         if (!rawEl) return;

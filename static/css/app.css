@@ -117,18 +117,12 @@
     --tab-text: #aaa;
     --wd-toggle-bg: #3a2c0a;
     --wd-toggle-border: #d9a441;
-    /* Aliased to the worker-row "watchdog active" yellow (not its own hardcoded value) so the
-       toggle button and the worker name color always stay the same shade, including across
-       theme changes - editing "WD Active Text" in the theme editor updates both at once. */
     --wd-toggle-text: var(--rig-name-watchdog-active-text);
     --rig-name-watchdog-active-text: #fbc02d;
     --rig-name-watchdog-standby-text: var(--text-muted);
     --wd-toggle-hover-bg: #5a4718;
     --button-border: #444;
     --button-bg: #2e2e2e;
-    /* Was #252525/#3a3a3a - darker than the resting state, and only by a few shades, so hovering
-       most plain (non-specially-colored) buttons across the app was nearly invisible. Lighter and
-       higher-contrast now, matching the "hover brightens" convention instead of dimming. */
     --button-hover-bg: #424242;
     --button-hover-border: #666;
     --button-active-bg: #2d2d2d;
@@ -167,8 +161,6 @@
     --button-apply-qa-hover-bg: #2e4a66;
     --button-save-border: #444;
     --button-save-bg: #2e2e2e;
-    /* Green - matches the "good" green used elsewhere (severity/shares good text) rather than a
-       new one-off color, so Save buttons read as a positive/confirming action everywhere. */
     --button-save-text: #66bb6a;
     --button-save-hover-bg: #424242;
     --button-apply-stats-bg: #1c1c1c;
@@ -1069,12 +1061,6 @@ h1 {
     background: var(--button-hover-bg);
 }
 .fs-apply-to-list {
-    /* The 5 Apply-To toggles (Flightsheets/Overclock/Watchdog/Stats/Configs) sit in different
-       spots within their dialog - fs/oc/wd are in a top toolbar row, stats/agentconf are in a
-       bottom footer row - so a fixed direction clips against whichever dialog edge that widget
-       isn't near. Defaults to opening downward here; positionApplyToDropdown() in app.js adds
-       .open-upward when there isn't enough room below (same idea as the Status Log severity
-       filter popup, just picked dynamically instead of hardcoded). */
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
@@ -1152,10 +1138,6 @@ h1 {
     align-items: center;
     justify-content: center;
     background: transparent;
-    /* Visible by default (not just on hover) so the button reads as a clickable box even
-       before you're pointing at it - some header X's were rendering as bare glyphs with no
-       surrounding box until this was made non-transparent. Individual modals with their own
-       themed close-button colors (e.g. #btn-close-cmd-modal below) still override this. */
     border: 1px solid var(--border-modal);
     color: var(--text-secondary);
     font-size: 12px;
@@ -1529,10 +1511,6 @@ h1 {
 .cmd-footer .cmd-btn {
     width: var(--cmd-btn-fixed-width);
 }
-/* Status Log's footer buttons have mixed-length labels ("< Prev"/"Next >" vs "Refresh"/"Delete"/
-   "Clear"), so the fixed width above (sized for Cancel/Save-style footers) made them a different
-   size than the same buttons elsewhere in the app - fs-modal/oc-modal/wdconfig-modal's buttons
-   all size naturally off the base .cmd-btn rule (min-width 44px, width auto), same as this. */
 #statuslog-modal .cmd-footer .cmd-btn {
     width: auto;
 }
@@ -1554,9 +1532,6 @@ h1 {
 }
 .cmd-btn:hover {
     background: var(--button-hover-bg);
-    /* Most colored per-button :hover rules only touch background, so this border brighten only
-       shows through on plain/generic buttons that don't override border-color themselves - still
-       gives every button *some* visible hover feedback beyond just the bg shift above. */
     border-color: var(--button-hover-border);
 }
 #btn-cmd-clear-send {
@@ -1731,10 +1706,6 @@ h1 {
     background: var(--button-clear-hover-bg);
     border-color: var(--button-clear-hover-border);
 }
-/* Raw Content modal - shared by Flightsheets/Overclocking/Watchdog, one textarea portaled in
-   at a time. No internal scrollbar/height cap on the dialog or body - if the user drags the
-   corner handle taller than the viewport, the modal overlay itself scrolls (align-items:
-   flex-start + overflow-y:auto below), not a nested box. */
 #raw-content-modal {
     align-items: flex-start;
     overflow-y: auto;
@@ -1767,9 +1738,6 @@ h1 {
     padding: 12px;
     box-sizing: border-box;
 }
-/* Overlay the resize handle right on the textarea's own bottom-right corner (12px in from the
-   slot's edge, matching the slot's padding) rather than the dialog's outer corner, which sits
-   below the footer instead. */
 #raw-content-modal .raw-content-slot .dialog-resize-handle-corner {
     right: 12px;
     bottom: 12px;
@@ -1839,10 +1807,6 @@ h1 {
     background: var(--button-hover-bg);
     border-color: var(--button-hover-border);
 }
-/* Grows to fit its content (the Agent Conf tab's textarea especially) instead of capping at
-   96vh with its own internal scrollbar - #refresh-modal.cmd-modal below becomes the scrollable
-   region instead, so a tall modal scrolls like part of the page rather than nesting a second
-   scrollbar inside it. */
 #refresh-modal.cmd-modal {
     align-items: flex-start;
     overflow-y: auto;
@@ -2072,10 +2036,6 @@ h1 {
 #btn-statuslog-refresh:hover {
     background: var(--button-stats-load-hover-bg);
 }
-/* Without this, Delete fell back to the base .cmd-btn.danger rule (--text-danger), which isn't
-   wired into the theme editor - so unlike every other modal's Delete button (fs/oc/wallet/
-   wdconfig, all below), it wouldn't follow the "Delete / Danger" swatch. Same fix applied to
-   Backups' Delete for the same reason - it had the identical gap. */
 #btn-statuslog-delete-selected {
     background-color: var(--button-danger-bg);
     border-color: var(--button-danger-border);
@@ -2094,9 +2054,6 @@ h1 {
     background-color: var(--button-danger-hover-bg);
     border-color: var(--button-danger-hover-border);
 }
-/* Backup = same green as the Save button family (pulling data up is a "confirming" action).
-   Restore = warning yellow, same var the status log badge uses - overwriting local data is the
-   one to think twice about. */
 #btn-backups-backup {
     color: var(--button-save-text);
 }
@@ -2420,19 +2377,12 @@ h1 {
     background: var(--button-save-hover-bg);
 }
 #btn-apply-stats-settings {
-    /* Generic blue border+text (same as Send/Refresh Now/Ping Now/Apply Notifications above),
-       not the --button-apply-stats-* vars - those are shared with #btn-open-color-scheme-json,
-       which wasn't asked to change. */
     border-color: var(--button-refresh-now-border);
     background: var(--button-apply-stats-bg);
     color: var(--button-refresh-now-text);
 }
 #btn-apply-stats-settings:hover {
     background: var(--button-apply-stats-hover-bg);
-    /* No border-color change here (unlike #btn-open-color-scheme-json below, which still uses
-       the plain --button-apply-stats-* family) - this button's border is the blue override
-       above, and --button-apply-stats-hover-border would revert it to grey on hover, which
-       looked inconsistent next to Apply Notifications, whose border stays blue on hover. */
 }
 #btn-open-color-scheme-json {
     border-color: var(--button-apply-stats-border);
@@ -2673,9 +2623,6 @@ h1 {
     color: var(--text-accent);
     text-decoration: underline;
 }
-/* The actual raw-content textarea lives here at rest, hidden - it's portaled into
-   #raw-content-modal on open and portaled back here on close (see openRawContentModal /
-   closeRawContentModal in app.js), so it keeps its id, listeners, and value either way. */
 .raw-content-home {
     display: none;
 }
@@ -2934,18 +2881,12 @@ h1 {
     align-items: center;
     gap: 8px;
 }
-/* .fs-apply-to-group is normally a form-grid field (flex:1 1 0; min-width:130px, see
-   .field-group) - here it sits in a flat button row instead, so it needs to size to its own
-   content like the buttons on either side of it rather than stretching to fill space. */
 #stats-apply-to-wrap,
 #agentconf-apply-to-wrap {
     flex: 0 0 auto;
     min-width: 0;
 }
 #btn-refresh-save {
-    /* Fully matches Apply Stats below now (border, text, bg, and hover-bg) - they're a paired
-       row of buttons, so styling one differently from the other read as inconsistent/buggy.
-       --button-notify-* is otherwise unused (nothing else in the app references it). */
     border-color: var(--button-refresh-now-border);
     color: var(--button-refresh-now-text);
     background: var(--button-apply-stats-bg);
@@ -3006,12 +2947,6 @@ h1 {
 #refresh-modal .wdconfig-raw-section {
     flex: 0 0 auto;
 }
-/* Conf tab's type dropdown - a single compact inline control, deliberately NOT using the General
-   tab's .settings-row-horizontal/.field-group system (that's built for several stretchy same-width
-   inputs side by side, which just left this one dropdown stretched near-full-width with the label
-   floating above it - wrong look for a single select). Sized/styled like .logs-toolbar select
-   instead, which is the same "one compact dropdown next to a label" pattern already used by the
-   Logs/Config modal. */
 .conf-type-select-row {
     display: flex;
     align-items: center;
@@ -3045,18 +2980,7 @@ h1 {
     font-size: var(--font-size-input-compact);
     line-height: 1.4;
     margin: 0;
-    /* Grows to fit its content instead of scrolling internally (see resizeAgentConfRaw() in
-       app.js) - #refresh-modal.cmd-modal is the scrollable region for the whole modal, so a
-       tall conf file scrolls like part of the page instead of the textarea getting its own
-       separate nested scrollbar. Still resize:vertical (not none) so the user can also
-       drag it shorter/taller by hand - the next keystroke/load/clear will auto-fit again, but
-       until then a manual resize sticks, e.g. to shrink a long file back down without editing
-       it first. */
     resize: vertical;
-    /* auto, not hidden - if the user manually drags it shorter than the content, this lets
-       them scroll to see the rest instead of it just getting silently clipped. Auto-grown
-       height (the normal case) always matches scrollHeight exactly, so no scrollbar appears
-       then either way. */
     overflow: auto;
     min-height: calc(1.4em + 12px);
 }
@@ -4319,10 +4243,6 @@ h1 {
     background: var(--text-accent);
     color: var(--surface-app);
 }
-/* Critical/warn beat the default accent color when the worker has a matching status log entry -
-   critical wins over warn if both are present (see updateStatusLogBadgeClass() in app.js). Uses
-   the same theme-editable status colors as .shares-warning/.shares-bad so they move together
-   with theme changes instead of being separately hardcoded. */
 .rig-status-log-badge.has-warn {
     border-color: var(--status-warning-text);
     color: var(--status-warning-text);
@@ -5071,9 +4991,6 @@ h1 {
 .wdconfig-main-tab-panel.hidden {
     display: none;
 }
-/* Settings modal's own main tab bar (General / Configs / Templates / Backups / Advanced Server
-   Settings) - same visual design as .wdconfig-main-tab-* above, kept as separate classes rather
-   than reused directly so each modal's tab markup stays self-descriptive. */
 .settings-main-tabs {
     display: flex;
     gap: 6px;
@@ -5709,10 +5626,6 @@ h1 {
     max-width: none;
     min-width: 90px;
 }
-/* Grace/Cooldown/Stop After Fails are plain number inputs like Mining's own Grace Checks/
-   Cooldown (s) columns - narrow like those, not stretched wide like Contains/Not Contains above.
-   Actions moved out of this table entirely into the "When Triggered" section (mirrors Mining's
-   layout), so there's no per-row actions cell/checkbox styling needed here anymore. */
 .wdconfig-logterm-table td .wdconfig-logterm-grace,
 .wdconfig-logterm-table td .wdconfig-logterm-cooldown,
 .wdconfig-logterm-table td .wdconfig-logterm-stop-after {
@@ -5856,13 +5769,7 @@ h1 {
     font-size: var(--font-size-input);
     align-self: center;
 }
-/* Every .wdconfig-status now lives in a .cmd-header right after the title/target text with no
-   gap between them - prefix a dash whenever there's actually a message so it doesn't run
-   straight into the title (e.g. "WalletsSaved..."). :not(:empty) keeps it invisible otherwise. */
 .wdconfig-status:not(:empty)::before {
-    /* Non-breaking spaces, not regular ones - a plain leading space here gets collapsed away as
-       "whitespace at the start of a line box" since this is the very first character inside the
-       flex item, which was swallowing the space before the dash. */
     content: "\00a0-\00a0";
 }
 #statuslog-modal .cmd-dialog {
@@ -5894,10 +5801,6 @@ h1 {
 #statuslog-modal .fs-list-panel {
     display: flex;
     flex-direction: column;
-    /* Was a hard-locked 280px (width/min-width/max-width all equal) - now just a starting point.
-       #statuslog-col-resizer (see below) drags this via inline style, and
-       restoreStatuslogListWidth() in app.js applies a saved width on load, so min/max here are
-       guardrails against dragging it absurdly narrow/wide, not a fixed size. */
     width: 280px;
     min-width: 180px;
     max-width: 600px;
@@ -5905,10 +5808,6 @@ h1 {
     gap: 8px;
     flex: none;
 }
-/* Draggable divider between the entry list and the details pane - lets the list column be
-   widened/narrowed independently of the whole dialog (that's what .dialog-resize-handle-right/
-   -corner already cover). Sits inline in the flex row (not absolutely positioned over an edge like
-   those), so it needs its own small fixed width rather than overlaying a parent's border. */
 .statuslog-col-resizer {
     flex: 0 0 6px;
     width: 6px;
@@ -6009,11 +5908,6 @@ h1 {
     border-color: var(--text-accent);
 }
 .statuslog-severity-filter-list {
-    /* This row sits right above the modal's footer, near the bottom edge of #statuslog-modal
-       .cmd-dialog - which has overflow:hidden - so a downward-opening popup (top: 100%) gets
-       clipped off almost entirely. Opening upward instead keeps it inside the dialog's visible
-       area, since there's plenty of room above (the list body) between here and the dialog's
-       top edge. */
     position: absolute;
     z-index: 30;
     bottom: 100%;
@@ -6074,23 +5968,13 @@ h1 {
 .statuslog-severity-filter-clear:hover {
     text-decoration: underline;
 }
-/* Title search and Content search get an even 50/50 split. Each search input now lives in a
-   .statuslog-search-field wrapper alongside its own "Hide" exclude checkbox, so the flex-basis
-   moved from the inputs themselves onto the wrapper divs. */
 .statuslog-search-field {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
 }
-/* Was :nth-of-type(1)/(2) - but nth-of-type counts by tag name, not class, and the severity
-   filter group (also a <div>) sits before these two, shifting the count off by one so the
-   Content field (the real 3rd div) never matched either rule and fell back to its unstretched
-   default size. Targeting the class directly avoids that trap. */
 #statuslog-modal .statuslog-search-row .statuslog-search-field {
-    /* flex-basis: 0 (not auto) - forces both to start from nothing and grow purely by the 1:1
-       flex-grow ratio, so they end up truly equal-width regardless of the input's own default
-       width or how much text/placeholder content it has. */
     flex: 1 1 0;
 }
 .statuslog-search-field .fs-search {
@@ -6147,11 +6031,6 @@ h1 {
     height: 100%;
     min-height: 0;
 }
-/* Whole-dialog width resizing now lives on .dialog-resize-handle-right at the top of .cmd-dialog
-   (matches the other modals' "side" sizer) - the corner handle that used to sit here resized the
-   entire dialog too (confusing, since visually it looked like it only affected the textarea), so
-   it's gone. In its place, the textarea gets the browser's own native vertical-only resize grip,
-   scoped to just this element's height. */
 .statuslog-details {
     flex: 1;
     width: 100%;
@@ -6307,9 +6186,6 @@ h1 {
 #btn-save-saved-cmd {
     border-color: var(--button-saved-cmd-save-border);
     background: var(--button-saved-cmd-save-bg);
-    /* This rule comes after (and overrides) the shared Save-button block near the top of the
-       file, which is why adding this id there didn't actually turn the text green - fixed here,
-       at the rule that wins the cascade, instead. */
     color: var(--button-save-text);
 }
 #btn-save-saved-cmd:hover {
@@ -6365,13 +6241,6 @@ h1 {
     background: var(--text-accent);
     opacity: 0.35;
 }
-/* Backups used to be its own standalone dialog (fixed 78vh height, 80%/620px-min width) - now
-   it's a Settings sub-tab living inside #refresh-modal .cmd-dialog, which is width:fit-content/
-   height:auto (sized to whichever tab is active, see app.css's #refresh-modal rules). The
-   min-width below still makes the fit-content dialog grow wide enough to fit the list+preview
-   side-by-side layout when this tab is open, and the explicit height gives the list/preview
-   panels below a bounded flex context to scroll within instead of the whole Settings dialog
-   ballooning to an enormous height. */
 #backups-modal {
     display: flex;
     flex-direction: column;
@@ -6684,9 +6553,6 @@ body.layout-left .rig-header {
     line-height: 1;
     cursor: pointer;
     padding: 0px 6px;
-    /* .cmd-header is justify-content: flex-start (shared by every modal header, most of which
-       only have a title in it) - margin-left: auto pushes just this button to the far right
-       of the header without changing that shared layout for anything else. */
     margin-left: auto;
 }
 .fs-miner-config-close:hover {
@@ -6723,11 +6589,6 @@ body.layout-left .rig-header {
     gap: 4px;
     border-bottom: 1px solid var(--border-modal);
 }
-/* Same GPU/CPU/AUX tab buttons, but living inline in the shared Raw Content popup's header
-   (.cmd-header) next to the title instead of stacked full-width above the editor fields - no
-   bottom border strip here, and margin-left instead pushes it off the title text. Shown only
-   when that popup is displaying Flightsheets' fs-raw (see openRawContentModal in app.js), since
-   Overclock/Watchdog raw content doesn't vary by service. */
 .raw-content-service-tabs {
     flex: 0 0 auto;
     display: flex;
@@ -6806,7 +6667,6 @@ body.layout-left .rig-header {
     justify-content: flex-end;
     align-items: center;
 }
-/* Miner version pin - margin-right: auto separates it from the right-aligned buttons */
 .fs-mc-version-field {
     flex: 0 0 auto;
     margin-right: auto;
@@ -6829,8 +6689,6 @@ body.layout-left .rig-header {
     align-items: center;
     gap: 10px;
 }
-/* Hidden only while still inside #fs-fields-panel - reappears once fsMcMoveIntoSlot()
-   relocates the row into the Miner Config modal, no extra show/hide bookkeeping needed. */
 #fs-fields-panel .fs-mc-portal-hidden {
     display: none;
 }
