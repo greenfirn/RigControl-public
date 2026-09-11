@@ -1801,6 +1801,7 @@ _CUSTOM_HASHRATE_RE = re.compile(
 _CUSTOM_ACCEPTED_RE = re.compile(r"accepted[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_REJECTED_RE = re.compile(r"rejected[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12, "p": 1e15}
+CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"
 def collect_custom_log_miner_stats():
     """
     Best-effort telemetry for a custom miner with no known stats API,
@@ -1809,8 +1810,15 @@ def collect_custom_log_miner_stats():
     endpoint - that assumption turned out to be wrong (it has one,
     gated behind an explicit --api-bind flag on its own command line;
     see collect_keryx_stats()), so keryx-miner-supr no longer routes
-    here by default. Kept as the fallback path for any future custom
-    miner that genuinely has no stats API. start.bat tees that stdout into
+    here by default. Kept as the fallback path for quanpool-miner (the
+    only entry currently routed to "custom_log" in MINER_PROCESSES) or
+    any future custom miner that genuinely has no stats API - display
+    name is hardcoded to CUSTOM_LOG_MINER_DISPLAY_NAME above rather than
+    pulled from CUSTOM_MINER_PROCESS_NAME, since that env var previously
+    defaulted to the stale "keryx-miner-supr" value left over from this
+    collector's original single-purpose use and showed that wrong,
+    confusing label on the dashboard for any other custom miner unless
+    the env var was set. start.bat tees that stdout into
     CUSTOM_MINER_LOG_PATH via PowerShell's Tee-Object, same as keryxd's
     log on this fleet - _decode_log_bytes() above already handles that
     encoding.
@@ -1840,7 +1848,7 @@ def collect_custom_log_miner_stats():
     tail_bytes = int(os.environ.get("CUSTOM_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
     if text is None:
-        return _build_miner_result("error", _custom_miner_display_name(), error=f"could not read log file '{log_path}'")
+        return _build_miner_result("error", CUSTOM_LOG_MINER_DISPLAY_NAME, error=f"could not read log file '{log_path}'")
     hashrate_hs = 0.0
     hr_matches = list(_CUSTOM_HASHRATE_RE.finditer(text))
     if hr_matches:
@@ -1855,7 +1863,7 @@ def collect_custom_log_miner_stats():
     if rej_matches:
         rejected_shares = int(rej_matches[-1].group(1))
     return _build_miner_result(
-        "ok", _custom_miner_display_name(),
+        "ok", CUSTOM_LOG_MINER_DISPLAY_NAME,
         algorithms=[_build_algo_entry(
             "unknown",
             hashrate_hs=hashrate_hs,
