@@ -16,6 +16,11 @@ gpu_type     = "None"
 _gpu_detected = False
 _last_gpu_count = 0
 EXCLUDE_FROM_TOTALS = True
+# Comma-separated "gpu stats safe" image list from rigcontrol-agent.conf's OVERRIDE_LIST -
+# rigcontrol_agent.sh overwrites this module global directly (telemetry.OVERRIDE_LIST = [...])
+# after loading the conf file; the default here just keeps docker_containers_running() below
+# working if this module is ever imported/run standalone before that assignment happens.
+OVERRIDE_LIST = []
 CUSTOM_MINER_BASE_DIR = "/opt/miners"
 def _read_miner_paths_env(key):
     """Reads <key>="..." from CUSTOM_MINER_BASE_DIR/miner_paths.env (written by 01-miner_install.sh for each confirmed-installed miner), substituting $BASE_DIR back into the literal path; returns "" if the file or key doesn't exist."""
@@ -839,10 +844,45 @@ def _docker_published_miners():
     except Exception as e:
         print(f"Error detecting Docker miner containers: {e}")
     return found
+_DEFAULT_IGNORED_DOCKER_IMAGES = (
+    "cloreai/monitoring",
+    "vastai/test:bandwidth-test-nvidia",
+    "vastai/test:speedtest",
+    "vastai/test:common",
+)
+def _is_ignored_docker_image(image):
+    """True if `image` is a "gpu stats safe" sidecar - a platform rental/monitoring container
+    (the hardcoded defaults above, matching the equivalent hardcoded IGNORED_IMAGES entries in
+    the clore/vast Docker-Events monitor scripts) or one the user added via OVERRIDE_LIST in
+    rigcontrol-agent.conf (see rigcontrol_agent.sh, which sets this module's OVERRIDE_LIST global
+    at startup). Prefix match, same convention as should_ignore_image() in
+    Miner-scripts/Docker-Events/*.sh. Without this, docker_containers_running() below treated
+    ANY running container - including a harmless sidecar like octaspace's own
+    "octaspace/qubjetski:1" monitoring container - as proof some other workload already owns the
+    GPU, which blanked out this rig's own GPU stats block ("GPUs (0)"/"No GPU data") even though
+    the GPU was completely idle."""
+    image_lower = (image or "").strip().lower()
+    if not image_lower:
+        return False
+    for prefix in _DEFAULT_IGNORED_DOCKER_IMAGES:
+        if image_lower.startswith(prefix.lower()):
+            return True
+    for prefix in OVERRIDE_LIST:
+        if prefix and image_lower.startswith(prefix):
+            return True
+    return False
 def docker_containers_running():
-    """True if any Docker container is currently running (any image)."""
-    rc, out, _ = run("docker ps -q")
-    return rc == 0 and bool(out.strip())
+    """True if any Docker container is currently running whose image isn't a known "gpu stats
+    safe" sidecar (see _is_ignored_docker_image()) - feeds collect_full_stats()'s skip_gpu
+    decision (skip nvidia-smi only when something that might actually be using the GPU is
+    running)."""
+    rc, out, _ = run('docker ps --format "{{.Image}}"')
+    if rc != 0 or not out.strip():
+        return False
+    for image in out.strip().splitlines():
+        if not _is_ignored_docker_image(image):
+            return True
+    return False
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
 _custom_miner_last_pid = {}
@@ -2027,8 +2067,18 @@ def _query_binary_version(bin_path):
     except Exception:
         return ""
 def _sanitize_miner_key(name):
-    """Converts a miner name into a valid rigcontrol-agent.conf variable prefix, e.g. "keryx-miner" -> "KERYX_MINER"."""
-    return re.sub(r"[^A-Za-z0-9]+", "_", (name or "").strip()).strip("_").upper()
+    """Converts a miner name into a valid rigcontrol-agent.conf variable prefix, e.g.
+    "keryx-miner" -> "KERYX_MINER". Strips a trailing "-linux-x86_64" platform/arch suffix and any
+    trailing version-number segment first (e.g. "quanpool-miner-6.2.0-linux-x86_64" ->
+    "quanpool-miner" -> "QUANPOOL_MINER"), mirroring the identical fix applied to the bash
+    launchers' MINER_UPPER derivation (see Miner-scripts/Docker-Events/*.sh) - without this, every
+    custom miner's *_API_HOST/_API_PORT/_BIN/_LOG_PATH rigcontrol-agent.conf key would be pinned to
+    one exact binary version and silently stop matching (falling back to "no log file"/API-disabled)
+    the moment that miner gets updated to a new version."""
+    base = (name or "").strip()
+    base = re.sub(r"-linux-x86_64$", "", base, flags=re.IGNORECASE)
+    base = re.sub(r"-[0-9][0-9A-Za-z_.]*$", "", base)
+    return re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_").upper()
 def _named_miner_bin(name):
     """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back to CUSTOM_MINER_BASE_DIR/custom/<name>/current/<name> - matches 01-miner_install.sh's install_custom_miner(), which always installs under a "custom/" subdirectory (miner_dir="$BASE_DIR/custom/$bin_name/current"). This fallback previously omitted "custom/", so it silently pointed at a different, never-installed/never-updated path instead of the real binary - version queries against a custom miner with no <NAME>_BIN override would keep reporting whatever (if anything) happened to already exist at that wrong location."""
     if not name:

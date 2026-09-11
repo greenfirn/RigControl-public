@@ -73,6 +73,24 @@ _read_agent_conf_val() {
     [[ -f "$AGENT_CONF" ]] || return 0
     grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2- || true
 }
+# OVERRIDE_LIST (comma-separated, from rigcontrol-agent.conf) names additional "gpu stats safe"
+# images that should never be treated as a competing workload - e.g. a lightweight sidecar that
+# only reads GPU stats but doesn't actually use the GPU for compute. Appended onto IGNORED_IMAGES
+# (which some platform variants already pre-populate with a hardcoded platform-specific entry, e.g.
+# clore's "cloreai/monitoring" or vast's bandwidth-test images) rather than replacing it, so a rig's
+# own override list adds to - never removes - the built-in platform-specific safe list.
+declare -p IGNORED_IMAGES > /dev/null 2>&1 || IGNORED_IMAGES=()
+_OVERRIDE_LIST_RAW="$(_read_agent_conf_val OVERRIDE_LIST)"
+_OVERRIDE_LIST_RAW="${_OVERRIDE_LIST_RAW%\"}"
+_OVERRIDE_LIST_RAW="${_OVERRIDE_LIST_RAW#\"}"
+if [[ -n "$_OVERRIDE_LIST_RAW" ]]; then
+    IFS=',' read -ra _OVERRIDE_LIST_ENTRIES <<< "$_OVERRIDE_LIST_RAW"
+    for _override_image in "${_OVERRIDE_LIST_ENTRIES[@]}"; do
+        _override_image="$(echo "$_override_image" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [[ -n "$_override_image" ]] && IGNORED_IMAGES+=("$_override_image")
+    done
+    echo "$(date): OVERRIDE_LIST (rigcontrol-agent.conf) added to ignored images: ${IGNORED_IMAGES[*]}"
+fi
 MINER_LOOKUP_BASE=$(echo "$API_LOOKUP_NAME" | sed -E 's/-linux-x86_64$//I; s/-[0-9][0-9A-Za-z_.]*$//')
 MINER_UPPER=$(printf '%s' "$MINER_LOOKUP_BASE" | tr '[:lower:]' '[:upper:]' | tr -c '[:alnum:]' '_')
 MINER_API_PORT_VAR="${MINER_UPPER}_API_PORT"
@@ -222,15 +240,33 @@ is_docker_running() {
     docker ps > /dev/null 2>&1
     return $?
 }
+should_ignore_image() {
+    local image="$1"
+    for ignored_prefix in "${IGNORED_IMAGES[@]}"; do
+        if [[ "$image" == "$ignored_prefix"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 any_container_running() {
-    local running_count=$(docker ps -q 2>/dev/null | wc -l)
-    if [[ $running_count -gt 0 ]]; then
-        echo "$(date): Found $running_count running container(s)"
-        return 0
-    else
+    local containers=$(docker ps --format "{{.Names}}:{{.Image}}" 2>/dev/null)
+    if [ -z "$containers" ]; then
         echo "$(date): No containers running"
         return 1
     fi
+    while IFS= read -r container_info; do
+        local container_name=$(echo "$container_info" | cut -d':' -f1)
+        local image_name=$(echo "$container_info" | cut -d':' -f2)
+        if should_ignore_image "$image_name"; then
+            echo "$(date): Ignoring: $container_name with $image_name"
+            continue
+        fi
+        echo "$(date): Found: $container_name with $image_name"
+        return 0
+    done <<< "$containers"
+    echo "$(date): No non-ignored containers running"
+    return 1
 }
 confirm_no_containers_running() {
     local loops=${1:-$IDLE_CONFIRM_LOOPS}
@@ -358,18 +394,20 @@ start_miner() {
                  '"$START_CMD"''
         else
             LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
-            rm -f "$LOG_FILE"
+            SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
+            rm -f "$LOG_FILE" "$SCRAP_LOG"
             touch "$LOG_FILE"
-            screen -fn -dmS "$SERVICE_TYPE" -L -Logfile "$LOG_FILE" bash -c \
+            screen -fn -dmS "$SERVICE_TYPE" -L -Logfile "$SCRAP_LOG" bash -c \
                 'stty rows 50 cols 250; \
                  echo "Miner starting at $(date)"; \
                  echo "API: '"$API_HOST:$API_PORT"'"; \
                  echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
                  trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
                  ( while true; do \
-                     sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
+                     sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | tr -d "\r" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
+                     sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
                      if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
-                         tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
+                         tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \
                      fi; \
                      sleep '"$LOG_CHECK_INTERVAL"'; \
                    done ) & \
@@ -483,6 +521,10 @@ while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
             break 2
         fi
         if [ "$type" != "container" ]; then
+            continue
+        fi
+        if should_ignore_image "$image"; then
+            echo "$(date): Skipping: $image (container: $name, $action)"
             continue
         fi
         process_docker_event "$name" "$action" "$image"

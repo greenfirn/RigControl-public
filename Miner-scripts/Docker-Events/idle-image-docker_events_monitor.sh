@@ -388,18 +388,20 @@ start_miner() {
                  '"$START_CMD"''
         else
             LOG_FILE="/run/rigcontrol/${SERVICE_TYPE}_miner.log"
-            rm -f "$LOG_FILE"
+            SCRAP_LOG="/run/rigcontrol/${SERVICE_TYPE}_miner.scrap.log"
+            rm -f "$LOG_FILE" "$SCRAP_LOG"
             touch "$LOG_FILE"
-            screen -fn -dmS "$SERVICE_TYPE" -L -Logfile "$LOG_FILE" bash -c \
+            screen -fn -dmS "$SERVICE_TYPE" -L -Logfile "$SCRAP_LOG" bash -c \
                 'stty rows 50 cols 250; \
                  echo "Miner starting at $(date)"; \
                  echo "API: '"$API_HOST:$API_PORT"'"; \
                  echo "$$" > "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"; \
                  trap '\''echo "Miner exiting at $(date)"; rm -f "'"/run/rigcontrol/${SERVICE_TYPE}_miner.pid"'"'\'' EXIT; \
                  ( while true; do \
-                     sz=$(stat -c%s "'"$LOG_FILE"'" 2>/dev/null || echo 0); \
+                     sed -u -r "s/\x1b\[[0-9]+;[0-9]+[Hf]/\n/g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Za-z0-9]//g; s/\x1b\[\??[0-9;]*[a-zA-Z]//g" "'"$SCRAP_LOG"'" 2>/dev/null | tr -d "\r" | awk '\''!seen[$0]++'\'' > "'"$LOG_FILE"'.tmp" 2>/dev/null && mv -f "'"$LOG_FILE"'.tmp" "'"$LOG_FILE"'"; \
+                     sz=$(stat -c%s "'"$SCRAP_LOG"'" 2>/dev/null || echo 0); \
                      if [ "$sz" -gt '"$MAX_LOG_BYTES"' ]; then \
-                         tail -c '"$MAX_LOG_BYTES"' "'"$LOG_FILE"'" > "'"$LOG_FILE"'.tmp" 2>/dev/null && cat "'"$LOG_FILE"'.tmp" > "'"$LOG_FILE"'" && rm -f "'"$LOG_FILE"'.tmp"; \
+                         tail -c '"$MAX_LOG_BYTES"' "'"$SCRAP_LOG"'" > "'"$SCRAP_LOG"'.tmp" 2>/dev/null && cat "'"$SCRAP_LOG"'.tmp" > "'"$SCRAP_LOG"'" && rm -f "'"$SCRAP_LOG"'.tmp"; \
                      fi; \
                      sleep '"$LOG_CHECK_INTERVAL"'; \
                    done ) & \
