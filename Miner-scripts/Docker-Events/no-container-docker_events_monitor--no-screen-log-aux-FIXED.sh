@@ -73,7 +73,8 @@ _read_agent_conf_val() {
     [[ -f "$AGENT_CONF" ]] || return 0
     grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2- || true
 }
-MINER_UPPER=$(echo "$API_LOOKUP_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+MINER_LOOKUP_BASE=$(echo "$API_LOOKUP_NAME" | sed -E 's/-linux-x86_64$//I; s/-[0-9][0-9A-Za-z_.]*$//')
+MINER_UPPER=$(printf '%s' "$MINER_LOOKUP_BASE" | tr '[:lower:]' '[:upper:]' | tr -c '[:alnum:]' '_')
 MINER_API_PORT_VAR="${MINER_UPPER}_API_PORT"
 MINER_API_HOST_VAR="${MINER_UPPER}_API_HOST"
 if [[ ! -f "$PORTS_CONF" ]]; then
