@@ -33,7 +33,10 @@ EXCLUDE_FROM_TOTALS = False
 # real name.
 KERYX_MINER_BIN_DEFAULT      = r"C:\miners\keryx-miner\keryx-miner.exe"
 KERYX_MINER_SUPR_BIN_DEFAULT = r"C:\miners\keryx-miner-supr-windows-nvidia-pom\keryx-miner-supr.exe"
-KERYX_BIN_PATH = os.environ.get("KERYX_BIN_PATH", "").strip()
+def _keryx_bin_path_override():
+    """Live read of KERYX_BIN_PATH - see _custom_miner_display_name() below for why this can't be
+    a frozen module-level constant."""
+    return os.environ.get("KERYX_BIN_PATH", "").strip()
 # Per-binary API host/port, matching the Linux agent's <NAME>_API_HOST/<NAME>_API_PORT convention
 # (KERYX_MINER_API_HOST/PORT for plain keryx-miner, KERYX_MINER_SUPR_API_HOST/PORT for
 # keryx-miner-supr) so each binary can have its own independent setting instead of assuming they
@@ -45,9 +48,20 @@ KERYX_API_HOST_DEFAULT = "127.0.0.1"
 KERYX_API_PORT_DEFAULT = "3338"
 # Log file for a custom miner with no stats API, matches start.bat's LOGDIR default (literal C:\Temp, not %TEMP%)
 CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"
-CUSTOM_MINER_LOG_PATH = os.environ.get("CUSTOM_MINER_LOG_PATH", CUSTOM_MINER_LOG_PATH_DEFAULT)
-# Dashboard display name for the custom-log collector; set CUSTOM_MINER_PROCESS_NAME env var to override
-CUSTOM_MINER_DISPLAY_NAME = os.environ.get("CUSTOM_MINER_PROCESS_NAME", "keryx-miner-supr")
+def _custom_miner_log_path():
+    """Live read of CUSTOM_MINER_LOG_PATH - see _custom_miner_display_name() below for why this
+    can't be a frozen module-level constant."""
+    return os.environ.get("CUSTOM_MINER_LOG_PATH", CUSTOM_MINER_LOG_PATH_DEFAULT)
+def _custom_miner_display_name():
+    """Live read of CUSTOM_MINER_PROCESS_NAME (dashboard display name for the custom-log collector,
+    e.g. "quanpool-miner"), rather than a module-level constant frozen at import time. This module
+    is imported by rigcontrol_agent_win.py BEFORE that script finishes loading rigcontrol_agent.conf
+    and exporting its keys into os.environ (see the comment on that export loop there) - a
+    module-level `os.environ.get("CUSTOM_MINER_PROCESS_NAME", ...)` would only ever see the
+    pre-conf-load default ("keryx-miner-supr"), never a real value set in the conf file. Reading it
+    fresh here, at collect-time (long after that export loop has run), gets the real configured
+    value instead."""
+    return os.environ.get("CUSTOM_MINER_PROCESS_NAME", "keryx-miner-supr")
 MINER_PROCESSES = {
     "xmrig.exe": "xmrig",
     "xmrig": "xmrig",
@@ -86,6 +100,16 @@ MINER_PROCESSES = {
     "keryx-miner": "keryx",
     "keryxd.exe": "keryxd",
     "keryxd": "keryxd",
+    # quanpool-miner (custom miner, no known stats API - see collect_custom_log_miner_stats())
+    # routed straight to "custom_log" like every other named entry above, rather than through the
+    # CUSTOM_MINER_PROCESS_NAME env var indirection: that path was live-tested and turned out
+    # broken, since rigcontrol_agent_win.py imports this module BEFORE it finishes loading
+    # rigcontrol_agent.conf and exporting its keys into os.environ, so a module-level env read (or
+    # even one done once at import time) never sees the real configured value. A plain dict entry
+    # sidesteps that entirely - substring match, so "quanpool-miner" matches a running
+    # "quanpool-miner-6.2.0-windows-x86_64.exe".
+    "quanpool-miner.exe": "custom_log",
+    "quanpool-miner": "custom_log",
 }
 # Processes checked by exact name (not substring) BEFORE the MINER_PROCESSES scan, so they're
 # never misclassified as the miner they share a name substring with (e.g. lolMinerGUI.exe vs lolMiner)
@@ -1558,8 +1582,9 @@ def collect_keryx_stats():
     # KERYX_BIN_PATH env var wins if explicitly set (e.g. non-standard install location),
     # otherwise auto-detect from the actually-running process so switching between keryx-miner
     # and keryx-miner-supr on this rig doesn't require remembering to update a static path.
-    if KERYX_BIN_PATH:
-        display_name, bin_path = CUSTOM_MINER_DISPLAY_NAME, KERYX_BIN_PATH
+    _keryx_bin_path = _keryx_bin_path_override()
+    if _keryx_bin_path:
+        display_name, bin_path = _custom_miner_display_name(), _keryx_bin_path
     else:
         display_name, bin_path = _detect_keryx_variant()
     # Per-binary API host/port, matching the Linux agent's <NAME>_API_HOST/<NAME>_API_PORT
@@ -1584,7 +1609,7 @@ def collect_keryx_stats():
         except Exception as e:
             last_err = e
     if data is None:
-        return _build_miner_result("error", CUSTOM_MINER_DISPLAY_NAME,
+        return _build_miner_result("error", display_name,
                                     error=f"keryx-miner API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}")
     # keryx-miner-supr 0.11.10 changed its device key from "id" to "name" (still holding the same
     # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
@@ -1811,11 +1836,11 @@ def collect_custom_log_miner_stats():
         poll (default 65536 = 64KB - enough for several status lines
         without re-parsing the whole file every ~10s poll).
     """
-    log_path = CUSTOM_MINER_LOG_PATH
+    log_path = _custom_miner_log_path()
     tail_bytes = int(os.environ.get("CUSTOM_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
     if text is None:
-        return _build_miner_result("error", CUSTOM_MINER_DISPLAY_NAME, error=f"could not read log file '{log_path}'")
+        return _build_miner_result("error", _custom_miner_display_name(), error=f"could not read log file '{log_path}'")
     hashrate_hs = 0.0
     hr_matches = list(_CUSTOM_HASHRATE_RE.finditer(text))
     if hr_matches:
@@ -1830,7 +1855,7 @@ def collect_custom_log_miner_stats():
     if rej_matches:
         rejected_shares = int(rej_matches[-1].group(1))
     return _build_miner_result(
-        "ok", CUSTOM_MINER_DISPLAY_NAME,
+        "ok", _custom_miner_display_name(),
         algorithms=[_build_algo_entry(
             "unknown",
             hashrate_hs=hashrate_hs,
