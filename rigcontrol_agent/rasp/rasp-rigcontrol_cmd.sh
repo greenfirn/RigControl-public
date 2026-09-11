@@ -20,7 +20,13 @@ case "$CMD" in
         ;;
     *)
         echo "[RAW EXECUTION]"
-        bash -c "$RAW_CMD"
+        # Delivered via stdin (here-string), NOT as `bash -c "$RAW_CMD"` - passing the whole
+        # command as a single argv string hits the kernel's per-argument MAX_ARG_STRLEN cap
+        # (128 KB on x86_64) regardless of total ARG_MAX headroom, which a large pasted
+        # command (e.g. an entire source file) blows straight through, failing with
+        # "Argument list too long" (exit 126) before a single line of it ever runs. A
+        # here-string has no such size limit since it's just a pipe/temp-file under the hood.
+        bash <<< "$RAW_CMD"
         ;;
 esac
 EOF
