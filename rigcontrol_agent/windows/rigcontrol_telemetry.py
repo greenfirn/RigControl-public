@@ -1802,6 +1802,46 @@ _CUSTOM_ACCEPTED_RE = re.compile(r"accepted[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_REJECTED_RE = re.compile(r"rejected[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12, "p": 1e15}
 CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"
+# Confirmed working: `quanpool-miner-6.2.0-windows-x86_64.exe --version` ->
+# "quanpool-miner 6.2.0 (unknown, 2026-09-10)" - richer than just the version number embedded in
+# the filename (includes build date), so shell out to the real binary and use its own output
+# directly, same as _query_keryx_version() does for keryx. Resolves the actually-running process's
+# own exe path via psutil rather than a hardcoded install path, since the filename (and therefore
+# any static path) changes every release. Cached per-PID so a steady-state miner doesn't
+# re-shell-out on every ~10s poll - only a PID change (miner restarted, e.g. after an update)
+# triggers a fresh query.
+_quanpool_version_cache = {"pid": None, "version": ""}
+def _detect_quanpool_version():
+    """Finds the running quanpool-miner process, resolves its own exe path, and runs
+    `<exe> --version` to get the real version string (see cache note above). Returns "" if the
+    process isn't found, its exe path can't be resolved (e.g. access denied), or the binary
+    doesn't respond to --version."""
+    try:
+        for proc in psutil.process_iter(['name', 'exe']):
+            try:
+                proc_name = proc.info.get('name') or ""
+                if "quanpool-miner" not in proc_name.lower():
+                    continue
+                pid = proc.pid
+                exe_path = proc.info.get('exe') or ""
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            if pid == _quanpool_version_cache["pid"] and _quanpool_version_cache["version"]:
+                return _quanpool_version_cache["version"]
+            version = ""
+            if exe_path:
+                try:
+                    out = subprocess.run([exe_path, "--version"], capture_output=True, text=True, timeout=2.0)
+                    text = (out.stdout or out.stderr or "").strip()
+                    version = text.splitlines()[0] if text else ""
+                except Exception:
+                    version = ""
+            _quanpool_version_cache["pid"] = pid
+            _quanpool_version_cache["version"] = version
+            return version
+    except Exception:
+        pass
+    return ""
 def collect_custom_log_miner_stats():
     """
     Best-effort telemetry for a custom miner with no known stats API,
@@ -1864,6 +1904,7 @@ def collect_custom_log_miner_stats():
         rejected_shares = int(rej_matches[-1].group(1))
     return _build_miner_result(
         "ok", CUSTOM_LOG_MINER_DISPLAY_NAME,
+        miner_version=_detect_quanpool_version(),
         algorithms=[_build_algo_entry(
             "unknown",
             hashrate_hs=hashrate_hs,
