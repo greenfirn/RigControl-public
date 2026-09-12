@@ -38,7 +38,7 @@
     "overclocking": {
         "apply_script_header": "tee /usr/local/bin/gpu_apply_ocs.sh > /dev/null <<'EOF'\n#!/bin/bash\n# gpu_apply_ocs.sh <algo_name> / <custom miner name>\n# Generated from the dashboard's Overclock module - edit there, not by hand.\n# Note: a row's Algorithm field can list multiple comma-separated algo names\n# (e.g. keryxhash,keryx-miner,keryx-minerx) - they're combined into one case\n# pattern below, joined by '|', so they all share this row's OC settings.\n\nALGO=\"${1:-}\"\nif [[ -z \"$ALGO\" ]]; then\n    echo \"Usage: $0 <algo_name>\"\n    exit 1\nfi\n\nALGO_LOWER=$(echo \"$ALGO\" | tr '[:upper:]' '[:lower:]')\n\ncase \"$ALGO_LOWER\" in\n",
         "apply_script_algo_block": "    %ALGO%)\n        CORE=%Lock Core Clock%\n        CORE_OFFSET=%Core Clock Offset%\n        MEM=%Lock Memory Clock%\n        MEM_OFFSET=%Memory Clock Offset%\n        POWER_LIMIT=%Power Limit%\n        FAN_MODE=\"%Fan Mode%\"\n        FAN_VALUE=\"%Fan Value%\"\n        ;;\n",
-        "apply_script_footer": "    *)\n        echo \"No OC profile defined for algo '$ALGO' - add a row for it in the dashboard's Overclock module\"\n        exit 1\n        ;;\nesac\n\necho \"Setting GPU OC for algo '$ALGO': core=$CORE (+$CORE_OFFSET) mem=$MEM (+$MEM_OFFSET) power_limit=$POWER_LIMIT fan=$FAN_MODE:$FAN_VALUE\"\nCMD=(py-nvtool --setcore \"$CORE\" --setcoreoffset \"$CORE_OFFSET\" --setmem \"$MEM\" --setmemoffset \"$MEM_OFFSET\")\nif [[ -n \"$POWER_LIMIT\" && \"$POWER_LIMIT\" != \"0\" ]]; then\n    CMD+=(--setpl \"$POWER_LIMIT\")\nfi\nif [[ \"$FAN_MODE\" == \"percent\" ]]; then\n    CMD+=(--setfan \"$FAN_VALUE\")\nfi\n\"${CMD[@]}\"\n\n# fan-curve.service is installed ONCE, separately (Fan-control/py-nvtool/install_fan-curve.sh) -\n# this only ever updates its --curve value in place, and only restarts the already-running daemon\n# when that value actually changed, instead of rewriting/bouncing the whole service on every single\n# miner (re)start regardless of whether the curve differs from before.\nif [[ \"$FAN_MODE\" == \"curve\" ]]; then\n    FAN_SVC=/etc/systemd/system/fan-curve.service\n    if [[ -f \"$FAN_SVC\" ]]; then\n        CURRENT_CURVE=$(sed -n 's/.*--curve \"\\([^\"]*\\)\".*/\\1/p' \"$FAN_SVC\")\n        if [[ \"$CURRENT_CURVE\" != \"$FAN_VALUE\" ]]; then\n            echo \"Fan curve changed - updating fan-curve.service and restarting it...\"\n            sed -i \"s|--curve \\\"[^\\\"]*\\\"|--curve \\\"$FAN_VALUE\\\"|\" \"$FAN_SVC\"\n            systemctl daemon-reload\n            systemctl restart fan-curve.service\n        fi\n    else\n        echo \"WARNING: fan-curve.service is not installed - run Fan-control/py-nvtool/install_fan-curve.sh once to set it up, then re-apply OC\"\n    fi\nfi\nEOF\nsudo chmod +x /usr/local/bin/gpu_apply_ocs.sh"
+        "apply_script_footer": "    *)\n        echo \"No OC profile defined for algo '$ALGO' - add a row for it in the dashboard's Overclock module\"\n        exit 1\n        ;;\nesac\n\necho \"Setting GPU OC for algo '$ALGO': core=$CORE (+$CORE_OFFSET) mem=$MEM (+$MEM_OFFSET) power_limit=$POWER_LIMIT fan=$FAN_MODE:$FAN_VALUE\"\nCMD=(py-nvtool --setcore \"$CORE\" --setcoreoffset \"$CORE_OFFSET\" --setmem \"$MEM\" --setmemoffset \"$MEM_OFFSET\")\nif [[ -n \"$POWER_LIMIT\" && \"$POWER_LIMIT\" != \"0\" ]]; then\n    CMD+=(--setpl \"$POWER_LIMIT\")\nfi\nif [[ \"$FAN_MODE\" == \"percent\" ]]; then\n    CMD+=(--setfan \"$FAN_VALUE\")\n    # fan-curve.service polls temps and re-asserts its OWN fan speed on its own\n    # schedule - left running, it fights (and eventually overrides) the static\n    # percent we're about to set, so stop it first whenever this algo wants a\n    # fixed percent instead of the curve. Waits (up to 5s, checking every 0.25s)\n    # for systemd to actually report it inactive before running py-nvtool below -\n    # `systemctl stop` returns as soon as the stop is REQUESTED, not once the\n    # daemon has actually exited, so running --setfan immediately after could still\n    # race a curve poll that's already in flight and get overwritten right after.\n    if systemctl is-active --quiet fan-curve.service 2>/dev/null; then\n        echo \"Fan mode is 'percent' - stopping fan-curve.service so it doesn't override the fan percent...\"\n        systemctl stop fan-curve.service\n        for _ in $(seq 1 20); do\n            systemctl is-active --quiet fan-curve.service 2>/dev/null || break\n            sleep 0.25\n        done\n    fi\nfi\n\"${CMD[@]}\"\n\n\n# fan-curve.service is installed ONCE, separately (Fan-control/py-nvtool/install_fan-curve.sh) -\n# this only ever updates its --curve value in place, and only restarts the already-running daemon\n# when that value actually changed, instead of rewriting/bouncing the whole service on every single\n# miner (re)start regardless of whether the curve differs from before.\nif [[ \"$FAN_MODE\" == \"curve\" ]]; then\n    FAN_SVC=/etc/systemd/system/fan-curve.service\n    if [[ -f \"$FAN_SVC\" ]]; then\n        CURRENT_CURVE=$(sed -n 's/.*--curve \"\\([^\"]*\\)\".*/\\1/p' \"$FAN_SVC\")\n        if [[ \"$CURRENT_CURVE\" != \"$FAN_VALUE\" ]]; then\n            echo \"Fan curve changed - updating fan-curve.service and restarting it...\"\n            sed -i \"s|--curve \\\"[^\\\"]*\\\"|--curve \\\"$FAN_VALUE\\\"|\" \"$FAN_SVC\"\n            systemctl daemon-reload\n            systemctl restart fan-curve.service\n        fi\n    else\n        echo \"WARNING: fan-curve.service is not installed - run Fan-control/py-nvtool/install_fan-curve.sh once to set it up, then re-apply OC\"\n    fi\nfi\nEOF\nsudo chmod +x /usr/local/bin/gpu_apply_ocs.sh"
     },
     "watchdog": {
         "conf_dir": "/etc/rigcontrol",
@@ -63,17 +63,50 @@
             "xelishashv3": "XEL"
         },
         "pool_coin_hints": [
-            ["xmr", "XMR"],
-            ["zephyr", "ZEPH"],
-            ["tari", "XTM"],
-            ["xtm", "XTM"],
-            ["quai", "QUAI"],
-            ["ergo", "ERG"],
-            ["warthog", "WART"],
-            ["xelis", "XEL"],
-            ["qtc", "QTC"],
-            ["pearl", "PRL"],
-            ["etica", "ETI"]
+            [
+                "xmr",
+                "XMR"
+            ],
+            [
+                "zephyr",
+                "ZEPH"
+            ],
+            [
+                "tari",
+                "XTM"
+            ],
+            [
+                "xtm",
+                "XTM"
+            ],
+            [
+                "quai",
+                "QUAI"
+            ],
+            [
+                "ergo",
+                "ERG"
+            ],
+            [
+                "warthog",
+                "WART"
+            ],
+            [
+                "xelis",
+                "XEL"
+            ],
+            [
+                "qtc",
+                "QTC"
+            ],
+            [
+                "pearl",
+                "PRL"
+            ],
+            [
+                "etica",
+                "ETI"
+            ]
         ],
         "ambiguous_algo_defaults": {
             "rx/0": null,
@@ -91,7 +124,11 @@
             "url_mode": "bare",
             "pool_join": "repeat",
             "pool_template": "-o %POOL% -u %WALLET% -p %PASS%",
-            "conditional_flag": { "detect": "--tls", "when_true": "--tls ", "when_false": "" }
+            "conditional_flag": {
+                "detect": "--tls",
+                "when_true": "--tls ",
+                "when_false": ""
+            }
         },
         "wildrig-multi": {
             "algo_flag": "--algo",
@@ -111,7 +148,11 @@
             "pool_join": "repeat",
             "pool_template": "--server %POOL% --user %WALLET%",
             "suffix_template": " --pass %PASS%",
-            "conditional_flag": { "detect": "--ssl ", "when_true": "--ssl 1 ", "when_false": "--ssl 0 " }
+            "conditional_flag": {
+                "detect": "--ssl ",
+                "when_true": "--ssl 1 ",
+                "when_false": "--ssl 0 "
+            }
         },
         "trex": {
             "algo_flag": "-a",
@@ -149,35 +190,55 @@
             "url_mode": "bare",
             "pool_join": "comma",
             "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
-            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+            "conditional_flag": {
+                "detect": "--tls ",
+                "when_true": "--tls true ",
+                "when_false": "--tls false "
+            }
         },
         "srbminer-multi": {
             "algo_flag": "--algorithm",
             "url_mode": "bare",
             "pool_join": "comma",
             "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
-            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+            "conditional_flag": {
+                "detect": "--tls ",
+                "when_true": "--tls true ",
+                "when_false": "--tls false "
+            }
         },
         "srbminer-cpu": {
             "algo_flag": "--algorithm-cpu",
             "url_mode": "bare",
             "pool_join": "comma",
             "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
-            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+            "conditional_flag": {
+                "detect": "--tls ",
+                "when_true": "--tls true ",
+                "when_false": "--tls false "
+            }
         },
         "srbminer-multi-cpu": {
             "algo_flag": "--algorithm-cpu",
             "url_mode": "bare",
             "pool_join": "comma",
             "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
-            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+            "conditional_flag": {
+                "detect": "--tls ",
+                "when_true": "--tls true ",
+                "when_false": "--tls false "
+            }
         },
         "srbminer-gpu": {
             "algo_flag": "--algorithm-gpu",
             "url_mode": "bare",
             "pool_join": "comma",
             "pool_template": "--pool %POOL% --wallet %WALLET% --password %PASS%",
-            "conditional_flag": { "detect": "--tls ", "when_true": "--tls true ", "when_false": "--tls false " }
+            "conditional_flag": {
+                "detect": "--tls ",
+                "when_true": "--tls true ",
+                "when_false": "--tls false "
+            }
         },
         "bzminer": {
             "algo_flag": "-a",
