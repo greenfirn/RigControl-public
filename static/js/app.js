@@ -12255,13 +12255,22 @@ function buildConfEditCommand() {
 function sendItConfEdit() {
     const confType = selectedConfEditType;
     const confLabel = LOGS_TYPE_LABELS[confType] || confType;
-    const overrideRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : null;
-    if (!overrideRigs && selectedRigs.size !== 1) {
-        alert(`Select exactly one worker (or use the "Apply to" picker below to target several) to write its ${confLabel}`);
+    const command = buildConfEditCommand();
+    if (!command.trim()) {
+        alert(`${confLabel} content is empty`);
         return;
     }
-    const targetLabel = overrideRigs ? overrideRigs.join(", ") : Array.from(selectedRigs)[0];
-    const command = buildConfEditCommand();
+    // Same "Apply to" fallback pattern as sendItFs/sendItOc/sendItWd: an explicit
+    // pick from the Workers picker below overrides; otherwise this defers to
+    // whatever's selected in the main worker list (which may be more than one -
+    // writing the same conf to several workers at once is a normal bulk action,
+    // same as Flightsheets/Overclock). This used to hard-require exactly one
+    // worker selected in the main list whenever the Workers picker was left on
+    // its default, which made the button silently refuse to do anything (no
+    // visible alert reason tied to worker count vs. content) for the common case
+    // of multiple workers selected there.
+    const overrideRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : null;
+    const targetLabel = overrideRigs ? overrideRigs.join(", ") : Array.from(selectedRigs).join(", ");
     const input = document.getElementById("cmd-input");
     const statusEl = document.getElementById("agentconf-status");
     cmdModalRigOverride = overrideRigs;
@@ -12269,8 +12278,8 @@ function sendItConfEdit() {
         if (input) input.value = command;
         openCmdModal();
     } else {
-        sendCommandToSelectedRigs(command).then(() => {
-            if (statusEl) statusEl.textContent = `Sent to ${targetLabel}`;
+        sendCommandToSelectedRigs(command).then((result) => {
+            if (result !== null && statusEl) statusEl.textContent = `Sent to ${targetLabel}`;
         }).catch(err => {
             console.error(`Failed to send ${confLabel}`, err);
             alert(`Failed to send ${confLabel}`);
