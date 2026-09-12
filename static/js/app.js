@@ -60,6 +60,22 @@ const TEMPLATES_CONFIG = {
             "fi\n" +
             "if [[ \"$FAN_MODE\" == \"percent\" ]]; then\n" +
             "    CMD+=(--setfan \"$FAN_VALUE\")\n" +
+            "    # fan-curve.service polls temps and re-asserts its OWN fan speed on its own\n" +
+            "    # schedule - left running, it fights (and eventually overrides) the static\n" +
+            "    # percent we're about to set, so stop it first whenever this algo wants a\n" +
+            "    # fixed percent instead of the curve. Waits (up to 5s, checking every 0.25s)\n" +
+            "    # for systemd to actually report it inactive before running py-nvtool below -\n" +
+            "    # `systemctl stop` returns as soon as the stop is REQUESTED, not once the\n" +
+            "    # daemon has actually exited, so running --setfan immediately after could still\n" +
+            "    # race a curve poll that's already in flight and get overwritten right after.\n" +
+            "    if systemctl is-active --quiet fan-curve.service 2>/dev/null; then\n" +
+            "        echo \"Fan mode is 'percent' - stopping fan-curve.service so it doesn't override the fan percent...\"\n" +
+            "        systemctl stop fan-curve.service\n" +
+            "        for _ in $(seq 1 20); do\n" +
+            "            systemctl is-active --quiet fan-curve.service 2>/dev/null || break\n" +
+            "            sleep 0.25\n" +
+            "        done\n" +
+            "    fi\n" +
             "fi\n" +
             "\"${CMD[@]}\"\n" +
             "\n" +
