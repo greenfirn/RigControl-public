@@ -1095,6 +1095,18 @@ const WD_ACTION_RAW_KEYS = [
 ];
 let pendingWdConfigFetchRig = null;
 let pendingAgentConfFetchRig = null;
+// Rigs we just sent a Send-it write to from the Configs tab (sendItConfEdit(), when
+// Confirm is unchecked so it skips the Send Cmd modal entirely) - tracked so the
+// reply can be routed to agentconf-status below (and, since we deliberately don't
+// early-return, also still logged to the main dashboard's action-output feed) -
+// see the matching branch in handleCommandResponse(). Without this, the reply
+// silently fell through to the action-output feed alone, which sits BEHIND the
+// open Settings modal, so a write would succeed (or fail) with no visible
+// confirmation anywhere the user was actually looking. This covers every conf
+// type in CONF_EDIT_TYPES (agent.conf, cpu.conf, gpu.conf, aux.conf,
+// watchdog.conf, fancurve.conf) since they all funnel through this one function.
+let pendingAgentConfApplyRigs = new Set();
+let pendingAgentConfApplyLabel = "";
 let selectedConfEditType = "agent.conf";
 const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_HOST=10.10.0.10\n" +
@@ -3891,6 +3903,21 @@ function handleCommandResponse(response) {
             if (statusEl) statusEl.textContent = `No existing ${confLabel} found on ${r.rig}${CONF_EDIT_TYPES[confType]?.isAgent ? " (click Clear for a blank example)" : ""}`;
         }
         return;
+    }
+    if (pendingAgentConfApplyRigs.size > 0 && pendingAgentConfApplyRigs.has(r.rig)) {
+        pendingAgentConfApplyRigs.delete(r.rig);
+        const statusEl = document.getElementById("agentconf-status");
+        const ok = r.returncode === 0;
+        const detail = stripAnsi(ok ? (r.stdout || "") : (r.stderr || r.stdout || "")).replace(/^\[RAW EXECUTION\]\r?\n/, "").trim();
+        const suffix = detail ? ` - ${detail.slice(0, 200)}` : (ok ? "" : ` (exit ${r.returncode})`);
+        if (statusEl) {
+            statusEl.textContent = pendingAgentConfApplyRigs.size > 0
+                ? `${ok ? "Applied" : "Failed"} on ${r.rig}${suffix}, waiting on ${pendingAgentConfApplyRigs.size} more…`
+                : `${ok ? "Applied" : "Failed to apply"} ${pendingAgentConfApplyLabel} on ${r.rig}${suffix}`;
+        }
+        // Deliberately no `return` here - falls through to the generic reply
+        // handling below so this reply also gets logged to the main dashboard's
+        // action-output feed, not just shown in agentconf-status.
     }
     let responseText = `\n[${r.rig}] returncode=${r.returncode}\n`;
     if (r.stdout) responseText += stripAnsi(r.stdout) + "\n";
@@ -12278,9 +12305,21 @@ function sendItConfEdit() {
         if (input) input.value = command;
         openCmdModal();
     } else {
+        // Track which rig(s) this write went to so the reply (returncode/stdout/stderr,
+        // arriving later over the websocket) gets shown here in agentconf-status instead
+        // of only landing in the main dashboard's action-output feed, which is hidden
+        // behind this Settings modal - see the pendingAgentConfApplyRigs branch in
+        // handleCommandResponse() (which also still logs it to that feed).
+        const targetRigsForReply = overrideRigs || Array.from(selectedRigs);
+        pendingAgentConfApplyRigs = new Set(targetRigsForReply);
+        pendingAgentConfApplyLabel = confLabel;
+        if (statusEl) statusEl.textContent = `Sending ${confLabel} to ${targetLabel}…`;
         sendCommandToSelectedRigs(command).then((result) => {
-            if (result !== null && statusEl) statusEl.textContent = `Sent to ${targetLabel}`;
+            if (result === null) {
+                pendingAgentConfApplyRigs.clear();
+            }
         }).catch(err => {
+            pendingAgentConfApplyRigs.clear();
             console.error(`Failed to send ${confLabel}`, err);
             alert(`Failed to send ${confLabel}`);
         });
