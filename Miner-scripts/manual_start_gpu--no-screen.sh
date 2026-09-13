@@ -17,8 +17,8 @@ echo "[init] CFG_FILE=$CFG_FILE"
 echo "[init] BASE_DIR=$BASE_DIR"
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 mkdir -p "$BASE_DIR"
-: "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
-: "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
+: "${MAX_LOG_BYTES:=10485760}"
+: "${LOG_CHECK_INTERVAL:=60}"
 case "$CFG_FILE" in
     *.json) RIG_GPU_JSON="$CFG_FILE" ;;
     *) RIG_GPU_JSON="${CFG_FILE%.conf}.json" ;;
@@ -164,9 +164,7 @@ ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# get_start_cmd() (02-load_configs.sh) only reads $ARGS for CUSTOM_MINER now - known miners
-# run the dashboard-built $MINER_COMMAND instead, so the API flag has to land there or it's
-# silently dropped from the actual launched command. Custom miners still read $ARGS directly.
+
 if [[ "$API_PORT" -gt 0 ]]; then
     if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")

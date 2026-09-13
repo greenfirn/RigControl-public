@@ -2,11 +2,8 @@ sudo tee /usr/local/bin/keryx-miner-update.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 
-# Bump this to update keryx-miner - the download URL/zip/binary names below are all built
-# from it, so this is the only line that needs to change between updates.
 VERSION="v0.5.4-PoM"
 
-# Where keryx-miner lives on this rig - matches keryx-miner.service's WorkingDirectory/ExecStart.
 INSTALL_DIR="/opt/miners/keryx-miner"
 
 ZIP="keryx-miner-${VERSION}-linux-amd64.zip"

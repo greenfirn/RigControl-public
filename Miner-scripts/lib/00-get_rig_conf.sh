@@ -139,7 +139,7 @@ get_rig_conf() {
     fi
     if [[ ! -f "$RIG_GPU_JSON" && -z "$RIG_GPU_JSON_GENERATE_ATTEMPTED" ]]; then
         RIG_GPU_JSON_GENERATE_ATTEMPTED=1
-        # || true: non-fatal failure here should fall through to parsing $cfg_file directly
+
         generate_rig_gpu_json_from_conf || true
     fi
     if [[ -f "$RIG_GPU_JSON" ]] && command -v jq >/dev/null 2>&1 && [[ "$RIG_GPU_JSON_KEYS" == *" $key "* ]]; then

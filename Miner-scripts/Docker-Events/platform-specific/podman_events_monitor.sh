@@ -6,8 +6,8 @@ shopt -s inherit_errexit
 SHUTDOWN_REQUESTED=0
 PODMAN_READY=false
 : "${IDLE_CONFIRM_LOOPS:=7}"
-: "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
-: "${LOG_CHECK_INTERVAL:=10}"  # seconds between size checks
+: "${MAX_LOG_BYTES:=10485760}"
+: "${LOG_CHECK_INTERVAL:=10}"
 : "${ALWAYS_LOGS:=true}"
 handle_signal() {
     local sig=$1
@@ -15,9 +15,7 @@ handle_signal() {
     SHUTDOWN_REQUESTED=1
     echo "$(date): Stopping miner if running..."
     stop_miner || true
-    # Reap this script's own direct children (the backgrounded events pipeline above) -
-    # KillMode=mixed only signals this process, not them, and they have no trap of their
-    # own to self-exit on.
+
     pkill -TERM -P $$ 2>/dev/null || true
     sleep 0.3
     pkill -KILL -P $$ 2>/dev/null || true
@@ -33,7 +31,7 @@ readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[init] BASE_DIR=$BASE_DIR"
 mkdir -p "$BASE_DIR"
-# Rig config (must be set by service)
+
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
@@ -45,7 +43,7 @@ if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 fi
-# Miner config (with default location)
+
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 [[ -f "$MINER_CONF" ]] || {
     echo "Missing miner.conf: $MINER_CONF"
@@ -181,9 +179,7 @@ ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# get_start_cmd() (02-load_configs.sh) only reads $ARGS for CUSTOM_MINER now - known miners
-# run the dashboard-built $MINER_COMMAND instead, so the API flag has to land there or it's
-# silently dropped from the actual launched command. Custom miners still read $ARGS directly.
+
 if [[ "$API_PORT" -gt 0 ]]; then
     if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
@@ -498,13 +494,7 @@ fi
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
-    # KillMode=mixed (see [Service] block below) only signals this script itself, not a
-    # backgrounded child - this pipeline runs backgrounded and is explicitly reaped in
-    # handle_signal() (see trap above) instead of being bounded by a periodic timeout, so
-    # the events connection stays up continuously during normal operation (no artificial
-    # reconnect churn) while a real shutdown still interrupts it immediately: `wait` on a
-    # backgrounded job (unlike waiting on a foreground pipeline) returns as soon as a
-    # trapped signal arrives, even while the stream itself is still idle/connected.
+
     docker exec podman podman events \
         --filter 'type=container' \
         --format '{{.Time}}|{{.Status}}|{{.Name}}' 2>&1 | \
@@ -571,11 +561,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 StandardOutput=journal
@@ -602,11 +588,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 StandardOutput=journal
@@ -630,11 +612,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 StandardOutput=journal

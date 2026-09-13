@@ -1,4 +1,3 @@
-# Ensure jq is available for parsing GitHub API JSON responses
 sudo apt update
 sudo apt install -y jq
 sudo tee /usr/local/bin/update_miner_versions.sh > /dev/null <<'EOF'
@@ -6,7 +5,7 @@ sudo tee /usr/local/bin/update_miner_versions.sh > /dev/null <<'EOF'
 set -Eeuo pipefail
 shopt -s inherit_errexit
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
-# GitHub API requires a User-Agent header or it 4xx's the request.
+
 UA="rigcloud-version-updater"
 AUTH_HEADER=()
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -80,7 +79,7 @@ else
             echo "[warn] Unknown miner name: '$arg' - skipping" >&2
             continue
         fi
-        # Avoid duplicate entries if the same miner (or an alias of it) is passed twice
+
         already_selected=false
         for k in "${SELECTED_KEYS[@]:-}"; do
             [[ "$k" == "$key" ]] && already_selected=true && break

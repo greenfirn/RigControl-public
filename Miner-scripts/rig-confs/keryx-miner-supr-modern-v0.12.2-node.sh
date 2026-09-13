@@ -1,6 +1,3 @@
-# -- keryx-miner-supr v0.12.2 modern, write rig-gpu.json                             --
-# -- CUSTOM_MINER_SUPR_API_HOST/PORT in rigcontrol-agent.conf map to --api-bind here --
-# -- pool_urls[0] is the local keryxd node                                           --
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {

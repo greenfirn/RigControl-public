@@ -141,7 +141,7 @@ get_rig_conf() {
     fi
     if [[ ! -f "$RIG_GPU_JSON" && -z "$RIG_GPU_JSON_GENERATE_ATTEMPTED" ]]; then
         RIG_GPU_JSON_GENERATE_ATTEMPTED=1
-        # || true: non-fatal failure here should fall through to parsing $cfg_file directly
+
         generate_rig_gpu_json_from_conf || true
     fi
     if [[ -f "$RIG_GPU_JSON" ]] && command -v jq >/dev/null 2>&1 && [[ "$RIG_GPU_JSON_KEYS" == *" $key "* ]]; then
@@ -580,22 +580,14 @@ get_start_cmd() {
         echo "$cmd"
         return
     fi
-    # MINER_COMMAND is the FULL command line (algo flag, pool/wallet/pass/TLS flags, and any
-    # extra args the user typed) built entirely dashboard-side at Save time, with %WALLET%/
-    # %PASS%/%WORKER_NAME%/etc. tokens already substituted above. This includes xmrig/bzminer
-    # ARGS that came in as an OC-JSON blob (a HiveOS flightsheet import, or the dashboard's own
-    # optional overclock/CPU editor for those two miners) - the dashboard converts that to real
-    # CLI flags before it ever gets here, so this script just drops MINER_COMMAND in after
-    # $MINER_BIN and runs it. No per-miner flag decisions, and no OC-JSON conversion, happen
-    # rig-side anymore.
+
     case "$name" in
         xmrig)
             if [[ -z "$MINER_COMMAND" ]]; then
                 echo "[ERROR] MINER_COMMAND is empty for xmrig - re-save the flightsheet in the dashboard." >&2
                 return
             fi
-            # --no-cpu is the one flag still decided rig-side: CPU on/off is a live per-rig
-            # toggle, not something re-saving the flightsheet always accompanies.
+
             local xmrig_args=""
             if [[ ("$CPU" == "0" || "$CPU" == "false") && "$MINER_COMMAND" != *"--no-cpu"* ]]; then
                 xmrig_args="--no-cpu"
@@ -663,19 +655,12 @@ POOL_URLS=$(get_rig_conf "POOL_URLS" "0")
 POOL_URLS=$(resolve_worker_name "$POOL_URLS")
 POOL_URLS=$(resolve_wallet "$POOL_URLS")
 POOL_URLS=$(resolve_pass "$POOL_URLS")
-# For custom miners, miner_config.url is left as the literal token "%URL%" (rather than a
-# hardcoded address) so it always tracks the flightsheet's pool_urls list, backups included.
-# POOL itself needs to be resolved to a real address here (index 0 = primary; use %URL%[N] in
-# ARGS/ALGO directly to reach a specific backup) before it's used below as the substitution
-# value for any other field's %URL% token via resolve_url().
+
 if [[ "$POOL" == *"%URL%"* ]]; then
     _pool_url_list=()
     mapfile -t _pool_url_list < <(get_pool_url_list)
     _primary_pool_url="${_pool_url_list[0]:-}"
-    # pool_urls[0] is substituted in exactly as stored, scheme and all - same as %URL%[N].
-    # No stripping: whatever's actually in pool_urls[0] (schemed or bare) is what the miner
-    # gets. A template that wants to add its own scheme on top should build that address into
-    # pool_urls itself rather than relying on this substitution to add or remove one.
+
     POOL="${POOL//%URL%/${_primary_pool_url}}"
 fi
 ALGO=$(get_rig_conf "ALGO" "0")
@@ -692,10 +677,7 @@ ARGS=$(resolve_pass "$ARGS")
 ARGS=$(resolve_url_indexed "$ARGS")
 ARGS=$(resolve_url "$ARGS")
 ARGS=$(resolve_algo "$ARGS")
-# MINER_COMMAND is the dashboard-built full command line for known miners (algo flag, pool/
-# wallet/pass/TLS flags, and any extra args baked in already) - it gets the exact same token
-# pipeline as ARGS/ALGO above, since it can contain the same %WORKER_NAME%/%WALLET%/%PASS%/
-# %URL%/%URL%[N]/%ALGO% tokens.
+
 MINER_COMMAND=$(get_rig_conf "MINER_COMMAND" "0")
 MINER_COMMAND=$(resolve_worker_name "$MINER_COMMAND")
 MINER_COMMAND=$(resolve_wallet "$MINER_COMMAND")

@@ -65,8 +65,8 @@ fi
 SHUTDOWN_REQUESTED=0
 PODMAN_READY=false
 : "${IDLE_CONFIRM_LOOPS:=7}"
-: "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
-: "${LOG_CHECK_INTERVAL:=60}"  # seconds between size checks
+: "${MAX_LOG_BYTES:=10485760}"
+: "${LOG_CHECK_INTERVAL:=60}"
 handle_signal() {
     local sig=$1
     echo "$(date): Received signal $sig - initiating graceful shutdown..."
@@ -76,9 +76,7 @@ handle_signal() {
     fi
     echo "$(date): Stopping miner if running..."
     stop_miner || true
-    # Reap this script's own direct children (the backgrounded events pipeline above) -
-    # KillMode=mixed only signals this process, not them, and they have no trap of their
-    # own to self-exit on.
+
     pkill -TERM -P $$ 2>/dev/null || true
     sleep 0.3
     pkill -KILL -P $$ 2>/dev/null || true
@@ -395,13 +393,7 @@ fi
 echo "$(date): Starting Podman event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Podman events stream..."
-    # KillMode=mixed (see [Service] block below) only signals this script itself, not a
-    # backgrounded child - this pipeline runs backgrounded and is explicitly reaped in
-    # handle_signal() (see trap above) instead of being bounded by a periodic timeout, so
-    # the events connection stays up continuously during normal operation (no artificial
-    # reconnect churn) while a real shutdown still interrupts it immediately: `wait` on a
-    # backgrounded job (unlike waiting on a foreground pipeline) returns as soon as a
-    # trapped signal arrives, even while the stream itself is still idle/connected.
+
     docker exec podman podman events \
         --filter 'type=container' \
         --format '{{.Time}}|{{.Status}}|{{.Name}}' 2>&1 | \
@@ -467,11 +459,7 @@ ExecStart=/usr/local/bin/docker_events_cpu.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

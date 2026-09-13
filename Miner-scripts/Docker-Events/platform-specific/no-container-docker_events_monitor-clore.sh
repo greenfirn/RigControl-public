@@ -3,14 +3,14 @@ sudo tee /usr/local/bin/docker_events_universal.sh > /dev/null <<'EOF'
 set -Eeuo pipefail
 shopt -s inherit_errexit
 : "${POWER_LIMIT:=}"
-# Global list of ignored images
+
 IGNORED_IMAGES=(
     "cloreai/monitoring"
 )
 SHUTDOWN_REQUESTED=0
 : "${IDLE_CONFIRM_LOOPS:=3}"
-: "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
-: "${LOG_CHECK_INTERVAL:=10}"  # seconds between size checks
+: "${MAX_LOG_BYTES:=10485760}"
+: "${LOG_CHECK_INTERVAL:=10}"
 : "${ALWAYS_LOGS:=true}"
 handle_signal() {
     local sig=$1
@@ -18,9 +18,7 @@ handle_signal() {
     SHUTDOWN_REQUESTED=1
     echo "$(date): Stopping miner if running..."
     stop_miner || true
-    # Reap this script's own direct children (the backgrounded events pipeline above) -
-    # KillMode=mixed only signals this process, not them, and they have no trap of their
-    # own to self-exit on.
+
     pkill -TERM -P $$ 2>/dev/null || true
     sleep 0.3
     pkill -KILL -P $$ 2>/dev/null || true
@@ -36,7 +34,7 @@ readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[init] BASE_DIR=$BASE_DIR"
 mkdir -p "$BASE_DIR"
-# Rig config (must be set by service)
+
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
@@ -48,7 +46,7 @@ if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 fi
-# Miner config (with default location)
+
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 [[ -f "$MINER_CONF" ]] || {
     echo "Missing miner.conf: $MINER_CONF"
@@ -84,12 +82,7 @@ _read_agent_conf_val() {
     [[ -f "$AGENT_CONF" ]] || return 0
     grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2- || true
 }
-# OVERRIDE_LIST (comma-separated, from rigcontrol-agent.conf) names additional "gpu stats safe"
-# images that should never be treated as a competing workload - e.g. a lightweight sidecar that
-# only reads GPU stats but doesn't actually use the GPU for compute. Appended onto IGNORED_IMAGES
-# (which some platform variants already pre-populate with a hardcoded platform-specific entry, e.g.
-# clore's "cloreai/monitoring" or vast's bandwidth-test images) rather than replacing it, so a rig's
-# own override list adds to - never removes - the built-in platform-specific safe list.
+
 declare -p IGNORED_IMAGES > /dev/null 2>&1 || IGNORED_IMAGES=()
 _OVERRIDE_LIST_RAW="$(_read_agent_conf_val OVERRIDE_LIST)"
 _OVERRIDE_LIST_RAW="${_OVERRIDE_LIST_RAW%\"}"
@@ -202,9 +195,7 @@ ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# get_start_cmd() (02-load_configs.sh) only reads $ARGS for CUSTOM_MINER now - known miners
-# run the dashboard-built $MINER_COMMAND instead, so the API flag has to land there or it's
-# silently dropped from the actual launched command. Custom miners still read $ARGS directly.
+
 if [[ "$API_PORT" -gt 0 ]]; then
     if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
@@ -512,13 +503,7 @@ fi
 echo "$(date): Starting Docker event monitor..."
 while [[ $SHUTDOWN_REQUESTED -eq 0 ]]; do
     echo "$(date): Connecting to Docker events stream..."
-    # KillMode=mixed (see [Service] block below) only signals this script itself, not a
-    # backgrounded child - this pipeline runs backgrounded and is explicitly reaped in
-    # handle_signal() (see trap above) instead of being bounded by a periodic timeout, so
-    # the events connection stays up continuously during normal operation (no artificial
-    # reconnect churn) while a real shutdown still interrupts it immediately: `wait` on a
-    # backgrounded job (unlike waiting on a foreground pipeline) returns as soon as a
-    # trapped signal arrives, even while the stream itself is still idle/connected.
+
     docker events --format "{{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}" 2>&1 | \
     while read -r type action name image; do
         if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
@@ -568,11 +553,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 StandardOutput=journal
@@ -599,11 +580,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 StandardOutput=journal
@@ -627,11 +604,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=60
 StandardOutput=journal

@@ -4,8 +4,8 @@ set -Eeuo pipefail
 shopt -s inherit_errexit
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
-: "${MAX_LOG_BYTES:=10485760}"  # 10 MB default, override via env
-: "${LOG_CHECK_INTERVAL:=10}"  # seconds between size checks
+: "${MAX_LOG_BYTES:=10485760}"
+: "${LOG_CHECK_INTERVAL:=10}"
 : "${ALWAYS_LOGS:=true}"
 handle_signal() {
     local sig=$1
@@ -25,7 +25,7 @@ readonly SCRIPT_DIR
 echo "[init] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[init] BASE_DIR=$BASE_DIR"
 mkdir -p "$BASE_DIR"
-# Rig config (must be set by service)
+
 : "${OC_FILE:?OC_FILE is not set}"
 CFG_FILE="$OC_FILE"
 export CFG_FILE
@@ -37,7 +37,7 @@ if [[ ! -f "$CFG_FILE" && ! -f "$RIG_GPU_JSON" ]]; then
     echo "Missing rig config: neither $CFG_FILE nor $RIG_GPU_JSON exists"
     exit 1
 fi
-# Miner config (with default location)
+
 : "${MINER_CONF:=/etc/rigcontrol/miner.conf}"
 [[ -f "$MINER_CONF" ]] || {
     echo "Missing miner.conf: $MINER_CONF"
@@ -170,9 +170,7 @@ ARGS="${ARGS//%WORKER_NAME%/$WORKER_NAME}"
 WALLET="${WALLET//%WORKER_NAME%/$WORKER_NAME}"
 PASS="${PASS//%WORKER_NAME%/$WORKER_NAME}"
 POOL="${POOL//%WORKER_NAME%/$WORKER_NAME}"
-# get_start_cmd() (02-load_configs.sh) only reads $ARGS for CUSTOM_MINER now - known miners
-# run the dashboard-built $MINER_COMMAND instead, so the API flag has to land there or it's
-# silently dropped from the actual launched command. Custom miners still read $ARGS directly.
+
 if [[ "$API_PORT" -gt 0 ]]; then
     if [[ -n "${CUSTOM_MINER:-}" && "$CUSTOM_MINER" != "0" ]]; then
         ARGS=$(add_api_flags "$API_LOOKUP_NAME" "$API_HOST" "$API_PORT" "$ARGS")
@@ -181,7 +179,7 @@ if [[ "$API_PORT" -gt 0 ]]; then
     fi
 fi
 START_CMD=$(get_start_cmd "$MINER_NAME")
-# SERVICE_TYPE: one of "cpu" / "gpu" / "aux" - fixed by which service instance this is, not user-configurable
+
 case "$OC_FILE" in
     *rig-gpu*) SERVICE_TYPE="gpu" ;;
     *rig-cpu*) SERVICE_TYPE="cpu" ;;
@@ -193,7 +191,7 @@ check_api_health() {
     fi
     return 0
 }
-# PID-BASED KILL - Backup for crashed miners
+
 kill_by_pid() {
     local pid_file="/run/rigcontrol/${SERVICE_TYPE}_miner.pid"
     if [[ -f "$pid_file" ]]; then
@@ -399,11 +397,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=30
 StandardOutput=journal
@@ -425,11 +419,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=30
 StandardOutput=journal
@@ -450,11 +440,7 @@ ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
-# KillMode=mixed (not the default control-group) so a stop/restart only signals this
-# tracked process - control-group would signal the screen session and the miner running
-# inside it at the same instant, racing ahead of (and generally beating) stop_miner()'s
-# own graceful Ctrl+C/quit sequence below, killing the miner directly before this script
-# ever gets a chance to shut it down cleanly.
+
 KillMode=mixed
 TimeoutStopSec=30
 StandardOutput=journal

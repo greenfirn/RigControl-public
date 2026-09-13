@@ -2,11 +2,8 @@ sudo tee /usr/local/bin/keryx-node-update.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
 
-# Bump this to update keryx-node - the download URL/zip/binary names below are all built
-# from it, so this is the only line that needs to change between updates.
 VERSION="v1.5.8-PoM"
 
-# Where keryx-node lives on this rig - matches keryxd.service's WorkingDirectory/ExecStart.
 INSTALL_DIR="/opt/miners"
 
 ZIP="keryx-node-${VERSION}-linux-amd64.zip"

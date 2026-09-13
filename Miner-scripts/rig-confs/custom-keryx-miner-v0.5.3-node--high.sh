@@ -1,5 +1,3 @@
-# -- keryx-miner v0.5.3-PoM --high variant (custom, download via miner_alt/install_url) --
-# -- same as custom-keryx-miner-v053-node.sh but with --high added to user_config --
 mkdir -p /etc/rigcontrol
 tee /etc/rigcontrol/rig-gpu.json > /dev/null <<'EOF'
 {
