@@ -1157,8 +1157,11 @@ const LOGS_TYPE_LABELS = {
     "gpu.api": "GPU API call",
     "aux.api": "AUX API call",
     "cpu.conf": "CPU rig conf",
+    "cpu.svc": "CPU service file",
     "gpu.conf": "GPU rig conf",
+    "gpu.svc": "GPU service file",
     "aux.conf": "AUX rig conf",
+    "aux.svc": "AUX service file",
     "agent.conf": "Agent conf",
     "agent.svclog": "Agent log",
     "watchdog.conf": "Watchdog conf",
@@ -1170,7 +1173,7 @@ const LOGS_TYPE_LABELS = {
     "sys.df": "Disk usage (df -h)",
     "sys.top": "Processes (ps, by CPU)",
 };
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "agent.conf", "watchdog.conf", "fancurve.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "cpu.svc", "gpu.svc", "aux.svc", "agent.conf", "watchdog.conf", "fancurve.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
 const LOGS_TYPES_PRESERVE_SCROLL = new Set(["sys.top"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
@@ -1185,6 +1188,9 @@ const LOGS_COMMAND_BUILDERS = {
     "cpu.conf": () => "cat /etc/rigcontrol/rig-cpu.json",
     "gpu.conf": () => "cat /etc/rigcontrol/rig-gpu.json",
     "aux.conf": () => "cat /etc/rigcontrol/rig-aux.json",
+    "cpu.svc": () => "cat /etc/systemd/system/docker_events_cpu.service",
+    "gpu.svc": () => "cat /etc/systemd/system/docker_events_gpu.service",
+    "aux.svc": () => "cat /etc/systemd/system/docker_events_aux.service",
     "agent.conf": () => "cat /etc/rigcontrol/rigcontrol-agent.conf",
     "agent.svclog": (n) => `journalctl -u rigcontrol-agent.service -n ${n} --no-pager`,
     "watchdog.conf": () => "cat /etc/rigcontrol/rigcontrol-watchdog.conf",
@@ -1217,6 +1223,21 @@ const CONF_EDIT_TYPES = {
         dir: () => "/etc/rigcontrol",
         path: () => "/etc/rigcontrol/rig-aux.json",
         restartCmd: () => "sudo systemctl restart docker_events_aux",
+    },
+    "cpu.svc": {
+        dir: () => "/etc/systemd/system",
+        path: () => "/etc/systemd/system/docker_events_cpu.service",
+        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart docker_events_cpu",
+    },
+    "gpu.svc": {
+        dir: () => "/etc/systemd/system",
+        path: () => "/etc/systemd/system/docker_events_gpu.service",
+        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart docker_events_gpu",
+    },
+    "aux.svc": {
+        dir: () => "/etc/systemd/system",
+        path: () => "/etc/systemd/system/docker_events_aux.service",
+        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart docker_events_aux",
     },
     "watchdog.conf": {
         dir: () => TEMPLATES_CONFIG.watchdog.conf_dir,
