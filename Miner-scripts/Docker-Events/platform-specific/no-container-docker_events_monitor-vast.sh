@@ -85,18 +85,12 @@ _read_agent_conf_val() {
     grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2- || true
 }
 
+# NOTE: OVERRIDE_LIST (rigcontrol-agent.conf) is intentionally NOT read here.
+# It only controls whether the telemetry side blanks GPU stats when a
+# container is running (see rigcontrol_telemetry.py's _is_ignored_docker_image()).
+# It must never affect the miner start/stop decision below - if any Docker
+# container exists, the miner should not be started, full stop.
 declare -p IGNORED_IMAGES > /dev/null 2>&1 || IGNORED_IMAGES=()
-_OVERRIDE_LIST_RAW="$(_read_agent_conf_val OVERRIDE_LIST)"
-_OVERRIDE_LIST_RAW="${_OVERRIDE_LIST_RAW%\"}"
-_OVERRIDE_LIST_RAW="${_OVERRIDE_LIST_RAW#\"}"
-if [[ -n "$_OVERRIDE_LIST_RAW" ]]; then
-    IFS=',' read -ra _OVERRIDE_LIST_ENTRIES <<< "$_OVERRIDE_LIST_RAW"
-    for _override_image in "${_OVERRIDE_LIST_ENTRIES[@]}"; do
-        _override_image="$(echo "$_override_image" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [[ -n "$_override_image" ]] && IGNORED_IMAGES+=("$_override_image")
-    done
-    echo "$(date): OVERRIDE_LIST (rigcontrol-agent.conf) added to ignored images: ${IGNORED_IMAGES[*]}"
-fi
 MINER_LOOKUP_BASE=$(echo "$API_LOOKUP_NAME" | sed -E 's/-linux-x86_64$//I; s/-[0-9][0-9A-Za-z_.]*$//')
 MINER_UPPER=$(printf '%s' "$MINER_LOOKUP_BASE" | tr '[:lower:]' '[:upper:]' | tr -c '[:alnum:]' '_')
 MINER_API_PORT_VAR="${MINER_UPPER}_API_PORT"
