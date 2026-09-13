@@ -264,8 +264,8 @@ is_docker_running() {
 }
 should_ignore_image() {
     local image="$1"
-    for ignored_image in "${IGNORED_IMAGES[@]}"; do
-        if [[ "$image" == "$ignored_image" ]]; then
+    for ignored_prefix in "${IGNORED_IMAGES[@]}"; do
+        if [[ "$image" == "$ignored_prefix"* ]]; then
             return 0
         fi
     done

@@ -856,11 +856,12 @@ def _is_ignored_docker_image(image):
     the clore/vast Docker-Events monitor scripts) or one the user added via OVERRIDE_LIST in
     rigcontrol-agent.conf (see rigcontrol_agent.sh, which sets this module's OVERRIDE_LIST global
     at startup). Prefix match, same convention as should_ignore_image() in
-    Miner-scripts/Docker-Events/*.sh. Without this, docker_containers_running() below treated
-    ANY running container - including a harmless sidecar like octaspace's own
-    "octaspace/qubjetski:1" monitoring container - as proof some other workload already owns the
-    GPU, which blanked out this rig's own GPU stats block ("GPUs (0)"/"No GPU data") even though
-    the GPU was completely idle."""
+    Miner-scripts/Docker-Events/*.sh - case-insensitive on both the hardcoded defaults and
+    OVERRIDE_LIST entries. Without this, docker_containers_running() below treated ANY running
+    container - including a harmless sidecar like octaspace's own "octaspace/qubjetski:1"
+    monitoring container - as proof some other workload already owns the GPU, which blanked out
+    this rig's own GPU stats block ("GPUs (0)"/"No GPU data") even though the GPU was completely
+    idle."""
     image_lower = (image or "").strip().lower()
     if not image_lower:
         return False
@@ -868,7 +869,7 @@ def _is_ignored_docker_image(image):
         if image_lower.startswith(prefix.lower()):
             return True
     for prefix in OVERRIDE_LIST:
-        if prefix and image_lower.startswith(prefix):
+        if prefix and image_lower.startswith(prefix.strip().lower()):
             return True
     return False
 def docker_containers_running():
