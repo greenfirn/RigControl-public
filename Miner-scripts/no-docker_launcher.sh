@@ -428,6 +428,7 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
+sudo systemctl daemon-reload
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
 Description=AUX Miner Launcher
@@ -450,12 +451,16 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl restart docker_events_cpu.service
-sudo systemctl restart docker_events_gpu.service
-sudo systemctl restart docker_events_aux.service
-sudo systemctl enable docker_events_cpu.service
+
 sudo systemctl enable docker_events_gpu.service
+sudo systemctl restart docker_events_gpu.service
+
+sudo systemctl enable docker_events_cpu.service
+sudo systemctl restart docker_events_cpu.service
+
 sudo systemctl enable docker_events_aux.service
-sudo journalctl -u docker_events_cpu.service -f
+sudo systemctl restart docker_events_aux.service
+
 sudo journalctl -u docker_events_gpu.service -f
+sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_aux.service -f

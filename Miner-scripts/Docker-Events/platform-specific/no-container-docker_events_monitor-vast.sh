@@ -85,11 +85,6 @@ _read_agent_conf_val() {
     grep -E "^${key}=" "$AGENT_CONF" | tail -n1 | cut -d= -f2- || true
 }
 
-# NOTE: OVERRIDE_LIST (rigcontrol-agent.conf) is intentionally NOT read here.
-# It only controls whether the telemetry side blanks GPU stats when a
-# container is running (see rigcontrol_telemetry.py's _is_ignored_docker_image()).
-# It must never affect the miner start/stop decision below - if any Docker
-# container exists, the miner should not be started, full stop.
 declare -p IGNORED_IMAGES > /dev/null 2>&1 || IGNORED_IMAGES=()
 MINER_LOOKUP_BASE=$(echo "$API_LOOKUP_NAME" | sed -E 's/-linux-x86_64$//I; s/-[0-9][0-9A-Za-z_.]*$//')
 MINER_UPPER=$(printf '%s' "$MINER_LOOKUP_BASE" | tr '[:lower:]' '[:upper:]' | tr -c '[:alnum:]' '_')
@@ -585,6 +580,7 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 EOF
+sudo systemctl daemon-reload
 sudo tee /etc/systemd/system/docker_events_aux.service > /dev/null <<'EOF'
 [Unit]
 Description=Docker Events AUX Miner Monitor
@@ -610,12 +606,16 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl restart docker_events_cpu.service
-sudo systemctl restart docker_events_gpu.service
-sudo systemctl restart docker_events_aux.service
+
 sudo systemctl enable docker_events_cpu.service
+sudo systemctl restart docker_events_cpu.service
+
 sudo systemctl enable docker_events_gpu.service
+sudo systemctl restart docker_events_gpu.service
+
 sudo systemctl enable docker_events_aux.service
+sudo systemctl restart docker_events_aux.service
+
 sudo journalctl -u docker_events_cpu.service -f
 sudo journalctl -u docker_events_gpu.service -f
 sudo journalctl -u docker_events_aux.service -f
