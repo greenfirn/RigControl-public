@@ -33,6 +33,11 @@ from pydantic import BaseModel, ConfigDict
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+# aiomqtt relies on add_reader/add_writer, which the Windows Proactor loop
+# does not support. Select the compatible policy before an event loop exists.
+if os.name == "nt":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 # Windows is run directly rather than through Docker Compose, so read its
 # local .env before any configuration values are resolved.
 load_dotenv()
@@ -4434,4 +4439,6 @@ else:
 if __name__ == "__main__":
     if MQTT_MODE == "local":
         start_mosquitto()
-    uvicorn.run(app, host=API_BIND, port=API_PORT, log_level="info")
+    # Uvicorn's Windows "auto" mode chooses a Proactor loop, which is
+    # incompatible with aiomqtt. "none" keeps the selector policy above.
+    uvicorn.run(app, host=API_BIND, port=API_PORT, log_level="info", loop="none")
