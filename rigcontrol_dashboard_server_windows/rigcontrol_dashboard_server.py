@@ -19,10 +19,10 @@ from typing import Dict, List, Optional, Any, Tuple
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from dotenv import load_dotenv
-load_dotenv()
 from pathlib import Path
-import paho.mqtt.client as mqtt
-from paho.mqtt.client import CallbackAPIVersion
+import aiomqtt
+import subprocess
+import psutil
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, APIRouter, HTTPException, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,511 +32,17 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel, ConfigDict
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
+
+# Windows is run directly rather than through Docker Compose, so read its
+# local .env before any configuration values are resolved.
+load_dotenv()
+
+# The Windows deployment owns its local Mosquitto process.  The Pi deployment
+# gets Mosquitto from Docker Compose and intentionally does not include this.
+MOSQUITTO_EXE = r"C:\Program Files\mosquitto\mosquitto.exe"
+MOSQUITTO_CONF = r"C:\Program Files\mosquitto\mosquitto.conf"
 dynamodb = None
 flightsheets_table = None
-def _key_schema_matches(actual: list, expected: list) -> bool:
-    norm = lambda ks: {(k["AttributeName"], k["KeyType"]) for k in ks}
-    return norm(actual) == norm(expected)
-def get_or_create_dynamo_table(table_name: str, key_schema: list, attr_defs: list):
-    if not dynamodb:
-        return None
-    try:
-        table = dynamodb.Table(table_name)
-        table.load()
-        if not _key_schema_matches(table.key_schema, key_schema):
-            raise ValueError(
-                f"{table_name} already exists in AWS with an outdated key schema "
-                f"(this happens if it was created before a recent fix) - delete the "
-                f"table in the AWS DynamoDB console and try again so it can be "
-                f"recreated with the correct schema"
-            )
-        return table
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "ResourceNotFoundException":
-            log(f"[Backups] {table_name} missing — creating it")
-            table = dynamodb.create_table(
-                TableName=table_name,
-                KeySchema=key_schema,
-                AttributeDefinitions=attr_defs,
-                BillingMode="PAY_PER_REQUEST",
-            )
-            table.wait_until_exists()
-            log(f"[Backups] {table_name} created")
-            return table
-        log(f"[Backups] Error accessing {table_name}: {e}")
-        return None
-    except ValueError:
-        raise
-    except Exception as e:
-        log(f"[Backups] Error accessing {table_name}: {e}")
-        return None
-def _generic_scan(local_db) -> List[Dict[str, Any]]:
-    return local_db.scan().get("Items", [])
-def _generic_restore(local_db, sql_table: str, id_col: str, items: List[Dict[str, Any]], missing_only: bool = False) -> int:
-    conn = local_db._get_connection()
-    local_db._ensure_table_for_thread(conn)
-    cursor = conn.cursor()
-    if not missing_only:
-        cursor.execute(f"DELETE FROM {sql_table}")
-        conn.commit()
-    inserted = 0
-    for item in items:
-        try:
-            row_id = item.get(id_col)
-            gpu_id = item.get("GpuId")
-            key = item.get("Key")
-            value = item.get("Value")
-            updated_at = item.get("UpdatedAt")
-            if not all([row_id, gpu_id is not None, key]):
-                continue
-            cursor.execute(f'''
-                INSERT OR IGNORE INTO {sql_table}
-                ({id_col}, GpuId, Key, Value, UpdatedAt)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (
-                row_id,
-                int(gpu_id),
-                str(key).strip().upper(),
-                str(value) if value is not None else "",
-                int(updated_at) if updated_at is not None else int(time.time()),
-            ))
-            if cursor.rowcount > 0:
-                inserted += 1
-        except Exception as e:
-            log(f"[Backups] Restore insert error: {e}")
-            continue
-    conn.commit()
-    return inserted
-def _status_log_scan() -> List[Dict[str, Any]]:
-    conn = local_status_log_db._get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, rig, algo, title, details, reasons, actions, created_at
-        FROM status_log_events ORDER BY id
-    ''')
-    items = []
-    for row in cursor.fetchall():
-        items.append({
-            "id": row["id"],
-            "rig": row["rig"],
-            "algo": row["algo"],
-            "title": row["title"],
-            "details": row["details"],
-            "reasons": row["reasons"],
-            "actions": row["actions"],
-            "created_at": row["created_at"],
-        })
-    return items
-def _status_log_restore(items: List[Dict[str, Any]], missing_only: bool = False) -> int:
-    conn = local_status_log_db._get_connection()
-    local_status_log_db._ensure_table_for_thread(conn)
-    cursor = conn.cursor()
-    if not missing_only:
-        cursor.execute("DELETE FROM status_log_events")
-        conn.commit()
-    inserted = 0
-    for item in items:
-        try:
-            cursor.execute('''
-                INSERT OR IGNORE INTO status_log_events
-                (id, rig, algo, title, details, reasons, actions, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                item.get("id"),
-                item.get("rig"),
-                item.get("algo"),
-                item.get("title"),
-                item.get("details"),
-                item.get("reasons"),
-                item.get("actions"),
-                item.get("created_at"),
-            ))
-            if cursor.rowcount > 0:
-                inserted += 1
-        except Exception as e:
-            log(f"[Backups] Status log restore insert error: {e}")
-            continue
-    conn.commit()
-    return inserted
-def _cmd_history_scan() -> List[Dict[str, Any]]:
-    conn = local_cmd_history_db._get_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, command, created_at FROM cmd_history ORDER BY id')
-    return [
-        {"id": row["id"], "command": row["command"], "created_at": row["created_at"]}
-        for row in cursor.fetchall()
-    ]
-def _cmd_history_restore(items: List[Dict[str, Any]], missing_only: bool = False) -> int:
-    conn = local_cmd_history_db._get_connection()
-    local_cmd_history_db._ensure_table_for_thread(conn)
-    cursor = conn.cursor()
-    if not missing_only:
-        cursor.execute("DELETE FROM cmd_history")
-        conn.commit()
-    inserted = 0
-    for item in items:
-        try:
-            cursor.execute('''
-                INSERT OR IGNORE INTO cmd_history (id, command, created_at)
-                VALUES (?, ?, ?)
-            ''', (
-                item.get("id"),
-                item.get("command"),
-                item.get("created_at"),
-            ))
-            if cursor.rowcount > 0:
-                inserted += 1
-        except Exception as e:
-            log(f"[Backups] Cmd history restore insert error: {e}")
-            continue
-    conn.commit()
-    return inserted
-def _templates_file_path():
-    return STATIC_DIR / "config" / "templates.json"
-class _JsonFileStub:
-    def __init__(self, path):
-        self._path = path
-    @property
-    def db_path(self):
-        return self._path
-def _json_file_scan(path) -> List[Dict[str, Any]]:
-    if not path.exists():
-        return []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        return [{
-            "FileId": path.name,
-            "Content": content,
-            "UpdatedAt": int(path.stat().st_mtime),
-        }]
-    except Exception as e:
-        log(f"[Backups] Error reading {path}: {e}")
-        return []
-def _json_file_restore(path, items: List[Dict[str, Any]], missing_only: bool = False) -> int:
-    if not items:
-        return 0
-    content = items[0].get("Content")
-    if content is None:
-        return 0
-    try:
-        if missing_only and path.exists():
-            return 0
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return 1
-    except Exception as e:
-        log(f"[Backups] Error restoring {path}: {e}")
-        return 0
-def _generic_wipe(local_db, sql_table: str) -> None:
-    conn = local_db._get_connection()
-    local_db._ensure_table_for_thread(conn)
-    cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM {sql_table}")
-    conn.commit()
-def _status_log_wipe() -> None:
-    conn = local_status_log_db._get_connection()
-    local_status_log_db._ensure_table_for_thread(conn)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM status_log_events")
-    conn.commit()
-def _cmd_history_wipe() -> None:
-    conn = local_cmd_history_db._get_connection()
-    local_cmd_history_db._ensure_table_for_thread(conn)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM cmd_history")
-    conn.commit()
-def _json_file_wipe(path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("{}")
-BACKUP_TARGETS = [
-    {
-        "id": "flightsheets",
-        "label": "Flightsheets",
-        "file_name": "rigcontrol_flightsheets.db",
-        "local_db": lambda: local_flightsheet_db,
-        "scan_fn": lambda: _generic_scan(local_flightsheet_db),
-        "restore_fn": lambda items, missing_only=False: _generic_restore(local_flightsheet_db, "flightsheets", "FlightsheetId", items, missing_only),
-        "wipe_fn": lambda: _generic_wipe(local_flightsheet_db, "flightsheets"),
-        "dynamo_table": "RigControlFlightsheets",
-        "key_schema": [
-            {"AttributeName": "FlightsheetId", "KeyType": "HASH"},
-            {"AttributeName": "GpuId", "KeyType": "RANGE"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "FlightsheetId", "AttributeType": "S"},
-            {"AttributeName": "GpuId", "AttributeType": "N"},
-        ],
-    },
-    {
-        "id": "overclocks",
-        "label": "Overclocks",
-        "file_name": "rigcontrol_overclocks.db",
-        "local_db": lambda: local_overclock_db,
-        "scan_fn": lambda: _generic_scan(local_overclock_db),
-        "restore_fn": lambda items, missing_only=False: _generic_restore(local_overclock_db, "overclocks", "OverclockId", items, missing_only),
-        "wipe_fn": lambda: _generic_wipe(local_overclock_db, "overclocks"),
-        "dynamo_table": "RigControlOverclocks",
-        "key_schema": [
-            {"AttributeName": "OverclockId", "KeyType": "HASH"},
-            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "OverclockId", "AttributeType": "S"},
-            {"AttributeName": "EntryKey", "AttributeType": "S"},
-        ],
-    },
-    {
-        "id": "saved_commands",
-        "label": "Saved Commands",
-        "file_name": "rigcontrol_saved_commands.db",
-        "local_db": lambda: local_saved_command_db,
-        "scan_fn": lambda: _generic_scan(local_saved_command_db),
-        "restore_fn": lambda items, missing_only=False: _generic_restore(local_saved_command_db, "saved_commands", "CommandId", items, missing_only),
-        "wipe_fn": lambda: _generic_wipe(local_saved_command_db, "saved_commands"),
-        "dynamo_table": "RigControlSavedCommands",
-        "key_schema": [
-            {"AttributeName": "CommandId", "KeyType": "HASH"},
-            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "CommandId", "AttributeType": "S"},
-            {"AttributeName": "EntryKey", "AttributeType": "S"},
-        ],
-    },
-    {
-        "id": "cmd_history",
-        "label": "Send Cmd History",
-        "file_name": "rigcontrol_cmd_history.db",
-        "local_db": lambda: local_cmd_history_db,
-        "scan_fn": _cmd_history_scan,
-        "restore_fn": lambda items, missing_only=False: _cmd_history_restore(items, missing_only),
-        "wipe_fn": _cmd_history_wipe,
-        "dynamo_table": "RigControlCmdHistory",
-        "key_schema": [
-            {"AttributeName": "id", "KeyType": "HASH"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "id", "AttributeType": "N"},
-        ],
-    },
-    {
-        "id": "watchdog_profiles",
-        "label": "Watchdog Profiles",
-        "file_name": "rigcontrol_watchdog_profiles.db",
-        "local_db": lambda: local_watchdog_profile_db,
-        "scan_fn": lambda: _generic_scan(local_watchdog_profile_db),
-        "restore_fn": lambda items, missing_only=False: _generic_restore(local_watchdog_profile_db, "watchdog_profiles", "WatchdogProfileId", items, missing_only),
-        "wipe_fn": lambda: _generic_wipe(local_watchdog_profile_db, "watchdog_profiles"),
-        "dynamo_table": "RigControlWatchdogProfiles",
-        "key_schema": [
-            {"AttributeName": "WatchdogProfileId", "KeyType": "HASH"},
-            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "WatchdogProfileId", "AttributeType": "S"},
-            {"AttributeName": "EntryKey", "AttributeType": "S"},
-        ],
-    },
-    {
-        "id": "wallets",
-        "label": "Wallets",
-        "file_name": "rigcontrol_wallets.db",
-        "local_db": lambda: local_wallet_db,
-        "scan_fn": lambda: _generic_scan(local_wallet_db),
-        "restore_fn": lambda items, missing_only=False: _generic_restore(local_wallet_db, "wallets", "WalletId", items, missing_only),
-        "wipe_fn": lambda: _generic_wipe(local_wallet_db, "wallets"),
-        "dynamo_table": "RigControlWallets",
-        "key_schema": [
-            {"AttributeName": "WalletId", "KeyType": "HASH"},
-            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "WalletId", "AttributeType": "S"},
-            {"AttributeName": "EntryKey", "AttributeType": "S"},
-        ],
-    },
-    {
-        "id": "status_log",
-        "label": "Status Log",
-        "file_name": "rigcontrol_status_log.db",
-        "local_db": lambda: local_status_log_db,
-        "scan_fn": _status_log_scan,
-        "restore_fn": lambda items, missing_only=False: _status_log_restore(items, missing_only),
-        "wipe_fn": _status_log_wipe,
-        "dynamo_table": "RigControlStatusLog",
-        "key_schema": [
-            {"AttributeName": "id", "KeyType": "HASH"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "id", "AttributeType": "N"},
-        ],
-    },
-    {
-        "id": "server_config",
-        "label": "Server Config",
-        "file_name": "rigcontrol_config.json",
-        "local_db": lambda: _JsonFileStub(CONFIG_FILE),
-        "scan_fn": lambda: _json_file_scan(CONFIG_FILE),
-        "restore_fn": lambda items, missing_only=False: _json_file_restore(CONFIG_FILE, items, missing_only),
-        "wipe_fn": lambda: _json_file_wipe(CONFIG_FILE),
-        "dynamo_table": "RigControlServerConfig",
-        "key_schema": [
-            {"AttributeName": "FileId", "KeyType": "HASH"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "FileId", "AttributeType": "S"},
-        ],
-    },
-    {
-        "id": "templates",
-        "label": "Templates",
-        "file_name": "templates.json",
-        "local_db": lambda: _JsonFileStub(_templates_file_path()),
-        "scan_fn": lambda: _json_file_scan(_templates_file_path()),
-        "restore_fn": lambda items, missing_only=False: _json_file_restore(_templates_file_path(), items, missing_only),
-        "wipe_fn": lambda: _json_file_wipe(_templates_file_path()),
-        "dynamo_table": "RigControlTemplates",
-        "key_schema": [
-            {"AttributeName": "FileId", "KeyType": "HASH"},
-        ],
-        "attr_defs": [
-            {"AttributeName": "FileId", "AttributeType": "S"},
-        ],
-    },
-]
-def get_backup_target(target_id: str):
-    for t in BACKUP_TARGETS:
-        if t["id"] == target_id:
-            return t
-    return None
-def delete_local_target(target: dict):
-    wipe_fn = target.get("wipe_fn")
-    if not wipe_fn:
-        return False, "No local delete handler for this target"
-    try:
-        wipe_fn()
-        return True, None
-    except Exception as e:
-        log(f"[Backups] Local delete error for {target['id']}: {e}")
-        return False, str(e)
-def delete_dynamo_target(target: dict):
-    if not dynamodb:
-        return False, "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
-    try:
-        table = dynamodb.Table(target["dynamo_table"])
-        table.delete()
-        table.wait_until_not_exists()
-        return True, None
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "ResourceNotFoundException":
-            return True, None
-        log(f"[Backups] DynamoDB delete error for {target['id']}: {e}")
-        return False, str(e)
-    except Exception as e:
-        log(f"[Backups] DynamoDB delete error for {target['id']}: {e}")
-        return False, str(e)
-def _target_uses_entry_key(target: dict) -> bool:
-    return any(k.get("AttributeName") == "EntryKey" for k in target["key_schema"])
-def backup_target_to_dynamo(target: dict):
-    if not dynamodb:
-        return False, 0, "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
-    try:
-        table = get_or_create_dynamo_table(target["dynamo_table"], target["key_schema"], target["attr_defs"])
-        if not table:
-            return False, 0, f"Could not access or create DynamoDB table {target['dynamo_table']}"
-        items = target["scan_fn"]()
-        use_entry_key = _target_uses_entry_key(target)
-        count = 0
-        with table.batch_writer() as batch:
-            for item in items:
-                clean = {k: v for k, v in item.items() if v is not None}
-                if use_entry_key:
-                    clean["EntryKey"] = f"{item.get('GpuId')}#{item.get('Key')}"
-                batch.put_item(Item=clean)
-                count += 1
-        return True, count, None
-    except Exception as e:
-        log(f"[Backups] Backup error for {target['id']}: {e}")
-        return False, 0, str(e)
-def restore_target_from_dynamo(target: dict, missing_only: bool = False):
-    if not dynamodb:
-        return False, 0, "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
-    try:
-        table = get_or_create_dynamo_table(target["dynamo_table"], target["key_schema"], target["attr_defs"])
-        if not table:
-            return False, 0, f"Could not access or create DynamoDB table {target['dynamo_table']}"
-        items = []
-        response = table.scan()
-        items.extend(response.get("Items", []))
-        while "LastEvaluatedKey" in response:
-            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
-            items.extend(response.get("Items", []))
-        count = target["restore_fn"](items, missing_only)
-        return True, count, None
-    except Exception as e:
-        log(f"[Backups] Restore error for {target['id']}: {e}")
-        return False, 0, str(e)
-def scan_dynamo_target(target: dict):
-    if not dynamodb:
-        return False, [], "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
-    try:
-        table = get_or_create_dynamo_table(target["dynamo_table"], target["key_schema"], target["attr_defs"])
-        if not table:
-            return False, [], f"Could not access or create DynamoDB table {target['dynamo_table']}"
-        items = []
-        response = table.scan()
-        items.extend(response.get("Items", []))
-        while "LastEvaluatedKey" in response:
-            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
-            items.extend(response.get("Items", []))
-        return True, items, None
-    except Exception as e:
-        log(f"[Backups] DynamoDB scan error for {target['id']}: {e}")
-        return False, [], str(e)
-def check_backup_config():
-    AWS_KEYS_CSV = os.getenv(
-        "AWS_KEYS_CSV",
-        os.path.join(os.path.dirname(__file__), "accessKeys.csv")
-    )
-    path = Path(AWS_KEYS_CSV)
-    if not path.exists():
-        return {"ok": False, "path": str(path), "message": "accessKeys.csv not found"}
-    try:
-        creds = load_aws_credentials_from_csv(path)
-        if creds.get("aws_access_key_id") and creds.get("aws_secret_access_key"):
-            masked = creds["aws_access_key_id"][:4] + "..." + creds["aws_access_key_id"][-4:]
-            return {"ok": True, "path": str(path), "message": f"accessKeys.csv looks valid (key {masked})"}
-        return {"ok": False, "path": str(path), "message": "accessKeys.csv found but missing access key / secret key columns"}
-    except Exception as e:
-        return {"ok": False, "path": str(path), "message": f"Could not parse accessKeys.csv: {e}"}
-def test_dynamodb_connection():
-    config_check = check_backup_config()
-    if not config_check["ok"]:
-        return {"ok": False, "message": config_check["message"]}
-    try:
-        AWS_KEYS_CSV = os.getenv(
-            "AWS_KEYS_CSV",
-            os.path.join(os.path.dirname(__file__), "accessKeys.csv")
-        )
-        creds = load_aws_credentials_from_csv(AWS_KEYS_CSV)
-        client = boto3.client(
-            "dynamodb",
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
-            **creds,
-        )
-        resp = client.list_tables(Limit=100)
-        table_names = resp.get("TableNames", [])
-        backup_tables_present = [t["dynamo_table"] for t in BACKUP_TARGETS if t["dynamo_table"] in table_names]
-        return {
-            "ok": True,
-            "message": f"Connected to AWS DynamoDB ({len(table_names)} table(s) in account, {len(backup_tables_present)} RigControl backup table(s) present)",
-            "tables": table_names,
-        }
-    except Exception as e:
-        return {"ok": False, "message": f"Connection failed: {e}"}
 router = APIRouter()
 class FlightSheetEntryIn(BaseModel):
     key: str
@@ -665,8 +171,9 @@ MAX_WS_CONNECTIONS = 5
 ws_connection_count = 0
 CMD_ALL_TOPIC = "rigcontrol/all/cmd"
 CHECK_ALL_TOPIC = "rigcontrol/all/check"
-mqtt_client = None
-main_loop: asyncio.AbstractEventLoop | None = None
+_mqtt_client_ref: "aiomqtt.Client | None" = None
+mqtt_stop: asyncio.Event | None = None
+mqtt_task: asyncio.Task | None = None
 broadcast_task: asyncio.Task | None = None
 broadcast_stop: asyncio.Event | None = None
 broadcast_loop_running = False
@@ -725,10 +232,40 @@ def log(msg: str) -> None:
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now))
     ms = int((now % 1) * 1000)
     print(f"[{ts}.{ms:03d} UTC] [RigControl] {msg}", flush=True)
-import subprocess
-import psutil
-MOSQUITTO_EXE = r"C:\Program Files\mosquitto\mosquitto.exe"
-MOSQUITTO_CONF = r"C:\Program Files\mosquitto\mosquitto.conf"
+
+
+def is_mosquitto_running() -> bool:
+    try:
+        return any(
+            "mosquitto" in (process.info.get("name") or "").lower()
+            for process in psutil.process_iter(["name"])
+        )
+    except Exception as exc:
+        log(f"ERROR while checking Mosquitto process: {exc}")
+        return False
+
+
+def start_mosquitto() -> None:
+    if is_mosquitto_running():
+        log("Mosquitto already running — skipping startup")
+        return
+    log("Mosquitto not running — attempting to start")
+    try:
+        creationflags = (
+            subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.CREATE_NO_WINDOW
+        )
+        subprocess.Popen(
+            [MOSQUITTO_EXE, "-c", MOSQUITTO_CONF],
+            creationflags=creationflags,
+            close_fds=True,
+        )
+        log("Mosquitto launch command issued")
+    except Exception as exc:
+        log(f"ERROR starting Mosquitto: {exc}")
+
+
 class _ThreadLocalSQLiteConnections:
     def __init__(self, db_path, ensure_schema_fn, label=None):
         self.db_path = db_path
@@ -1902,37 +1439,6 @@ def is_unlocked_request(request: Request) -> bool:
     return True
 def has_dashboard_access(request: Request) -> bool:
     return is_local_request(request) or is_unlocked_request(request)
-def is_mosquitto_running():
-    try:
-        for p in psutil.process_iter(["pid", "name"]):
-            name = p.info.get("name")
-            if not name:
-                continue
-            if "mosquitto" in name.lower():
-                return True
-        return False
-    except Exception as e:
-        log(f"ERROR while checking Mosquitto process: {e}")
-        return False
-def start_mosquitto():
-    if is_mosquitto_running():
-        log("Mosquitto already running \u2014 skipping startup")
-        return
-    log("Mosquitto not running \u2014 attempting to start")
-    try:
-        DETACHED = (
-            subprocess.DETACHED_PROCESS |
-            subprocess.CREATE_NEW_PROCESS_GROUP |
-            subprocess.CREATE_NO_WINDOW
-        )
-        subprocess.Popen(
-            [MOSQUITTO_EXE, "-c", MOSQUITTO_CONF],
-            creationflags=DETACHED,
-            close_fds=True
-        )
-        log("Mosquitto launch command issued")
-    except Exception as e:
-        log(f"ERROR starting Mosquitto: {e}")
 def initialize_aws_dynamodb():
     global dynamodb, flightsheets_table
     AWS_KEYS_CSV = os.getenv(
@@ -2005,9 +1511,9 @@ def delete_flightsheet_if_exists(flightsheet_id: str) -> int:
     else:
         return local_flightsheet_db.delete_flightsheet(flightsheet_id)
 def initialize_local_database():
-    log(f"[LocalDB Init] Starting local database initialization (USE_AWS_DB={USE_AWS_DB})")
+    log(f"[LocalDB Init] Starting database initialization for '{local_flightsheet_db.db_path.name}' (USE_AWS_DB={USE_AWS_DB})")
     if not USE_AWS_DB:
-        log(f"[LocalDB Init] Using local SQLite database")
+        log(f"[LocalDB Init] Using local SQLite database: {local_flightsheet_db.db_path.name}")
         local_flightsheet_db.connect()
         resp = local_flightsheet_db.scan()
         item_count = len(resp.get("Items", []))
@@ -2025,7 +1531,7 @@ def initialize_local_database():
                     log(f"[LocalDB Init] Import failed, starting with empty database")
             else:
                 log(f"[LocalDB Init] No DynamoDB available for import, starting with empty database")
-        log(f"[LocalDB Init] Local database ready with {item_count} entries")
+        log(f"[LocalDB Init] '{local_flightsheet_db.db_path.name}' ready with {item_count} entries")
         return True
     log(f"[LocalDB Init] Using AWS DynamoDB")
     initialize_aws_dynamodb()
@@ -2034,16 +1540,16 @@ def initialize_local_database():
         return False
     local_db_exists = local_flightsheet_db.db_path.exists()
     if local_db_exists:
-        log(f"[LocalDB Init] Local backup database exists")
+        log(f"[LocalDB Init] Local backup database exists: {local_flightsheet_db.db_path.name}")
         resp = local_flightsheet_db.scan()
         local_count = len(resp.get("Items", []))
         if local_count == 0:
-            log(f"[LocalDB Init] Local backup is empty, importing from DynamoDB...")
+            log(f"[LocalDB Init] Local backup '{local_flightsheet_db.db_path.name}' is empty, importing from DynamoDB...")
             success = import_from_dynamodb_to_local()
             log(f"[LocalDB Init] Import {'successful' if success else 'failed'}")
             return success
         else:
-            log(f"[LocalDB Init] Local backup has {local_count} entries")
+            log(f"[LocalDB Init] Local backup '{local_flightsheet_db.db_path.name}' has {local_count} entries")
             return True
     else:
         log(f"[LocalDB Init] No local backup database found")
@@ -2147,6 +1653,510 @@ def load_aws_credentials_from_csv(csv_path: str | Path) -> dict:
                     "aws_access_key_id": access_key.strip(),
                     "aws_secret_access_key": secret_key.strip(),
                 }
+_dynamo_backup_tables: Dict[str, Any] = {}
+def _key_schema_matches(actual: list, expected: list) -> bool:
+    norm = lambda ks: {(k["AttributeName"], k["KeyType"]) for k in ks}
+    return norm(actual) == norm(expected)
+def get_or_create_dynamo_table(table_name: str, key_schema: list, attr_defs: list):
+    if not dynamodb:
+        return None
+    try:
+        table = dynamodb.Table(table_name)
+        table.load()
+        if not _key_schema_matches(table.key_schema, key_schema):
+            raise ValueError(
+                f"{table_name} already exists in AWS with an outdated key schema "
+                f"(this happens if it was created before a recent fix) - delete the "
+                f"table in the AWS DynamoDB console and try again so it can be "
+                f"recreated with the correct schema"
+            )
+        return table
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            log(f"[Backups] {table_name} missing — creating it")
+            table = dynamodb.create_table(
+                TableName=table_name,
+                KeySchema=key_schema,
+                AttributeDefinitions=attr_defs,
+                BillingMode="PAY_PER_REQUEST",
+            )
+            table.wait_until_exists()
+            log(f"[Backups] {table_name} created")
+            return table
+        log(f"[Backups] Error accessing {table_name}: {e}")
+        return None
+    except ValueError:
+        raise
+    except Exception as e:
+        log(f"[Backups] Error accessing {table_name}: {e}")
+        return None
+def _generic_scan(local_db) -> List[Dict[str, Any]]:
+    return local_db.scan().get("Items", [])
+def _generic_restore(local_db, sql_table: str, id_col: str, items: List[Dict[str, Any]], missing_only: bool = False) -> int:
+    conn = local_db._get_connection()
+    local_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    if not missing_only:
+        cursor.execute(f"DELETE FROM {sql_table}")
+        conn.commit()
+    inserted = 0
+    for item in items:
+        try:
+            row_id = item.get(id_col)
+            gpu_id = item.get("GpuId")
+            key = item.get("Key")
+            value = item.get("Value")
+            updated_at = item.get("UpdatedAt")
+            if not all([row_id, gpu_id is not None, key]):
+                continue
+            cursor.execute(f'''
+                INSERT OR IGNORE INTO {sql_table}
+                ({id_col}, GpuId, Key, Value, UpdatedAt)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                row_id,
+                int(gpu_id),
+                str(key).strip().upper(),
+                str(value) if value is not None else "",
+                int(updated_at) if updated_at is not None else int(time.time()),
+            ))
+            if cursor.rowcount > 0:
+                inserted += 1
+        except Exception as e:
+            log(f"[Backups] Restore insert error: {e}")
+            continue
+    conn.commit()
+    return inserted
+def _status_log_scan() -> List[Dict[str, Any]]:
+    conn = local_status_log_db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, rig, algo, title, details, reasons, actions, created_at
+        FROM status_log_events ORDER BY id
+    ''')
+    items = []
+    for row in cursor.fetchall():
+        items.append({
+            "id": row["id"],
+            "rig": row["rig"],
+            "algo": row["algo"],
+            "title": row["title"],
+            "details": row["details"],
+            "reasons": row["reasons"],
+            "actions": row["actions"],
+            "created_at": row["created_at"],
+        })
+    return items
+def _status_log_restore(items: List[Dict[str, Any]], missing_only: bool = False) -> int:
+    conn = local_status_log_db._get_connection()
+    local_status_log_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    if not missing_only:
+        cursor.execute("DELETE FROM status_log_events")
+        conn.commit()
+    inserted = 0
+    for item in items:
+        try:
+            cursor.execute('''
+                INSERT OR IGNORE INTO status_log_events
+                (id, rig, algo, title, details, reasons, actions, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                item.get("id"),
+                item.get("rig"),
+                item.get("algo"),
+                item.get("title"),
+                item.get("details"),
+                item.get("reasons"),
+                item.get("actions"),
+                item.get("created_at"),
+            ))
+            if cursor.rowcount > 0:
+                inserted += 1
+        except Exception as e:
+            log(f"[Backups] Status log restore insert error: {e}")
+            continue
+    conn.commit()
+    return inserted
+def _cmd_history_scan() -> List[Dict[str, Any]]:
+    conn = local_cmd_history_db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, command, created_at FROM cmd_history ORDER BY id')
+    return [
+        {"id": row["id"], "command": row["command"], "created_at": row["created_at"]}
+        for row in cursor.fetchall()
+    ]
+def _cmd_history_restore(items: List[Dict[str, Any]], missing_only: bool = False) -> int:
+    conn = local_cmd_history_db._get_connection()
+    local_cmd_history_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    if not missing_only:
+        cursor.execute("DELETE FROM cmd_history")
+        conn.commit()
+    inserted = 0
+    for item in items:
+        try:
+            cursor.execute('''
+                INSERT OR IGNORE INTO cmd_history (id, command, created_at)
+                VALUES (?, ?, ?)
+            ''', (
+                item.get("id"),
+                item.get("command"),
+                item.get("created_at"),
+            ))
+            if cursor.rowcount > 0:
+                inserted += 1
+        except Exception as e:
+            log(f"[Backups] Cmd history restore insert error: {e}")
+            continue
+    conn.commit()
+    return inserted
+def _templates_file_path():
+    return STATIC_DIR / "config" / "templates.json"
+class _JsonFileStub:
+    def __init__(self, path):
+        self._path = path
+    @property
+    def db_path(self):
+        return self._path
+def _json_file_scan(path) -> List[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return [{
+            "FileId": path.name,
+            "Content": content,
+            "UpdatedAt": int(path.stat().st_mtime),
+        }]
+    except Exception as e:
+        log(f"[Backups] Error reading {path}: {e}")
+        return []
+def _json_file_restore(path, items: List[Dict[str, Any]], missing_only: bool = False) -> int:
+    if not items:
+        return 0
+    content = items[0].get("Content")
+    if content is None:
+        return 0
+    try:
+        if missing_only and path.exists():
+            return 0
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return 1
+    except Exception as e:
+        log(f"[Backups] Error restoring {path}: {e}")
+        return 0
+def _generic_wipe(local_db, sql_table: str) -> None:
+    conn = local_db._get_connection()
+    local_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    cursor.execute(f"DELETE FROM {sql_table}")
+    conn.commit()
+def _status_log_wipe() -> None:
+    conn = local_status_log_db._get_connection()
+    local_status_log_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM status_log_events")
+    conn.commit()
+def _cmd_history_wipe() -> None:
+    conn = local_cmd_history_db._get_connection()
+    local_cmd_history_db._ensure_table_for_thread(conn)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cmd_history")
+    conn.commit()
+def _json_file_wipe(path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("{}")
+BACKUP_TARGETS = [
+    {
+        "id": "flightsheets",
+        "label": "Flightsheets",
+        "file_name": "rigcontrol_flightsheets.db",
+        "local_db": lambda: local_flightsheet_db,
+        "scan_fn": lambda: _generic_scan(local_flightsheet_db),
+        "restore_fn": lambda items, missing_only=False: _generic_restore(local_flightsheet_db, "flightsheets", "FlightsheetId", items, missing_only),
+        "wipe_fn": lambda: _generic_wipe(local_flightsheet_db, "flightsheets"),
+        "dynamo_table": "RigControlFlightsheets",
+        "key_schema": [
+            {"AttributeName": "FlightsheetId", "KeyType": "HASH"},
+            {"AttributeName": "GpuId", "KeyType": "RANGE"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "FlightsheetId", "AttributeType": "S"},
+            {"AttributeName": "GpuId", "AttributeType": "N"},
+        ],
+    },
+    {
+        "id": "overclocks",
+        "label": "Overclocks",
+        "file_name": "rigcontrol_overclocks.db",
+        "local_db": lambda: local_overclock_db,
+        "scan_fn": lambda: _generic_scan(local_overclock_db),
+        "restore_fn": lambda items, missing_only=False: _generic_restore(local_overclock_db, "overclocks", "OverclockId", items, missing_only),
+        "wipe_fn": lambda: _generic_wipe(local_overclock_db, "overclocks"),
+        "dynamo_table": "RigControlOverclocks",
+        "key_schema": [
+            {"AttributeName": "OverclockId", "KeyType": "HASH"},
+            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "OverclockId", "AttributeType": "S"},
+            {"AttributeName": "EntryKey", "AttributeType": "S"},
+        ],
+    },
+    {
+        "id": "saved_commands",
+        "label": "Saved Commands",
+        "file_name": "rigcontrol_saved_commands.db",
+        "local_db": lambda: local_saved_command_db,
+        "scan_fn": lambda: _generic_scan(local_saved_command_db),
+        "restore_fn": lambda items, missing_only=False: _generic_restore(local_saved_command_db, "saved_commands", "CommandId", items, missing_only),
+        "wipe_fn": lambda: _generic_wipe(local_saved_command_db, "saved_commands"),
+        "dynamo_table": "RigControlSavedCommands",
+        "key_schema": [
+            {"AttributeName": "CommandId", "KeyType": "HASH"},
+            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "CommandId", "AttributeType": "S"},
+            {"AttributeName": "EntryKey", "AttributeType": "S"},
+        ],
+    },
+    {
+        "id": "cmd_history",
+        "label": "Send Cmd History",
+        "file_name": "rigcontrol_cmd_history.db",
+        "local_db": lambda: local_cmd_history_db,
+        "scan_fn": _cmd_history_scan,
+        "restore_fn": lambda items, missing_only=False: _cmd_history_restore(items, missing_only),
+        "wipe_fn": _cmd_history_wipe,
+        "dynamo_table": "RigControlCmdHistory",
+        "key_schema": [
+            {"AttributeName": "id", "KeyType": "HASH"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "id", "AttributeType": "N"},
+        ],
+    },
+    {
+        "id": "watchdog_profiles",
+        "label": "Watchdog Profiles",
+        "file_name": "rigcontrol_watchdog_profiles.db",
+        "local_db": lambda: local_watchdog_profile_db,
+        "scan_fn": lambda: _generic_scan(local_watchdog_profile_db),
+        "restore_fn": lambda items, missing_only=False: _generic_restore(local_watchdog_profile_db, "watchdog_profiles", "WatchdogProfileId", items, missing_only),
+        "wipe_fn": lambda: _generic_wipe(local_watchdog_profile_db, "watchdog_profiles"),
+        "dynamo_table": "RigControlWatchdogProfiles",
+        "key_schema": [
+            {"AttributeName": "WatchdogProfileId", "KeyType": "HASH"},
+            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "WatchdogProfileId", "AttributeType": "S"},
+            {"AttributeName": "EntryKey", "AttributeType": "S"},
+        ],
+    },
+    {
+        "id": "wallets",
+        "label": "Wallets",
+        "file_name": "rigcontrol_wallets.db",
+        "local_db": lambda: local_wallet_db,
+        "scan_fn": lambda: _generic_scan(local_wallet_db),
+        "restore_fn": lambda items, missing_only=False: _generic_restore(local_wallet_db, "wallets", "WalletId", items, missing_only),
+        "wipe_fn": lambda: _generic_wipe(local_wallet_db, "wallets"),
+        "dynamo_table": "RigControlWallets",
+        "key_schema": [
+            {"AttributeName": "WalletId", "KeyType": "HASH"},
+            {"AttributeName": "EntryKey", "KeyType": "RANGE"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "WalletId", "AttributeType": "S"},
+            {"AttributeName": "EntryKey", "AttributeType": "S"},
+        ],
+    },
+    {
+        "id": "status_log",
+        "label": "Status Log",
+        "file_name": "rigcontrol_status_log.db",
+        "local_db": lambda: local_status_log_db,
+        "scan_fn": _status_log_scan,
+        "restore_fn": lambda items, missing_only=False: _status_log_restore(items, missing_only),
+        "wipe_fn": _status_log_wipe,
+        "dynamo_table": "RigControlStatusLog",
+        "key_schema": [
+            {"AttributeName": "id", "KeyType": "HASH"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "id", "AttributeType": "N"},
+        ],
+    },
+    {
+        "id": "server_config",
+        "label": "Server Config",
+        "file_name": "rigcontrol_config.json",
+        "local_db": lambda: _JsonFileStub(CONFIG_FILE),
+        "scan_fn": lambda: _json_file_scan(CONFIG_FILE),
+        "restore_fn": lambda items, missing_only=False: _json_file_restore(CONFIG_FILE, items, missing_only),
+        "wipe_fn": lambda: _json_file_wipe(CONFIG_FILE),
+        "dynamo_table": "RigControlServerConfig",
+        "key_schema": [
+            {"AttributeName": "FileId", "KeyType": "HASH"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "FileId", "AttributeType": "S"},
+        ],
+    },
+    {
+        "id": "templates",
+        "label": "Templates",
+        "file_name": "templates.json",
+        "local_db": lambda: _JsonFileStub(_templates_file_path()),
+        "scan_fn": lambda: _json_file_scan(_templates_file_path()),
+        "restore_fn": lambda items, missing_only=False: _json_file_restore(_templates_file_path(), items, missing_only),
+        "wipe_fn": lambda: _json_file_wipe(_templates_file_path()),
+        "dynamo_table": "RigControlTemplates",
+        "key_schema": [
+            {"AttributeName": "FileId", "KeyType": "HASH"},
+        ],
+        "attr_defs": [
+            {"AttributeName": "FileId", "AttributeType": "S"},
+        ],
+    },
+]
+def get_backup_target(target_id: str):
+    for t in BACKUP_TARGETS:
+        if t["id"] == target_id:
+            return t
+    return None
+def delete_local_target(target: dict):
+    wipe_fn = target.get("wipe_fn")
+    if not wipe_fn:
+        return False, "No local delete handler for this target"
+    try:
+        wipe_fn()
+        return True, None
+    except Exception as e:
+        log(f"[Backups] Local delete error for {target['id']}: {e}")
+        return False, str(e)
+def delete_dynamo_target(target: dict):
+    if not dynamodb:
+        return False, "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
+    try:
+        table = dynamodb.Table(target["dynamo_table"])
+        table.delete()
+        table.wait_until_not_exists()
+        return True, None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            return True, None
+        log(f"[Backups] DynamoDB delete error for {target['id']}: {e}")
+        return False, str(e)
+    except Exception as e:
+        log(f"[Backups] DynamoDB delete error for {target['id']}: {e}")
+        return False, str(e)
+def _target_uses_entry_key(target: dict) -> bool:
+    return any(k.get("AttributeName") == "EntryKey" for k in target["key_schema"])
+def backup_target_to_dynamo(target: dict):
+    if not dynamodb:
+        return False, 0, "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
+    try:
+        table = get_or_create_dynamo_table(target["dynamo_table"], target["key_schema"], target["attr_defs"])
+        if not table:
+            return False, 0, f"Could not access or create DynamoDB table {target['dynamo_table']}"
+        items = target["scan_fn"]()
+        use_entry_key = _target_uses_entry_key(target)
+        count = 0
+        with table.batch_writer() as batch:
+            for item in items:
+                clean = {k: v for k, v in item.items() if v is not None}
+                if use_entry_key:
+                    clean["EntryKey"] = f"{item.get('GpuId')}#{item.get('Key')}"
+                batch.put_item(Item=clean)
+                count += 1
+        return True, count, None
+    except Exception as e:
+        log(f"[Backups] Backup error for {target['id']}: {e}")
+        return False, 0, str(e)
+def restore_target_from_dynamo(target: dict, missing_only: bool = False):
+    if not dynamodb:
+        return False, 0, "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
+    try:
+        table = get_or_create_dynamo_table(target["dynamo_table"], target["key_schema"], target["attr_defs"])
+        if not table:
+            return False, 0, f"Could not access or create DynamoDB table {target['dynamo_table']}"
+        items = []
+        response = table.scan()
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        count = target["restore_fn"](items, missing_only)
+        return True, count, None
+    except Exception as e:
+        log(f"[Backups] Restore error for {target['id']}: {e}")
+        return False, 0, str(e)
+def scan_dynamo_target(target: dict):
+    if not dynamodb:
+        return False, [], "Not connected to AWS DynamoDB - check accessKeys.csv and test the connection first"
+    try:
+        table = get_or_create_dynamo_table(target["dynamo_table"], target["key_schema"], target["attr_defs"])
+        if not table:
+            return False, [], f"Could not access or create DynamoDB table {target['dynamo_table']}"
+        items = []
+        response = table.scan()
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return True, items, None
+    except Exception as e:
+        log(f"[Backups] DynamoDB scan error for {target['id']}: {e}")
+        return False, [], str(e)
+def check_backup_config():
+    AWS_KEYS_CSV = os.getenv(
+        "AWS_KEYS_CSV",
+        os.path.join(os.path.dirname(__file__), "accessKeys.csv")
+    )
+    path = Path(AWS_KEYS_CSV)
+    if not path.exists():
+        return {"ok": False, "path": str(path), "message": "accessKeys.csv not found"}
+    try:
+        creds = load_aws_credentials_from_csv(path)
+        if creds.get("aws_access_key_id") and creds.get("aws_secret_access_key"):
+            masked = creds["aws_access_key_id"][:4] + "..." + creds["aws_access_key_id"][-4:]
+            return {"ok": True, "path": str(path), "message": f"accessKeys.csv looks valid (key {masked})"}
+        return {"ok": False, "path": str(path), "message": "accessKeys.csv found but missing access key / secret key columns"}
+    except Exception as e:
+        return {"ok": False, "path": str(path), "message": f"Could not parse accessKeys.csv: {e}"}
+def test_dynamodb_connection():
+    config_check = check_backup_config()
+    if not config_check["ok"]:
+        return {"ok": False, "message": config_check["message"]}
+    try:
+        AWS_KEYS_CSV = os.getenv(
+            "AWS_KEYS_CSV",
+            os.path.join(os.path.dirname(__file__), "accessKeys.csv")
+        )
+        creds = load_aws_credentials_from_csv(AWS_KEYS_CSV)
+        client = boto3.client(
+            "dynamodb",
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+            **creds,
+        )
+        resp = client.list_tables(Limit=100)
+        table_names = resp.get("TableNames", [])
+        backup_tables_present = [t["dynamo_table"] for t in BACKUP_TARGETS if t["dynamo_table"] in table_names]
+        return {
+            "ok": True,
+            "message": f"Connected to AWS DynamoDB ({len(table_names)} table(s) in account, {len(backup_tables_present)} RigControl backup table(s) present)",
+            "tables": table_names,
+        }
+    except Exception as e:
+        return {"ok": False, "message": f"Connection failed: {e}"}
     raise RuntimeError("No valid AWS credentials found in CSV")
 def load_all_settings():
     global BROADCAST_INTERVAL, OFFLINE_PING_INTERVAL, OFFLINE_THRESHOLD, WS_PUSH_MIN_INTERVAL, MISSED_REFRESH_THRESHOLD, notification_settings, quick_actions, telemetry_visible_groups
@@ -2271,15 +2281,17 @@ def check_offline_rigs_and_notify():
                 if rig_name in rig_offline_notifications:
                     del rig_offline_notifications[rig_name]
                 docker_list = (info or {}).get("data", {}).get("docker")
-                has_docker = bool(docker_list)
-                prev_state = rig_docker_state.get(rig_name)
-                if prev_state is None:
-                    rig_docker_state[rig_name] = has_docker
-                elif prev_state != has_docker:
-                    rig_docker_state[rig_name] = has_docker
-                    if docker_channels_enabled:
-                        names = [c.get("name", "?") for c in docker_list] if docker_list else []
-                        docker_state_changes.append((rig_name, has_docker, names))
+                if isinstance(docker_list, list):
+                    has_docker = bool(docker_list)
+                    prev_state = rig_docker_state.get(rig_name)
+                    if prev_state is None:
+                        rig_docker_state[rig_name] = has_docker
+                    elif prev_state != has_docker:
+                        rig_docker_state[rig_name] = has_docker
+                        going_offline_soon = (not has_docker) and (time_offline > OFFLINE_THRESHOLD * 0.5)
+                        if docker_channels_enabled and not going_offline_soon:
+                            names = [c.get("name", "?") for c in docker_list] if docker_list else []
+                            docker_state_changes.append((rig_name, has_docker, names))
         if docker_state_changes and docker_channels_enabled and not has_dashboard_client:
             if len(docker_state_changes) == 1:
                 rig_name, _, _ = docker_state_changes[0]
@@ -2310,31 +2322,18 @@ def check_offline_rigs_and_notify():
             changed_rig_names = ", ".join(r for r, _, _ in docker_state_changes)
             log(f"[Notifications] Docker state changed for {len(docker_state_changes)} rig(s) ({changed_rig_names}) "
                 f"but a dashboard client is connected - skipping the email/SMS, state is still visible live")
-def on_connect(client, userdata, flags, reason_code, properties):
-    if reason_code == 0:
-        log(f"[MQTT] Connected to {MQTT_BROKER}:{MQTT_PORT}")
-        client.subscribe(MQTT_TOPIC_FILTER, qos=0)
-        log(f"[MQTT] Subscribed to {MQTT_TOPIC_FILTER}")
-    else:
-        log(f"[MQTT] Connect failed with reason_code={reason_code}")
-def on_message(client, userdata, msg):
+async def handle_mqtt_message(topic: str, payload: bytes):
+    """Handles an incoming MQTT message on the main asyncio event loop, offloading the blocking SQLite write to a thread."""
     try:
-        topic = msg.topic
-        data = json.loads(msg.payload.decode("utf-8"))
+        data = json.loads(payload.decode("utf-8"))
         now = time.time()
         if topic.endswith("/cmd_response"):
             log(f"[CMD_RESPONSE] {data.get('rig')} id={data.get('id')}")
-            if main_loop:
-                main_loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(push_cmd_response_to_ws(data))
-                )
+            await push_cmd_response_to_ws(data)
             return
         if topic.endswith("/stats_response"):
             log(f"[STATS_RESPONSE] {data.get('rig')} id={data.get('id')} count={data.get('count')}")
-            if main_loop:
-                main_loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(handle_stats_response_chunk(data))
-                )
+            await handle_stats_response_chunk(data)
             return
         if topic.endswith("/watchdog_alert"):
             wd_rig = data.get("rig", "unknown")
@@ -2359,7 +2358,6 @@ def on_message(client, userdata, msg):
                     sms_secondary_number=notification_settings.get("sms_secondary_number"),
                 )
                 notification_queued = True
-                log(f"[WATCHDOG_ALERT] Notification queued for {wd_rig}")
             sl_title = f"{wd_rig}: {wd_algo}"
             sl_details_lines = [
                 f"Rig: {wd_rig}",
@@ -2371,11 +2369,12 @@ def on_message(client, userdata, msg):
             if notification_queued:
                 sl_details_lines.append("Notification: queued (see server log for send result)")
             sl_details = "\n".join(sl_details_lines)
-            sl_event_id = local_status_log_db.insert_event(
+            sl_event_id = await asyncio.to_thread(
+                local_status_log_db.insert_event,
                 rig=wd_rig, algo=wd_algo, title=sl_title,
                 details=sl_details, reasons=wd_reasons, actions=wd_actions,
             )
-            if sl_event_id is not None and main_loop:
+            if sl_event_id is not None:
                 sl_event = {
                     "id": sl_event_id,
                     "rig": wd_rig,
@@ -2383,9 +2382,7 @@ def on_message(client, userdata, msg):
                     "title": sl_title,
                     "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)),
                 }
-                main_loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(push_status_log_event_to_ws(sl_event))
-                )
+                await push_status_log_event_to_ws(sl_event)
             return
         rig_name = data.get("rig")
         if not rig_name:
@@ -2420,8 +2417,8 @@ def on_message(client, userdata, msg):
                 log(f"[Online] {rig_name} came back online")
                 if rig_name in rig_offline_notifications:
                     del rig_offline_notifications[rig_name]
-        if main_loop and connected_clients:
-            main_loop.call_soon_threadsafe(request_broadcast)
+        if connected_clients:
+            request_broadcast()
     except json.JSONDecodeError:
         log(f"[MQTT] Invalid JSON in message from {topic}")
     except Exception as e:
@@ -2450,39 +2447,56 @@ def build_current_snapshot():
                         },
                     }
     return snapshot
-def mqtt_publish(topic: str, payload: dict):
+async def mqtt_publish(topic: str, payload: dict):
+    if _mqtt_client_ref is None:
+        log(f"[MQTT] Publish skipped (not connected yet): {topic}")
+        return
     try:
-        mqtt_client.publish(topic, json.dumps(payload), qos=0)
+        await _mqtt_client_ref.publish(topic, json.dumps(payload), qos=0)
     except Exception as e:
         log(f"[MQTT] Publish error: {e}")
-def mqtt_thread_main():
-    global mqtt_client
+async def mqtt_loop():
+    """Async MQTT client task on the main event loop; auto-reconnects with a 3s backoff on error."""
+    global _mqtt_client_ref
     log(f"[MQTT] Mode={MQTT_MODE} Connecting to {MQTT_BROKER}:{MQTT_PORT} ...")
-    mqtt_client = mqtt.Client(
-        client_id=f"rigcontrol-dashboard-{os.getpid()}",
-        protocol=mqtt.MQTTv311,
-        callback_api_version=CallbackAPIVersion.VERSION2
-    )
-    if MQTT_MODE == "local" or MQTT_MODE == "pi":
-        if MQTT_USER:
-            mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
-    elif MQTT_MODE == "aws":
-        mqtt_client.tls_set(
+    tls_params = None
+    if MQTT_MODE == "aws":
+        tls_params = aiomqtt.TLSParameters(
             ca_certs=MQTT_CA,
             certfile=MQTT_CERT,
-            keyfile=MQTT_KEY
+            keyfile=MQTT_KEY,
         )
-        mqtt_client.tls_insecure_set(False)
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_message = on_message
     keepalive = 30 if MQTT_MODE == "aws" else 60
-    while True:
+    while not mqtt_stop.is_set():
         try:
-            mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=keepalive)
-            mqtt_client.loop_forever()
+            async with aiomqtt.Client(
+                hostname=MQTT_BROKER,
+                port=MQTT_PORT,
+                identifier=f"rigcontrol-dashboard-{os.getpid()}",
+                username=MQTT_USER if MQTT_MODE in ("local", "pi") else None,
+                password=MQTT_PASS if MQTT_MODE in ("local", "pi") else None,
+                tls_params=tls_params,
+                keepalive=keepalive,
+            ) as client:
+                _mqtt_client_ref = client
+                log(f"[MQTT] Connected to {MQTT_BROKER}:{MQTT_PORT}")
+                await client.subscribe(MQTT_TOPIC_FILTER, qos=0)
+                log(f"[MQTT] Subscribed to {MQTT_TOPIC_FILTER}")
+                async for message in client.messages:
+                    await handle_mqtt_message(str(message.topic), message.payload)
+        except asyncio.CancelledError:
+            _mqtt_client_ref = None
+            raise
+        except aiomqtt.MqttError as e:
+            _mqtt_client_ref = None
+            log(f"[MQTT] Connection error: {e} \u2014 retrying in 3s")
+            await asyncio.sleep(3)
         except Exception as e:
-            log(f"[MQTT] Error: {e} \u2014 retrying in 3s")
-            time.sleep(3)
+            _mqtt_client_ref = None
+            log(f"[MQTT] Unexpected error: {e} \u2014 retrying in 3s")
+            await asyncio.sleep(3)
+    _mqtt_client_ref = None
+    log("[MQTT] Loop stopped")
 async def push_cmd_response_to_ws(resp: dict):
     async with clients_lock:
         clients = list(connected_clients)
@@ -2589,7 +2603,7 @@ async def broadcast_loop():
             just_refreshed = False
             if now - last_refresh_ts >= current_interval:
                 just_refreshed = True
-                mqtt_publish(
+                await mqtt_publish(
                     CMD_ALL_TOPIC,
                     {
                         "id": f"refresh-{int(time.time())}",
@@ -2709,7 +2723,7 @@ async def offline_ping_loop():
             async with clients_lock:
                 has_clients = len(connected_clients) > 0
             if not has_clients and now - last_offline_ping_ts >= current_interval:
-                mqtt_publish(
+                await mqtt_publish(
                     CHECK_ALL_TOPIC,
                     {
                         "id": f"offline-ping-{int(time.time())}",
@@ -2806,7 +2820,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 pass
         broadcast_task = asyncio.create_task(broadcast_loop())
         log("[Broadcast] Loop started (first client)")
-        mqtt_publish(
+        await mqtt_publish(
             CMD_ALL_TOPIC,
             {
                 "id": f"refresh-{int(time.time())}",
@@ -2893,8 +2907,8 @@ def get_rigs():
         snapshot = dict(rigs)
     return {"rigs": snapshot}
 @router.post("/refresh")
-def refresh_all():
-    mqtt_publish(
+async def refresh_all():
+    await mqtt_publish(
         CMD_ALL_TOPIC,
         {
             "id": f"refresh-{int(time.time())}",
@@ -2905,7 +2919,7 @@ def refresh_all():
     )
     return {"status": "refresh sent"}
 @router.post("/reset")
-def reset_known_rigs():
+async def reset_known_rigs():
     global last_refresh_ts
     last_refresh_ts = time.time()
     with known_rigs_lock, rigs_lock, rig_online_status_lock, rig_offline_notifications_lock:
@@ -2913,7 +2927,7 @@ def reset_known_rigs():
         rigs.clear()
         rig_online_status.clear()
         rig_offline_notifications.clear()
-    mqtt_publish(
+    await mqtt_publish(
         CMD_ALL_TOPIC,
         {
             "id": f"refresh-{int(time.time())}",
@@ -2934,7 +2948,7 @@ async def send_command(payload: dict):
     msg = {"id": cmd_id, "command": command}
     for rig in rigs_list:
         topic = f"rigcontrol/{rig}/cmd"
-        mqtt_publish(topic, msg)
+        await mqtt_publish(topic, msg)
         log(f"[CMD] Sent command to {rig}: {command!r}")
     return {
         "status": "sent",
@@ -2968,7 +2982,7 @@ async def request_stats_history(payload: dict):
     if start_date:
         msg["start_date"] = start_date
     topic = f"rigcontrol/{rig}/stats_request"
-    mqtt_publish(topic, msg)
+    await mqtt_publish(topic, msg)
     log(f"[STATS_REQUEST] Sent to {rig}: days={days} limit={limit} start_date={start_date} id={req_id}")
     return {"status": "sent", "id": req_id, "rig": rig, "days": days, "start_date": start_date}
 @router.post("/api/stats/control")
@@ -2997,7 +3011,7 @@ async def stats_control_for_rigs(payload: dict):
         raise HTTPException(status_code=400, detail="no valid settings provided")
     for rig in rigs_list:
         topic = f"rigcontrol/{rig}/stats_control"
-        mqtt_publish(topic, msg)
+        await mqtt_publish(topic, msg)
     log(f"[STATS_CONTROL] Sent to {len(rigs_list)} rig(s) {rigs_list}: {msg}")
     return {"status": "sent", "rigs": rigs_list, "settings": msg}
 @router.get("/api/flightsheets")
@@ -3529,7 +3543,7 @@ async def save_offline_ping_interval(payload: dict):
 async def trigger_offline_ping(payload: dict = None):
     global last_offline_ping_ts
     log(f"[Offline Ping] Manually triggered refresh ping")
-    mqtt_publish(
+    await mqtt_publish(
         CHECK_ALL_TOPIC,
         {
             "id": f"manual-offline-ping-{int(time.time())}",
@@ -3838,7 +3852,7 @@ async def update_telemetry_columns(payload: TelemetryColumnsIn):
     }
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global main_loop, broadcast_stop, broadcast_task, broadcast_loop_running
+    global mqtt_stop, mqtt_task, broadcast_stop, broadcast_task, broadcast_loop_running
     global offline_ping_stop, offline_ping_task, offline_ping_running, last_offline_ping_ts
     global maintenance_sweep_stop, maintenance_sweep_task
     load_all_settings()
@@ -3851,11 +3865,12 @@ async def lifespan(app: FastAPI):
     broadcast_stop = asyncio.Event()
     offline_ping_stop = asyncio.Event()
     last_offline_ping_ts = time.time()
-    main_loop = asyncio.get_running_loop()
     log("[Startup] Dashboard server starting - state cleaned")
     start_notification_workers()
     maintenance_sweep_stop = asyncio.Event()
     maintenance_sweep_task = asyncio.create_task(maintenance_sweep_loop())
+    mqtt_stop = asyncio.Event()
+    mqtt_task = asyncio.create_task(mqtt_loop())
     try:
         THEMES_DIR.mkdir(parents=True, exist_ok=True)
         theme_count = len(list(THEMES_DIR.glob("*.json")))
@@ -3905,6 +3920,11 @@ async def lifespan(app: FastAPI):
     if maintenance_sweep_task:
         maintenance_sweep_task.cancel()
         maintenance_sweep_task = None
+    if mqtt_stop:
+        mqtt_stop.set()
+    if mqtt_task:
+        mqtt_task.cancel()
+        mqtt_task = None
     if broadcast_stop:
         broadcast_stop.set()
     if broadcast_task:
@@ -4414,6 +4434,4 @@ else:
 if __name__ == "__main__":
     if MQTT_MODE == "local":
         start_mosquitto()
-    t = threading.Thread(target=mqtt_thread_main, daemon=True)
-    t.start()
     uvicorn.run(app, host=API_BIND, port=API_PORT, log_level="info")
