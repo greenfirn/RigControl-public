@@ -2880,6 +2880,7 @@ h1 {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-left: auto;
 }
 #stats-apply-to-wrap,
 #agentconf-apply-to-wrap {

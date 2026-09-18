@@ -2239,13 +2239,14 @@ nvidia-smi
             </div>
             <div class="cmd-body">
             <div class="settings-main-tabs" id="settings-main-tabs">
-                <button type="button" class="settings-main-tab-btn active" id="settings-main-tab-btn-general" data-tab-panel="general">General</button>
-                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Configs</button>
+                <button type="button" class="settings-main-tab-btn active" id="settings-main-tab-btn-agentconf" data-tab-panel="agentconf">Configs</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-general" data-tab-panel="general">General</button>
+                <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-stats" data-tab-panel="stats">Stats</button>
                 <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-templates" data-tab-panel="templates">Templates</button>
                 <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-backups" data-tab-panel="backups">Backups</button>
                 <button type="button" class="settings-main-tab-btn" id="settings-main-tab-btn-advanced" data-tab-panel="advanced">Advanced Server Settings</button>
             </div>
-            <div class="settings-main-tab-panel" data-tab-panel="general">
+            <div class="settings-main-tab-panel hidden" data-tab-panel="general">
             <div class="refresh-left-pane">
               <div class="settings-col">
                 <div class="settings-section">
@@ -2378,6 +2379,34 @@ nvidia-smi
                         </div>
                     </div>
                 </div>
+              </div>
+            </div>
+            <div class="cmd-footer">
+                <div class="refresh-footer-status">
+                    <div class="status-row">
+                        <span class="status-label">Active</span>
+                        <span class="status-value" id="current-connections">0</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Workers</span>
+                        <span class="status-value" id="rigs-monitored">0</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Offline</span>
+                        <span class="status-value" id="rigs-offline">0</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Last Notification</span>
+                        <span class="status-value" id="last-notification">Never</span>
+                    </div>
+                </div>
+                <div class="footer-buttons-right">
+                    <button class="cmd-btn ok" id="btn-refresh-save">Apply Notifications</button>
+                </div>
+            </div>
+            </div>
+            <div class="settings-main-tab-panel hidden" data-tab-panel="stats">
+              <div class="settings-col">
                 <div class="settings-section">
                     <div class="section-header">
                         Stats Database
@@ -2416,43 +2445,23 @@ nvidia-smi
                     <div class="input-help stats-settings-hint">Saves on interval, keep this many days.</div>
                 </div>
               </div>
-            </div>
-            <div class="cmd-footer">
-                <div class="refresh-footer-status">
-                    <div class="status-row">
-                        <span class="status-label">Active</span>
-                        <span class="status-value" id="current-connections">0</span>
-                    </div>
-                    <div class="status-row">
-                        <span class="status-label">Workers</span>
-                        <span class="status-value" id="rigs-monitored">0</span>
-                    </div>
-                    <div class="status-row">
-                        <span class="status-label">Offline</span>
-                        <span class="status-value" id="rigs-offline">0</span>
-                    </div>
-                    <div class="status-row">
-                        <span class="status-label">Last Notification</span>
-                        <span class="status-value" id="last-notification">Never</span>
-                    </div>
-                </div>
-                <div class="footer-buttons-right">
-                    <div class="field-group fs-apply-to-group" id="stats-apply-to-wrap">
-                        <button type="button" class="fs-apply-to-toggle" id="btn-stats-apply-to-toggle" title="Choose which worker(s) to apply stats settings to. Defaults to whatever's selected in the main worker list.">Workers</button>
-                        <div class="fs-apply-to-list hidden" id="stats-apply-to-list">
-                            <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
-                            <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
-                            <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
-                            <div class="fs-apply-to-sep"></div>
-                            <div class="fs-apply-to-workers" id="stats-apply-to-workers"></div>
+                <div class="cmd-footer">
+                    <div class="footer-buttons-right">
+                        <div class="field-group fs-apply-to-group" id="stats-apply-to-wrap">
+                            <button type="button" class="fs-apply-to-toggle" id="btn-stats-apply-to-toggle" title="Choose which worker(s) to apply stats settings to. Defaults to whatever's selected in the main worker list.">Workers</button>
+                            <div class="fs-apply-to-list hidden" id="stats-apply-to-list">
+                                <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
+                                <div class="fs-apply-to-item fs-apply-to-special" id="stats-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
+                                <div class="fs-apply-to-sep"></div>
+                                <div class="fs-apply-to-workers" id="stats-apply-to-workers"></div>
+                            </div>
                         </div>
+                        <button class="cmd-btn secondary" id="btn-apply-stats-settings" title="Apply to selected workers">Apply Stats</button>
                     </div>
-                    <button class="cmd-btn ok" id="btn-refresh-save">Apply Notifications</button>
-                    <button class="cmd-btn secondary" id="btn-apply-stats-settings" title="Apply to selected workers">Apply Stats</button>
                 </div>
             </div>
-            </div>
-            <div class="settings-main-tab-panel hidden" data-tab-panel="agentconf">
+            <div class="settings-main-tab-panel" data-tab-panel="agentconf">
                 <div class="wdconfig-raw-section">
                     <div class="conf-type-select-row">
                         <label for="settings-conf-type-select">Conf</label>

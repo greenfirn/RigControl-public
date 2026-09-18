@@ -5991,7 +5991,7 @@ function openRefreshModal() {
     updateStatusDisplay();
     updateStatsSettingsTargetCount();
     switchViewTab("settings");
-    switchSettingsMainTab("general");
+    switchSettingsMainTab("agentconf");
 }
 function positionApplyToDropdown(toggleId, listId) {
     const toggle = document.getElementById(toggleId);
