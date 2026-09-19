@@ -976,6 +976,8 @@ const FS_CHECKBOX_FIELD_DEFAULTS = {
     "fs-field-apply-oc": false,
     "fs-field-ssl": false,
     "fs-field-tls": false,
+    "fs-field-disable": false,
+    "fs-field-enable": false,
     "fs-field-restart": false
 };
 const FS_RAW_KEY_MAP = {
@@ -984,6 +986,8 @@ const FS_RAW_KEY_MAP = {
     "TARGET_NAME": { id: "fs-field-target-name", type: "text" },
     "RESET_OC": { id: "fs-field-reset-oc", type: "checkbox" },
     "APPLY_OC": { id: "fs-field-apply-oc", type: "checkbox" },
+    "DISABLE": { id: "fs-field-disable", type: "checkbox" },
+    "ENABLE": { id: "fs-field-enable", type: "checkbox" },
     "RESTART": { id: "fs-field-restart", type: "checkbox" },
     "VERSION": { id: "fs-field-miner-version", type: "text" },
     "SERVICE_TYPE": { id: "fs-field-service-type", type: "text" },
@@ -999,7 +1003,7 @@ const FS_RAW_KEY_MAP = {
 };
 const FS_FIELD_ID_TO_KEY = {};
 const FS_KEY_ORDER = [
-    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC", "RESTART", "VERSION",
+    "SERVICE_TYPE", "TARGET_IMAGE", "TARGET_NAME", "APPLY_OC", "RESET_OC", "DISABLE", "ENABLE", "RESTART", "VERSION",
     "MINER", "ALGO", "PASS", "POOL", "WALLET", "TEMPLATE", "ARGS",
     "CUSTOM_MINER", "CUSTOM_MINER_URL"
 ];
@@ -7912,6 +7916,8 @@ function collectFsFieldValues() {
         TARGET_NAME: val("fs-field-target-name"),
         APPLY_OC: boolVal("fs-field-apply-oc"),
         RESET_OC: boolVal("fs-field-reset-oc"),
+        DISABLE: boolVal("fs-field-disable"),
+        ENABLE: boolVal("fs-field-enable"),
         RESTART: boolVal("fs-field-restart"),
         VERSION: val("fs-field-miner-version"),
         MINER: val("fs-field-miner"),
@@ -8087,6 +8093,8 @@ function buildRigGpuItemObject(values, stash) {
     if (values.TARGET_NAME) item.target_name = values.TARGET_NAME;
     if (values.RESET_OC) item.reset_oc = values.RESET_OC;
     if (values.APPLY_OC) item.apply_oc = values.APPLY_OC;
+    if (values.DISABLE) item.disable = values.DISABLE;
+    if (values.ENABLE) item.enable = values.ENABLE;
     if (values.RESTART) item.restart = values.RESTART;
     if (values.VERSION && values.VERSION.trim()) item.version = values.VERSION.trim();
     item.pool_urls = poolUrls;
@@ -8660,6 +8668,8 @@ function fsFieldsFromRigGpuJsonItem(item) {
         TARGET_NAME: item.target_name || "",
         RESET_OC: item.reset_oc || "",
         APPLY_OC: item.apply_oc || "",
+        DISABLE: item.disable || "",
+        ENABLE: item.enable || "",
         RESTART: item.restart || "",
         VERSION: item.version || "",
         MINER: isCustom ? "custom" : (item.miner_alt || mc.fork || item.miner || ""),
@@ -8705,6 +8715,14 @@ function fsFieldsFromRigGpuJsonItem(item) {
 function fsApplyRestartLine(blockText, svc, restartOn) {
     const stripped = blockText.replace(new RegExp(`\\n?sudo systemctl restart docker_events_${svc}\\s*$`), "");
     return restartOn ? `${stripped}\nsudo systemctl restart docker_events_${svc}` : stripped;
+}
+function fsApplyEnableLine(blockText, svc, enableOn) {
+    const stripped = blockText.replace(new RegExp(`\\n?sudo systemctl enable docker_events_${svc}\\s*$`), "");
+    return enableOn ? `${stripped}\nsudo systemctl enable docker_events_${svc}` : stripped;
+}
+function fsApplyDisableLine(blockText, svc, disableOn) {
+    const stripped = blockText.replace(new RegExp(`\\n?sudo systemctl disable docker_events_${svc}\\s*$`), "");
+    return disableOn ? `${stripped}\nsudo systemctl disable docker_events_${svc}` : stripped;
 }
 function fsTemplateForService(svc) {
     const fsCfg = TEMPLATES_CONFIG.flightsheet;
@@ -8757,7 +8775,9 @@ function buildFsBlock(mode) {
         RIG_GPU_JSON: buildRigGpuJsonBody(values),
     });
     const withRestart = fsApplyRestartLine(block, mode, values.RESTART === "true");
-    return fsApplyVersionBlock(withRestart, values.VERSION, values.MINER);
+    const withEnable = fsApplyEnableLine(withRestart, mode, values.ENABLE === "true");
+    const withDisable = fsApplyDisableLine(withEnable, mode, values.DISABLE === "true");
+    return fsApplyVersionBlock(withDisable, values.VERSION, values.MINER);
 }
 function buildFsCombinedBlock() {
     const activeService = getCurrentFsServiceType();
@@ -8770,7 +8790,9 @@ function buildFsCombinedBlock() {
                 RIG_GPU_JSON: buildRigGpuJsonBody(values),
             });
             const withRestart = fsApplyRestartLine(block, svc, values.RESTART === "true");
-            blocks.push(fsApplyVersionBlock(withRestart, values.VERSION, values.MINER));
+            const withEnable = fsApplyEnableLine(withRestart, svc, values.ENABLE === "true");
+            const withDisable = fsApplyDisableLine(withEnable, svc, values.DISABLE === "true");
+            blocks.push(fsApplyVersionBlock(withDisable, values.VERSION, values.MINER));
             continue;
         }
         const slot = fsDualModeSlots[svc];
@@ -8782,7 +8804,9 @@ function buildFsCombinedBlock() {
             RIG_GPU_JSON: JSON.stringify(body, null, 2),
         });
         const withRestart = fsApplyRestartLine(block, svc, slot.values.RESTART === "true");
-        blocks.push(fsApplyVersionBlock(withRestart, slot.values.VERSION, slot.values.MINER));
+        const withEnable = fsApplyEnableLine(withRestart, svc, slot.values.ENABLE === "true");
+        const withDisable = fsApplyDisableLine(withEnable, svc, slot.values.DISABLE === "true");
+        blocks.push(fsApplyVersionBlock(withDisable, slot.values.VERSION, slot.values.MINER));
     }
     return blocks.join("\n");
 }
@@ -9033,11 +9057,13 @@ function fsSlotHasRealContent(values) {
     return !!((values.MINER && values.MINER.trim()) || (values.CUSTOM_MINER && values.CUSTOM_MINER.trim()));
 }
 function fsUpdateRestartCheckboxDisabled() {
-    const el = document.getElementById("fs-field-restart");
-    if (!el) return;
     const hasContent = fsSlotHasRealContent(collectFsFieldValues());
-    el.disabled = !hasContent;
-    if (!hasContent) el.checked = false;
+    for (const id of ["fs-field-disable", "fs-field-enable", "fs-field-restart"]) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.disabled = !hasContent;
+        if (!hasContent) el.checked = false;
+    }
     fsSyncServiceTabsUI();
     updateFsMinerConfigCustomVisibility();
 }
@@ -9173,6 +9199,16 @@ function openFsMinerConfigModal() {
         const inputEl = document.getElementById(id);
         const label = inputEl ? inputEl.closest("label.checkbox-label") : null;
         fsMcMoveIntoSlot(label, "fs-mc-slot-checks");
+    }
+    {
+        const disableEl = document.getElementById("fs-field-disable");
+        const disableLabel = disableEl ? disableEl.closest("label.checkbox-label") : null;
+        fsMcMoveIntoSlot(disableLabel, "fs-mc-slot-disable");
+    }
+    {
+        const enableEl = document.getElementById("fs-field-enable");
+        const enableLabel = enableEl ? enableEl.closest("label.checkbox-label") : null;
+        fsMcMoveIntoSlot(enableLabel, "fs-mc-slot-enable");
     }
     {
         const restartEl = document.getElementById("fs-field-restart");
@@ -9491,7 +9527,12 @@ function updateRawFromFieldChange(target) {
         handleFsServiceSwitch(target.value);
         return;
     }
-    if (target.id === "fs-field-restart") {
+    if (target.id === "fs-field-restart" || target.id === "fs-field-enable" || target.id === "fs-field-disable") {
+        if (target.checked && (target.id === "fs-field-enable" || target.id === "fs-field-disable")) {
+            const otherId = target.id === "fs-field-enable" ? "fs-field-disable" : "fs-field-enable";
+            const otherEl = document.getElementById(otherId);
+            if (otherEl) otherEl.checked = false;
+        }
         fsSyncServiceTabsUI();
         const rawEl = document.getElementById("fs-raw");
         if (rawEl) {
