@@ -330,21 +330,38 @@ def collect_nvidia_gpu_stats():
                 pci_slot = ":".join(pci_bus.split(":")[-2:]).lower()
                 try:
                     rc2 = subprocess.run(
-                        f"lspci -v -s {pci_slot}",
+                        f"lspci -nnv -s {pci_slot}",
                         shell=True, capture_output=True, text=True, timeout=1.0
                     )
                     if rc2.returncode == 0:
-                        pci_info = rc2.stdout.lower()
-                        for pattern, partner in [
-                            ("asus", "ASUS"), ("evga", "EVGA"), ("msi", "MSI"),
-                            ("gigabyte", "Gigabyte"), ("zotac", "Zotac"),
-                            ("pny", "PNY"), ("galax", "Galax"),
-                            ("colorful", "Colorful"), ("inno3d", "Inno3D"),
-                            ("palit", "Palit"), ("gainward", "Gainward"),
-                        ]:
-                            if pattern in pci_info:
-                                board_partner = partner
+                        subsystem_line = ""
+                        for line in rc2.stdout.splitlines():
+                            if "subsystem:" in line.lower():
+                                subsystem_line = line.lower()
                                 break
+                        subsys_id_match = re.search(r"\[([0-9a-f]{4}):([0-9a-f]{4})\]", subsystem_line)
+                        if subsys_id_match:
+                            board_partner = {
+                                "1043": "ASUS", "3842": "EVGA", "1462": "MSI",
+                                "1458": "Gigabyte", "19da": "Zotac", "196e": "PNY",
+                                "10b0": "Palit", "19f1": "Gainward", "1b4c": "Galax",
+                                "196d": "Colorful", "1c5c": "Inno3D",
+                                "10de": "NVIDIA Founders Edition",
+                            }.get(subsys_id_match.group(1), "")
+                        if not board_partner and subsystem_line:
+                            # only the Subsystem line - not the full -v dump, which
+                            # always contains an "MSI:"/"MSI-X:" interrupt capability
+                            # line that would otherwise false-match brand "msi"
+                            for pattern, partner in [
+                                ("asus", "ASUS"), ("evga", "EVGA"), ("msi", "MSI"),
+                                ("gigabyte", "Gigabyte"), ("zotac", "Zotac"),
+                                ("pny", "PNY"), ("galax", "Galax"),
+                                ("colorful", "Colorful"), ("inno3d", "Inno3D"),
+                                ("palit", "Palit"), ("gainward", "Gainward"),
+                            ]:
+                                if pattern in subsystem_line:
+                                    board_partner = partner
+                                    break
                 except Exception:
                     pass
             if not board_partner:
@@ -570,7 +587,14 @@ def determine_amd_board_partner(pci_id: str, gpu_name: str) -> str:
                 shell=True, capture_output=True, text=True, timeout=1.0
             )
             if rc.returncode == 0:
-                pci_info = rc.stdout.lower()
+                subsystem_line = ""
+                for line in rc.stdout.splitlines():
+                    if "subsystem:" in line.lower():
+                        subsystem_line = line.lower()
+                        break
+                # only the Subsystem line - not the full -v dump, which always
+                # contains an "MSI:"/"MSI-X:" interrupt capability line that
+                # would otherwise false-match brand "msi" on any AIB partner
                 for pattern, name in [
                     ("asus", "ASUS"), ("msi", "MSI"),
                     ("gigabyte", "Gigabyte"), ("sapphire", "Sapphire"),
@@ -579,10 +603,10 @@ def determine_amd_board_partner(pci_id: str, gpu_name: str) -> str:
                     ("club 3d", "Club 3D"), ("biostar", "Biostar"),
                     ("asrock", "ASRock"),
                 ]:
-                    if pattern in pci_info:
+                    if pattern in subsystem_line:
                         board_partner = name
                         break
-                if not board_partner and "advanced micro devices" in pci_info:
+                if not board_partner and "advanced micro devices" in subsystem_line:
                     board_partner = "AMD (Reference)"
         except Exception:
             pass
