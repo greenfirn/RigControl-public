@@ -5143,9 +5143,85 @@ function toggleDocker(id) {
 }
 function stopClick(ev) { ev.stopPropagation(); }
 let cmdModalRigOverride = null;
+let cmdApplyToRigs = new Set();
+function isCmdApplyToDropdownOpen() {
+    const list = document.getElementById("cmd-apply-to-list");
+    return !!list && !list.classList.contains("hidden");
+}
+function openCmdApplyToDropdown() {
+    populateCmdApplyToWorkerList();
+    document.getElementById("cmd-apply-to-list")?.classList.remove("hidden");
+    positionApplyToDropdown("btn-cmd-apply-to-toggle", "cmd-apply-to-list");
+}
+function closeCmdApplyToDropdown() {
+    document.getElementById("cmd-apply-to-list")?.classList.add("hidden");
+}
+function toggleCmdApplyToDropdown() {
+    if (isCmdApplyToDropdownOpen()) closeCmdApplyToDropdown();
+    else openCmdApplyToDropdown();
+}
+function updateCmdApplyToToggleLabel() {
+    const btn = document.getElementById("btn-cmd-apply-to-toggle");
+    if (!btn) return;
+    if (cmdApplyToRigs.size === 0) btn.textContent = "Workers";
+    else if (cmdApplyToRigs.size === 1) btn.textContent = Array.from(cmdApplyToRigs)[0];
+    else btn.textContent = `${cmdApplyToRigs.size} workers`;
+}
+function updateCmdApplyToWorkersOptionCheckedState() {
+    const opt = document.getElementById("cmd-apply-to-workers-option");
+    if (opt) opt.classList.toggle("fs-apply-to-active", cmdApplyToRigs.size === 0);
+}
+function populateCmdApplyToWorkerList() {
+    const container = document.getElementById("cmd-apply-to-workers");
+    if (!container) return;
+    container.innerHTML = "";
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs").sort();
+    rigNames.forEach((name) => {
+        const row = document.createElement("label");
+        row.className = "fs-apply-to-worker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = cmdApplyToRigs.has(name);
+        cb.addEventListener("change", () => {
+            if (cb.checked) cmdApplyToRigs.add(name);
+            else cmdApplyToRigs.delete(name);
+            updateCmdApplyToToggleLabel();
+            updateCmdApplyToWorkersOptionCheckedState();
+            updateCmdTargetCount();
+        });
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(span);
+        container.appendChild(row);
+    });
+    updateCmdApplyToWorkersOptionCheckedState();
+}
+function clearCmdApplyToSelection() {
+    cmdApplyToRigs.clear();
+    updateCmdApplyToToggleLabel();
+    populateCmdApplyToWorkerList();
+    updateCmdTargetCount();
+}
+function selectAllCmdApplyTo() {
+    const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
+    cmdApplyToRigs = new Set(rigNames);
+    updateCmdApplyToToggleLabel();
+    populateCmdApplyToWorkerList();
+    updateCmdTargetCount();
+}
+function updateCmdTargetCount() {
+    const count = cmdApplyToRigs.size > 0 ? cmdApplyToRigs.size : selectedRigs.size;
+    const countEl = document.getElementById("cmd-target-count");
+    if (countEl) countEl.textContent = count;
+}
 function openCmdModal() {
-    document.getElementById("cmd-target-count").textContent =
-        (cmdModalRigOverride && cmdModalRigOverride.length) ? cmdModalRigOverride.length : selectedRigs.size;
+    if (cmdModalRigOverride && cmdModalRigOverride.length) {
+        cmdApplyToRigs = new Set(cmdModalRigOverride);
+        cmdModalRigOverride = null;
+    }
+    updateCmdApplyToToggleLabel();
+    updateCmdTargetCount();
     const input = document.getElementById("cmd-input");
     const out = document.getElementById("cmd-output");
     if (out) out.textContent = "";
@@ -5157,6 +5233,7 @@ function openCmdModal() {
 }
 function closeCmdModal() {
     document.getElementById("cmd-modal").classList.add("hidden");
+    closeCmdApplyToDropdown();
     cmdModalRigOverride = null;
 }
 function initCmdMainTabs() {
@@ -6597,10 +6674,17 @@ function handleOfflinePingIntervalChangeNotification(msg) {
     }
 }
 async function sendCommandToSelectedRigs(command) {
-    const targets = (cmdModalRigOverride && cmdModalRigOverride.length)
-        ? cmdModalRigOverride
-        : Array.from(selectedRigs);
-    cmdModalRigOverride = null;
+    // cmdModalRigOverride is a one-shot override used by callers that send a
+    // command directly without going through the Send Cmd modal at all (e.g.
+    // silent-send when its own "confirm" checkbox is unchecked); when the
+    // modal IS opened, openCmdModal() already consumes it into cmdApplyToRigs.
+    let targets;
+    if (cmdModalRigOverride && cmdModalRigOverride.length) {
+        targets = cmdModalRigOverride;
+        cmdModalRigOverride = null;
+    } else {
+        targets = cmdApplyToRigs.size > 0 ? Array.from(cmdApplyToRigs) : Array.from(selectedRigs);
+    }
     if (targets.length === 0) {
         alert("No workers selected");
         return null;
@@ -14070,6 +14154,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("btn-send-cmd")?.addEventListener("click", openCmdModal);
     document.getElementById("btn-close-cmd-modal")?.addEventListener("click", closeCmdModal);
+    document.getElementById("btn-cmd-apply-to-toggle")?.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        toggleCmdApplyToDropdown();
+    });
+    document.getElementById("cmd-apply-to-workers-option")?.addEventListener("click", () => {
+        cmdApplyToRigs.clear();
+        updateCmdApplyToToggleLabel();
+        closeCmdApplyToDropdown();
+        updateCmdTargetCount();
+    });
+    document.getElementById("cmd-apply-to-select-all-btn")?.addEventListener("click", () => {
+        selectAllCmdApplyTo();
+    });
+    document.getElementById("cmd-apply-to-clear-btn")?.addEventListener("click", () => {
+        clearCmdApplyToSelection();
+    });
+    document.addEventListener("click", (evt) => {
+        const wrap = document.getElementById("cmd-apply-to-wrap");
+        if (wrap && !wrap.contains(evt.target)) {
+            closeCmdApplyToDropdown();
+        }
+    });
     document.getElementById("btn-open-logs")?.addEventListener("click", openLogsModal);
     document.getElementById("btn-close-logs-modal")?.addEventListener("click", closeLogsModal);
     document.getElementById("btn-logs-refresh")?.addEventListener("click", fetchLogs);

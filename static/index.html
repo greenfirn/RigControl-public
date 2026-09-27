@@ -1509,6 +1509,17 @@ nvidia-smi
                         autocomplete="off"
                     />
                 </div>
+                <div class="field-group fs-apply-to-group" id="cmd-apply-to-wrap">
+                    <label for="btn-cmd-apply-to-toggle">Apply to</label>
+                    <button type="button" class="fs-apply-to-toggle" id="btn-cmd-apply-to-toggle" title="Choose which worker(s) to send this command to. Defaults to whatever's selected in the main worker list.">Workers</button>
+                    <div class="fs-apply-to-list hidden" id="cmd-apply-to-list">
+                        <div class="fs-apply-to-item fs-apply-to-special" id="cmd-apply-to-workers-option" title="Use whatever's selected in the main worker list">-Workers-</div>
+                        <div class="fs-apply-to-item fs-apply-to-special" id="cmd-apply-to-select-all-btn" title="Select every worker">-Select All-</div>
+                        <div class="fs-apply-to-item fs-apply-to-special" id="cmd-apply-to-clear-btn" title="Uncheck all specific workers below">-Clear Selected-</div>
+                        <div class="fs-apply-to-sep"></div>
+                        <div class="fs-apply-to-workers" id="cmd-apply-to-workers"></div>
+                    </div>
+                </div>
                 <div class="cmd-btn-row">
                     <button class="cmd-btn" id="btn-cmd-clear-send" title="Clear the output box, then send">Clear &amp; Send</button>
                     <button class="cmd-btn ok" id="btn-cmd-send">Send</button>
