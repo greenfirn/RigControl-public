@@ -3645,6 +3645,33 @@ h1 {
     gap: 10px;
     flex-wrap: wrap;
 }
+#oc-modal .oc-cmd-preview-field {
+    flex: 1 1 auto;
+    min-width: 220px;
+}
+#oc-modal .oc-cmd-preview-send-group {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+#oc-modal .oc-cmd-preview-send-label-spacer {
+    visibility: hidden;
+}
+#oc-modal .fs-field-input-with-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+#oc-modal .fs-field-input-with-btn .fs-field-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+#oc-modal .oc-cmd-preview-input {
+    font-family: Consolas, monospace;
+    cursor: text;
+}
+#oc-modal .fs-field-input-with-btn .fs-copy-json-btn {
+    flex: 0 0 auto;
+}
 #oc-modal .oc-toolbar-row-top .oc-name-group {
     flex: 3 3 0;
     min-width: 98px;

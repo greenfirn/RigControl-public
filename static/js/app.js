@@ -10504,6 +10504,7 @@ function addOcRow(row, opts) {
     });
     tr.querySelectorAll(".oc-input").forEach(inp => {
         inp.addEventListener("input", () => rebuildOcRawFromRows());
+        inp.addEventListener("focus", () => { activeOcRow = tr; updateOcCmdPreview(); });
     });
     const algoInput = tr.querySelector(".oc-algo");
     algoInput.addEventListener("input", () => {
@@ -10516,6 +10517,87 @@ function addOcRow(row, opts) {
     if (!opts || !opts.skipRebuild) rebuildOcRawFromRows();
 }
 let activeOcFanInput = null;
+let activeOcRow = null;
+function getActiveOcRow() {
+    if (activeOcRow && document.body.contains(activeOcRow)) return activeOcRow;
+    return document.querySelector("#oc-rows .oc-row");
+}
+function updateOcCmdPreview() {
+    const out = document.getElementById("oc-cmd-preview");
+    if (!out) return;
+    const tr = getActiveOcRow();
+    if (!tr) {
+        out.value = "";
+        return;
+    }
+    const field = (name) => {
+        const el = tr.querySelector(`[data-oc-field="${name}"]`);
+        const raw = (el?.value ?? "").trim();
+        return raw === "" ? "0" : raw;
+    };
+    out.value = `py-nvtool --setcore "${field("lockCore")}" --setcoreoffset "${field("coreOffset")}" --setmem "${field("lockMem")}" --setmemoffset "${field("memOffset")}" --setpl "${field("powerLimit")}"`;
+}
+async function copyOcCmdPreviewToClipboard() {
+    const btn = document.getElementById("btn-oc-copy-cmd-preview");
+    const input = document.getElementById("oc-cmd-preview");
+    const text = input ? input.value : "";
+    let copied = false;
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+        } catch (e) {
+            console.error("navigator.clipboard.writeText failed, falling back", e);
+        }
+    }
+    if (!copied) {
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.top = "0";
+            ta.style.left = "0";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            copied = document.execCommand("copy");
+            document.body.removeChild(ta);
+        } catch (e) {
+            console.error("Fallback clipboard copy failed", e);
+        }
+    }
+    if (btn) {
+        const original = btn.innerHTML;
+        btn.classList.add(copied ? "copied" : "copy-failed");
+        btn.innerHTML = copied ? "&#10003;" : "&#10007;";
+        btn.title = copied
+            ? "Copied!"
+            : "Copy failed - your browser blocked clipboard access. Select the command manually instead.";
+        setTimeout(() => {
+            btn.classList.remove("copied", "copy-failed");
+            btn.innerHTML = original;
+            btn.title = "Copy the py-nvtool command line to clipboard";
+        }, 1500);
+    }
+    if (!copied) {
+        console.error("Unable to copy py-nvtool command to clipboard - no clipboard API available and the execCommand fallback also failed");
+    }
+}
+function sendOcCmdPreview() {
+    const raw = (document.getElementById("oc-cmd-preview")?.value || "").trim();
+    if (!raw) {
+        alert("No command to send");
+        return;
+    }
+    document.getElementById("cmd-input").value = raw;
+    cmdModalRigOverride = ocApplyToRigs.size > 0 ? Array.from(ocApplyToRigs) : null;
+    if (document.getElementById("confirm-oc")?.checked) {
+        openCmdModal();
+    } else {
+        submitCmd();
+    }
+}
 function initOcFanCurveExampleButton() {
     const btn = document.getElementById("oc-fan-curve-example-btn");
     if (!btn) return;
@@ -10613,6 +10695,7 @@ function rebuildOcRawFromRows() {
     }
     autoResizeOcRaw();
     populateOcAlgoApplySelect();
+    updateOcCmdPreview();
 }
 function populateOcAlgoApplySelect() {
     const select = document.getElementById("oc-algo-apply-select");
@@ -10686,13 +10769,13 @@ function loadOcRowsFromScript(scriptText) {
     ocApplyInvokeAlgo = getOcApplyInvokeAlgoFromScript(scriptText);
     if (rows.length === 0) {
         addOcRow(null, { skipRebuild: true });
-        populateOcAlgoApplySelect();
-        return;
-    }
-    for (const row of rows) {
-        addOcRow(row, { skipRebuild: true });
+    } else {
+        for (const row of rows) {
+            addOcRow(row, { skipRebuild: true });
+        }
     }
     populateOcAlgoApplySelect();
+    updateOcCmdPreview();
 }
 function getOcScriptAlgoSummary(scriptText) {
     const rows = parseOcScriptRows(scriptText);
@@ -10797,6 +10880,8 @@ function openOverclocksModal() {
     if (tbody && tbody.children.length === 0) {
         addOcRow(null, { skipRebuild: true });
         rebuildOcRawFromRows();
+    } else {
+        updateOcCmdPreview();
     }
     const ocCount = selectedRigs.size;
     const ocCountEl = document.getElementById("oc-target-count");
@@ -14679,6 +14764,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
     document.getElementById("btn-oc-add-row")?.addEventListener("click", () => addOcRow());
+    document.getElementById("btn-oc-copy-cmd-preview")?.addEventListener("click", copyOcCmdPreviewToClipboard);
+    document.getElementById("btn-oc-send-cmd-preview")?.addEventListener("click", sendOcCmdPreview);
     initOcFanCurveExampleButton();
     document.getElementById("oc-raw")?.addEventListener("input", (e) => {
         loadOcRowsFromScript(e.target.value);
