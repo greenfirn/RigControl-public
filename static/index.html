@@ -2066,7 +2066,7 @@ nvidia-smi
                 <div class="oc-list-toolbar">
                     <div class="oc-toolbar-row oc-cmd-preview-row">
                         <div class="field-group oc-cmd-preview-field">
-                            <label for="oc-cmd-preview" title="Live py-nvtool command line for whichever algorithm row above is currently focused/selected">py-nvtool Command (selected algo)</label>
+                            <label for="oc-cmd-preview" title="Live py-nvtool command line for whichever algorithm row above is currently focused/selected">Manual - py-nvtool Command (selected algo)</label>
                             <div class="fs-field-input-with-btn">
                                 <input type="text" id="oc-cmd-preview" class="fs-field-input oc-cmd-preview-input" autocomplete="off" title="Power limit 0 - will reset to default power limit, skipped when 0 used in profile, gpu reset will apply default power limit when no power limit is specified before miner is loaded. Editable - edits here do not change the algorithm rows above, and are overwritten if you switch to another row or edit its values." />
                                 <button type="button" class="fs-copy-json-btn" id="btn-oc-copy-cmd-preview" title="Copy the py-nvtool command line to clipboard">&#128203;</button>
@@ -2077,6 +2077,7 @@ nvidia-smi
                             <button class="cmd-btn send-it" id="btn-oc-send-cmd-preview" title="Send this py-nvtool command directly to the selected workers, using the Apply to selection and Confirm checkbox below - copies to Send Cmd for review when Confirm is checked, sends immediately otherwise">Send it !</button>
                         </div>
                     </div>
+                    <div class="oc-cmd-preview-divider"></div>
                     <div class="oc-toolbar-row oc-toolbar-row-top">
                         <div class="field-group oc-name-group">
                             <label for="oc-name">Overclock Name</label>

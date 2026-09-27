@@ -10594,6 +10594,13 @@ function sendOcCmdPreview() {
     cmdModalRigOverride = ocApplyToRigs.size > 0 ? Array.from(ocApplyToRigs) : null;
     if (document.getElementById("confirm-oc")?.checked) {
         openCmdModal();
+        // openCmdModal() consumes the override into cmdApplyToRigs (so the Apply To
+        // toggle/count and eventual send still target the right workers) and its sync
+        // prepends a "# APPLY_TO=..." bookkeeping line onto cmd-input for that - keep
+        // the reviewed command clean here; the line still gets re-applied under the
+        // hood by submitCmd() when actually sent, and recorded in history as usual.
+        const input = document.getElementById("cmd-input");
+        if (input) input.value = raw;
     } else {
         submitCmd();
     }

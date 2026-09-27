@@ -3652,9 +3652,19 @@ h1 {
 #oc-modal .oc-cmd-preview-send-group {
     flex: 0 0 auto;
     margin-left: auto;
+    align-items: flex-start;
 }
 #oc-modal .oc-cmd-preview-send-label-spacer {
     visibility: hidden;
+}
+#oc-modal .oc-cmd-preview-send-group #btn-oc-send-cmd-preview {
+    width: auto;
+}
+#oc-modal .oc-cmd-preview-divider {
+    flex: 0 0 auto;
+    height: 1px;
+    margin: 2px 0;
+    background: var(--border-divider-soft);
 }
 #oc-modal .fs-field-input-with-btn {
     display: flex;
