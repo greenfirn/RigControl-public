@@ -1472,10 +1472,11 @@ nvidia-smi
                 <div class="cmd-history-panel">
                     <div class="cmd-history-list-wrap">
                         <div class="cmd-history-list-header">
-                            <label class="checkbox-label cmd-history-select-all-label">
-                                <input type="checkbox" id="cmd-history-select-all">
-                                <span class="checkbox-text">Select All</span>
-                            </label>
+                            <input type="checkbox" class="rig-select-checkbox" id="cmd-history-select-all" title="Select / unselect all visible history entries">
+                            <div class="fs-item-grid">
+                                <span class="fs-item-col fs-item-col-name">Command</span>
+                                <span class="fs-item-col fs-item-col-applyto">Apply To</span>
+                            </div>
                         </div>
                         <div id="cmd-history-list" class="fs-list">
                         </div>
@@ -1530,10 +1531,11 @@ nvidia-smi
             </div>
             <div class="fs-list-panel">
                 <div class="saved-cmd-list-header">
-                    <label class="checkbox-label saved-cmd-select-all-label">
-                        <input type="checkbox" id="saved-cmd-select-all">
-                        <span class="checkbox-text">Select All</span>
-                    </label>
+                    <input type="checkbox" class="rig-select-checkbox" id="saved-cmd-select-all" title="Select / unselect all visible saved commands">
+                    <div class="fs-item-grid">
+                        <span class="fs-item-col fs-item-col-name">Name</span>
+                        <span class="fs-item-col fs-item-col-applyto">Apply To</span>
+                    </div>
                 </div>
                 <div id="saved-cmd-list" class="fs-list">
                 </div>

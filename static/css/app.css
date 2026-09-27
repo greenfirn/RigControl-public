@@ -1301,11 +1301,6 @@ h1 {
     border-bottom: none;
     background: var(--surface-modal-panel);
 }
-#cmd-modal .cmd-history-select-all-label,
-#cmd-modal .saved-cmd-select-all-label {
-    font-size: var(--font-size-list-item-meta);
-    color: var(--text-secondary);
-}
 #cmd-modal .cmd-history-list-wrap .fs-list {
     flex: 1 1 auto;
     overflow-y: auto;
@@ -6183,6 +6178,26 @@ h1 {
 #cmd-modal .fs-item.selected {
     background: var(--list-item-selected);
     color: var(--text-accent);
+}
+#cmd-modal .saved-cmd-list-header,
+#cmd-modal .cmd-history-list-header,
+#cmd-modal .fs-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+#cmd-modal .fs-item-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 10px;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+#cmd-modal .fs-item-col {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 #btn-save-saved-cmd {
     border-color: var(--button-saved-cmd-save-border);

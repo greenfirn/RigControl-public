@@ -5188,6 +5188,7 @@ function populateCmdApplyToWorkerList() {
             updateCmdApplyToToggleLabel();
             updateCmdApplyToWorkersOptionCheckedState();
             updateCmdTargetCount();
+            syncCmdRawAfterApplyToChange();
         });
         const span = document.createElement("span");
         span.textContent = name;
@@ -5197,11 +5198,32 @@ function populateCmdApplyToWorkerList() {
     });
     updateCmdApplyToWorkersOptionCheckedState();
 }
+function setCmdApplyToRigs(names) {
+    const rigNames = new Set(Object.keys(rigsState || {}).filter(n => n !== "rigs"));
+    cmdApplyToRigs = new Set((Array.isArray(names) ? names : []).filter(name => rigNames.has(name)));
+    updateCmdApplyToToggleLabel();
+    updateCmdTargetCount();
+}
+function getCmdApplyToFromScript(scriptText) {
+    const m = (scriptText || "").match(/^# APPLY_TO=(.*)$/m);
+    if (!m) return [];
+    return m[1].split(",").map(s => s.trim()).filter(Boolean);
+}
+function syncCmdRawAfterApplyToChange() {
+    const rawEl = document.getElementById("cmd-input");
+    if (!rawEl) return;
+    let text = rawEl.value.replace(/^# APPLY_TO=.*\n?/m, "");
+    if (cmdApplyToRigs.size > 0) {
+        text = `# APPLY_TO=${Array.from(cmdApplyToRigs).join(",")}\n${text}`;
+    }
+    rawEl.value = text;
+}
 function clearCmdApplyToSelection() {
     cmdApplyToRigs.clear();
     updateCmdApplyToToggleLabel();
     populateCmdApplyToWorkerList();
     updateCmdTargetCount();
+    syncCmdRawAfterApplyToChange();
 }
 function selectAllCmdApplyTo() {
     const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
@@ -5209,6 +5231,7 @@ function selectAllCmdApplyTo() {
     updateCmdApplyToToggleLabel();
     populateCmdApplyToWorkerList();
     updateCmdTargetCount();
+    syncCmdRawAfterApplyToChange();
 }
 function updateCmdTargetCount() {
     const count = cmdApplyToRigs.size > 0 ? cmdApplyToRigs.size : selectedRigs.size;
@@ -5219,6 +5242,10 @@ function openCmdModal() {
     if (cmdModalRigOverride && cmdModalRigOverride.length) {
         cmdApplyToRigs = new Set(cmdModalRigOverride);
         cmdModalRigOverride = null;
+        syncCmdRawAfterApplyToChange();
+    } else {
+        cmdApplyToRigs = new Set();
+        syncCmdRawAfterApplyToChange();
     }
     updateCmdApplyToToggleLabel();
     updateCmdTargetCount();
@@ -5480,11 +5507,21 @@ function renderSavedCommandsList() {
             else selectedSavedCommandIds.delete(c.CommandId);
             updateSavedCmdSelectAllState();
         });
-        const textEl = document.createElement("span");
-        textEl.className = "statuslog-item-text";
-        textEl.textContent = c.CommandId;
+        const applyToWorkers = getCmdApplyToFromScript(c.Value || "");
+        const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
+        const grid = document.createElement("div");
+        grid.className = "fs-item-grid";
+        const nameCol = document.createElement("span");
+        nameCol.className = "fs-item-col fs-item-col-name";
+        nameCol.textContent = c.CommandId;
+        const applyToCol = document.createElement("span");
+        applyToCol.className = "fs-item-col fs-item-col-applyto";
+        applyToCol.title = applyToDisplay;
+        applyToCol.textContent = applyToDisplay;
+        grid.appendChild(nameCol);
+        grid.appendChild(applyToCol);
         row.appendChild(checkbox);
-        row.appendChild(textEl);
+        row.appendChild(grid);
         row.addEventListener("click", () => {
             document
                 .querySelectorAll("#saved-cmd-list .fs-item.selected")
@@ -5493,6 +5530,7 @@ function renderSavedCommandsList() {
             selectedSavedCommandId = c.CommandId;
             document.getElementById("saved-cmd-name").value = c.CommandId;
             document.getElementById("cmd-input").value = c.Value || "";
+            setCmdApplyToRigs(getCmdApplyToFromScript(c.Value || ""));
             const status = document.getElementById("saved-cmd-status");
             if (status) status.textContent = `Loaded "${c.CommandId}"`;
         });
@@ -5535,7 +5573,7 @@ function collectSavedCommandEntries() {
         throw new Error("Empty saved command");
     }
     return [
-        { key: "RAW_COMMAND", gpu: 0, value: raw }
+        { key: "RAW_COMMAND", gpu: 0, value: withCurrentCmdApplyTo(raw) }
     ];
 }
 async function saveSavedCommand(commandId, entries) {
@@ -5656,15 +5694,29 @@ function renderCmdHistoryList() {
         textWrap.className = "statuslog-item-text";
         const titleEl = document.createElement("div");
         titleEl.className = "statuslog-item-title";
-        const firstLine = (item.command || "").split("\n")[0];
+        const applyToWorkers = getCmdApplyToFromScript(item.command || "");
+        const displayCommand = (item.command || "").replace(/^# APPLY_TO=.*\n?/m, "");
+        const firstLine = displayCommand.split("\n")[0];
         titleEl.textContent = firstLine.length > 80 ? `${firstLine.slice(0, 80)}...` : firstLine;
         const timeEl = document.createElement("div");
         timeEl.className = "statuslog-item-time";
         timeEl.textContent = item.created_at ? statsTimestampToLocalLabel(item.created_at) : "";
         textWrap.appendChild(titleEl);
         textWrap.appendChild(timeEl);
+        const grid = document.createElement("div");
+        grid.className = "fs-item-grid";
+        const nameCol = document.createElement("div");
+        nameCol.className = "fs-item-col fs-item-col-name";
+        nameCol.appendChild(textWrap);
+        const applyToDisplay = applyToWorkers.length > 0 ? applyToWorkers.join(", ") : "Workers";
+        const applyToCol = document.createElement("span");
+        applyToCol.className = "fs-item-col fs-item-col-applyto";
+        applyToCol.title = applyToDisplay;
+        applyToCol.textContent = applyToDisplay;
+        grid.appendChild(nameCol);
+        grid.appendChild(applyToCol);
         row.appendChild(checkbox);
-        row.appendChild(textWrap);
+        row.appendChild(grid);
         row.addEventListener("click", () => selectCmdHistoryEntry(item.id));
         list.appendChild(row);
     }
@@ -5713,6 +5765,7 @@ function selectCmdHistoryEntry(id) {
     if (textarea) textarea.value = entry ? (entry.command || "") : "";
     const nameInput = document.getElementById("saved-cmd-name");
     if (nameInput) nameInput.value = "";
+    setCmdApplyToRigs(entry ? getCmdApplyToFromScript(entry.command || "") : []);
     const status = document.getElementById("saved-cmd-status");
     if (status) status.textContent = entry ? `Loaded history entry from ${statsTimestampToLocalLabel(entry.created_at)}` : "";
 }
@@ -6718,9 +6771,19 @@ async function recordCmdHistoryEntry(command) {
         console.error("Error recording command history:", e);
     }
 }
+function withCurrentCmdApplyTo(text) {
+    const stripped = (text || "").replace(/^# APPLY_TO=.*\n?/m, "");
+    return cmdApplyToRigs.size > 0
+        ? `# APPLY_TO=${Array.from(cmdApplyToRigs).join(",")}\n${stripped}`
+        : stripped;
+}
 function submitCmd() {
-    const cmd = getActiveCmdText();
-    if (!cmd) return;
+    const raw = getActiveCmdText();
+    if (!raw) return;
+    // Rebuild with the CURRENT Apply To selection regardless of which tab
+    // (send vs. history) supplied the text, so the recorded history entry
+    // always reflects the workers actually targeted by this send.
+    const cmd = withCurrentCmdApplyTo(raw);
     sendCommandToSelectedRigs(cmd).then((result) => {
         if (result !== null) {
             recordCmdHistoryEntry(cmd);
@@ -14163,6 +14226,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateCmdApplyToToggleLabel();
         closeCmdApplyToDropdown();
         updateCmdTargetCount();
+        syncCmdRawAfterApplyToChange();
     });
     document.getElementById("cmd-apply-to-select-all-btn")?.addEventListener("click", () => {
         selectAllCmdApplyTo();
