@@ -10535,7 +10535,7 @@ function updateOcCmdPreview() {
         const raw = (el?.value ?? "").trim();
         return raw === "" ? "0" : raw;
     };
-    out.value = `py-nvtool --setcore "${field("lockCore")}" --setcoreoffset "${field("coreOffset")}" --setmem "${field("lockMem")}" --setmemoffset "${field("memOffset")}" --setpl "${field("powerLimit")}"`;
+    out.value = `py-nvtool --setcore ${field("lockCore")} --setcoreoffset ${field("coreOffset")} --setmem ${field("lockMem")} --setmemoffset ${field("memOffset")} --setpl ${field("powerLimit")}`;
 }
 async function copyOcCmdPreviewToClipboard() {
     const btn = document.getElementById("btn-oc-copy-cmd-preview");
