@@ -2068,7 +2068,7 @@ nvidia-smi
                         <div class="field-group oc-cmd-preview-field">
                             <label for="oc-cmd-preview" title="Live py-nvtool command line for whichever algorithm row above is currently focused/selected">py-nvtool Command (selected algo)</label>
                             <div class="fs-field-input-with-btn">
-                                <input type="text" id="oc-cmd-preview" class="fs-field-input oc-cmd-preview-input" autocomplete="off" title="Power limit 0 will reset to default power limit - skipped (no --setpl) when used in the profile. Editable - edits here do not change the algorithm rows above, and are overwritten if you switch to another row or edit its values." />
+                                <input type="text" id="oc-cmd-preview" class="fs-field-input oc-cmd-preview-input" autocomplete="off" title="Power limit 0 - will reset to default power limit, skipped when 0 used in profile, gpu reset will apply default power limit when no power limit is specified before miner is loaded. Editable - edits here do not change the algorithm rows above, and are overwritten if you switch to another row or edit its values." />
                                 <button type="button" class="fs-copy-json-btn" id="btn-oc-copy-cmd-preview" title="Copy the py-nvtool command line to clipboard">&#128203;</button>
                             </div>
                         </div>
