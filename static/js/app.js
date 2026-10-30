@@ -4484,13 +4484,17 @@ function render() {
                     });
                     const parts = [];
                     if (cpuHashrateTotal > 0) {
-                        parts.push(`CPU ${fmtRateHs(cpuHashrateTotal, "")}`);
+                        parts.push({ rate: cpuHashrateTotal, tag: "CPU" });
                     }
                     if (gpuHashrateTotal > 0) {
-                        parts.push(`GPU ${fmtRateHs(gpuHashrateTotal, "")}`);
+                        parts.push({ rate: gpuHashrateTotal, tag: "GPU" });
                     }
-                    if (parts.length > 0) {
-                        rowMinerSummary.push(`SRBMiner ${parts.join(" | ")}`);
+                    if (parts.length === 1) {
+                        rowMinerSummary.push(`${fmtRateHs(parts[0].rate, "")} SRBMiner`);
+                    } else if (parts.length > 1) {
+                        parts.forEach(p => rowMinerSummary.push(`${fmtRateHs(p.rate, "")} SRBMiner ${p.tag}`));
+                    } else {
+                        rowMinerSummary.push(`${fmtRateHs(minerInfo.totalHashrate, "")} SRBMiner`);
                     }
                 } else if (minerInfo.name === "XMRig") {
                     rowMinerSummary.push(`${fmtXmrig(minerInfo.totalHashrate)} XMRig`);
