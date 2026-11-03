@@ -62,14 +62,7 @@ do
     [[ -f "$f" ]] || { echo "Missing include: $f"; exit 1; }
     source "$f"
 done
-echo "$(date): Confirming Clore config..."
-if [ "$TARGET_NAME" = "clore-default-" ]; then
-    echo "$(date): Using Clore events monitor"
-    echo "$(date): Clore idle confirm loops: $IDLE_CONFIRM_LOOPS"
-else
-    echo "$(date): Exiting... TARGET_NAME in conf should be 'clore-default-'"
-	exit 1
-fi
+
 : "${API_CONF:=/etc/rigcontrol/api.conf}"
 PORTS_CONF="$API_CONF"
 API_LOOKUP_NAME="$MINER_NAME"
@@ -527,16 +520,18 @@ stop_miner || true
 echo "$(date): Docker event monitor stopped gracefully"
 EOF
 sudo chmod +x /usr/local/bin/docker_events_universal.sh
-sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
+sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
 [Unit]
-Description=Docker Events CPU Miner Monitor
+Description=Docker Events GPU Miner Monitor
 After=docker.service
 Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
+Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
 Environment="IDLE_CONFIRM_LOOPS=3"
+Environment="POWER_LIMIT="
+ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
@@ -552,18 +547,16 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo tee /etc/systemd/system/docker_events_gpu.service > /dev/null <<'EOF'
+sudo tee /etc/systemd/system/docker_events_cpu.service > /dev/null <<'EOF'
 [Unit]
-Description=Docker Events GPU Miner Monitor
+Description=Docker Events CPU Miner Monitor
 After=docker.service
 Requires=docker.service
 [Service]
 Type=simple
 User=root
-Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
+Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
 Environment="IDLE_CONFIRM_LOOPS=3"
-Environment="POWER_LIMIT="
-ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
