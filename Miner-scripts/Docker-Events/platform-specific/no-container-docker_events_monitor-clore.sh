@@ -562,8 +562,8 @@ Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
 Environment="IDLE_CONFIRM_LOOPS=3"
-Environment="POWER_LIMIT=150"
-ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh 150
+Environment="POWER_LIMIT="
+ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always

@@ -53,7 +53,10 @@ reset_nvidia_gpus() {
         echo "[GPU-RESET] Resetting NVIDIA GPU $id"
 
         # Reset core/mem clocks and offsets
-        py-nvtool -i "$id" --setcore 0 --setmem 0 --setcoreoffset 0 --setmemoffset 0
+        py-nvtool -i "$id" --setcoreoffset 0
+        py-nvtool -i "$id" --setcore 0
+        py-nvtool -i "$id" --setmem 0
+        py-nvtool -i "$id" --setmemoffset 0
 
         # Determine which power limit applies to this GPU:
         #   - 1 at this GPU's position -> skip entirely, leave power limit untouched
@@ -83,14 +86,15 @@ reset_nvidia_gpus() {
             echo "[GPU-RESET] Setting NVIDIA GPU $id power limit → ${gpu_power_limit}W (user specified)"
             py-nvtool -i "$id" --setpl "$gpu_power_limit"
         else
-            # Query default safe power limit
-            default_pl=$(nvidia-smi -i "$id" --query-gpu=power.default_limit --format=csv,noheader,nounits 2>/dev/null)
+            # Query default power limit (nvidia-smi returns e.g. "300.00"; py-nvtool needs an int)
+            default_pl=$(nvidia-smi -i "$id" --query-gpu=power.default_limit --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d '[:space:]')
 
-            if [ -n "$default_pl" ]; then
+            if [[ $default_pl =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                default_pl=$(printf '%.0f' "$default_pl")
                 echo "[GPU-RESET] Setting NVIDIA GPU $id power limit → ${default_pl}W (default)"
                 py-nvtool -i "$id" --setpl "$default_pl"
             else
-                echo "[GPU-RESET] Skipping NVIDIA GPU $id power limit (no default PL found)"
+                echo "[GPU-RESET] Skipping NVIDIA GPU $id power limit (no usable default PL: '${default_pl}')"
             fi
         fi
 
