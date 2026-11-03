@@ -52,7 +52,12 @@ reset_nvidia_gpus() {
         echo "[GPU-RESET] Resetting NVIDIA GPU $id"
 
         # Reset clocks
+		echo "[GPU-RESET] Resetting core clocks"
         nvidia-smi -i "$id" -rgc >/dev/null 2>&1
+		
+		sleep 2
+		
+		echo "[GPU-RESET] Resetting mem clocks"
         nvidia-smi -i "$id" -rmc >/dev/null 2>&1
 
         # Determine which power limit applies to this GPU:
