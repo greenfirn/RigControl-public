@@ -1,3 +1,5 @@
+sudo systemctl stop rigcontrol-agent.service
+
 AGENT_VENV="/usr/local/lib/rigcontrol-agent/.venv"
 if [ ! -x "$AGENT_VENV/bin/pip" ]; then
     echo "Creating rigcontrol-agent virtual environment at $AGENT_VENV ..."
@@ -31,4 +33,4 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable rigcontrol-agent.service
-sudo systemctl restart rigcontrol-agent.service
+sudo systemctl start rigcontrol-agent.service

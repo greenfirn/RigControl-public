@@ -900,6 +900,22 @@ def _docker_published_miners():
     except Exception as e:
         print(f"Error detecting Docker miner containers: {e}")
     return found
+def _docker_known_miner_running():
+    """True if any running Docker container's image/name matches a known miner name in _MINER_DOCKER_MAP - name match only, published ports are NOT required (unlike _docker_published_miners(), which detect_running_miners() still uses). Feeds collect_full_stats()'s skip_gpu decision."""
+    try:
+        result = subprocess.run(
+            'docker ps --format "{{.Image}}|{{.Names}}"',
+            shell=True, capture_output=True, text=True, timeout=3
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().split('\n'):
+                line_lower = line.lower()
+                for image_pattern in _MINER_DOCKER_MAP:
+                    if image_pattern in line_lower:
+                        return True
+    except Exception as e:
+        print(f"Error detecting Docker miner containers: {e}")
+    return False
 _DEFAULT_IGNORED_DOCKER_IMAGES = (
     "cloreai/monitoring",
     "vastai/test:bandwidth-test-nvidia",
@@ -2410,7 +2426,7 @@ def collect_full_stats(visible_groups=None):
         "network":               collect_network() if "network" in active_groups else None,
     }
     if "gpu" in active_groups:
-        skip_gpu = docker_containers_running() and not _docker_published_miners()
+        skip_gpu = docker_containers_running() and not _docker_known_miner_running()
         stats["gpus"] = collect_gpu_stats(skip=skip_gpu)
         stats["gpu_present"] = gpu_present
         stats["gpu_stats_skipped"] = skip_gpu

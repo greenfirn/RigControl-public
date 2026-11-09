@@ -3,9 +3,10 @@ sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10
 BROKER_PORT=1883
 BROKER_USER=admin
-BROKER_PASS=**************
+BROKER_PASS=**********
 # comma seperated list of gpu stats safe images
-OVERRIDE_LIST="miner/miner:latest"
+OVERRIDE_LIST=""
+# gpu stats will still be collected for docker image names that include a known miner name
 STATS_DB_ENABLED=true
 # How many days of local telemetry history to keep before old rows are pruned
 STATS_DB_MAX_HISTORY_DAYS=7
