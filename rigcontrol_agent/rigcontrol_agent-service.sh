@@ -33,4 +33,4 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable rigcontrol-agent.service
-sudo systemctl start rigcontrol-agent.service
+sudo systemctl restart rigcontrol-agent.service

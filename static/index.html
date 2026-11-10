@@ -14,6 +14,22 @@
     </script>
 </head>
 <body>
+    <nav id="side-nav" class="side-nav" aria-label="Main navigation">
+        <div class="side-nav-head">
+            <span class="side-nav-brand"><span class="side-nav-logo"><img src="./static/favicon.ico" alt="" width="24" height="24"></span><span class="side-nav-brand-text">RigControl</span></span>
+            <button type="button" id="side-nav-toggle" class="side-nav-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">&#8249;</button>
+        </div>
+        <div id="view-tabs" class="view-tabs">
+        <span class="view-tab active" data-tab-panel="workers"><span class="view-tab-icon" id="view-tab-icon-workers">&#128421;&#65039;</span><span class="view-tab-text">Workers</span></span>
+        <span class="view-tab" data-tab-panel="stats"><span class="view-tab-icon" id="view-tab-icon-stats">&#128202;</span><span class="view-tab-text">Stats</span></span>
+        <span class="view-tab" data-tab-panel="wallets"><span class="view-tab-icon" id="view-tab-icon-wallets">&#128176;</span><span class="view-tab-text">Wallets</span></span>
+        <span class="view-tab" data-tab-panel="flightsheets"><span class="view-tab-icon" id="view-tab-icon-flightsheets">&#128203;</span><span class="view-tab-text">Flight Sheets</span></span>
+        <span class="view-tab" data-tab-panel="overclocking"><span class="view-tab-icon" id="view-tab-icon-overclocking">&#9889;</span><span class="view-tab-text">Overclocking</span></span>
+        <span class="view-tab" data-tab-panel="watchdog"><span class="view-tab-icon" id="view-tab-icon-watchdog">&#128054;</span><span class="view-tab-text">Watchdog</span></span>
+        <span class="view-tab" data-tab-panel="statuslog"><span class="view-tab-icon" id="view-tab-icon-statuslog">&#128220;</span><span class="view-tab-text">Status Log</span></span>
+        <span class="view-tab" data-tab-panel="settings"><span class="view-tab-icon" id="view-tab-icon-settings">&#9881;&#65039;</span><span class="view-tab-text">Settings</span></span>
+        </div>
+    </nav>
     <div id="sticky-top-wrap">
     <div id="header-bar">
         <div class="action-status">
@@ -53,16 +69,6 @@
                 <div class="stat-panel-label">GPU Watts</div>
             </div>
         </div>
-    </div>
-    <div id="view-tabs" class="view-tabs">
-        <span class="view-tab active" data-tab-panel="workers"><span class="view-tab-icon" id="view-tab-icon-workers">&#128421;&#65039;</span><span class="view-tab-text">Workers</span></span>
-        <span class="view-tab" data-tab-panel="stats"><span class="view-tab-icon" id="view-tab-icon-stats">&#128202;</span><span class="view-tab-text">Stats</span></span>
-        <span class="view-tab" data-tab-panel="wallets"><span class="view-tab-icon" id="view-tab-icon-wallets">&#128176;</span><span class="view-tab-text">Wallets</span></span>
-        <span class="view-tab" data-tab-panel="flightsheets"><span class="view-tab-icon" id="view-tab-icon-flightsheets">&#128203;</span><span class="view-tab-text">Flight Sheets</span></span>
-        <span class="view-tab" data-tab-panel="overclocking"><span class="view-tab-icon" id="view-tab-icon-overclocking">&#9889;</span><span class="view-tab-text">Overclocking</span></span>
-        <span class="view-tab" data-tab-panel="watchdog"><span class="view-tab-icon" id="view-tab-icon-watchdog">&#128054;</span><span class="view-tab-text">Watchdog</span></span>
-        <span class="view-tab" data-tab-panel="statuslog"><span class="view-tab-icon" id="view-tab-icon-statuslog">&#128220;</span><span class="view-tab-text">Status Log</span></span>
-        <span class="view-tab" data-tab-panel="settings"><span class="view-tab-icon" id="view-tab-icon-settings">&#9881;&#65039;</span><span class="view-tab-text">Settings</span></span>
     </div>
     </div>
     <div class="cmd-modal hidden" id="unlock-modal">

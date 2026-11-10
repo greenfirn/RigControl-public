@@ -437,7 +437,7 @@
     filter: grayscale(70%);
 }
 body {
-    font-family: Arial, sans-serif;
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
     background: var(--surface-app);
     color: var(--text-primary);
     margin: 0;
@@ -6093,33 +6093,174 @@ h1 {
 }
 .view-tabs {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 22px;
-    padding: 8px 14px;
-    flex-wrap: wrap;
-    background: var(--surface-app);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 0;
+    background: transparent;
 }
 .view-tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 10px;
     cursor: pointer;
     color: var(--text-secondary);
     font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
     user-select: none;
+    transition: background-color 0.15s, color 0.15s;
 }
 .view-tab:hover {
     color: var(--text-primary);
+    background: var(--tab-hover-bg);
 }
 .view-tab.active {
     color: var(--text-white);
-    text-decoration: underline;
-    text-underline-offset: 6px;
+    background: color-mix(in srgb, var(--text-accent) 16%, transparent);
+}
+.view-tab.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    bottom: 9px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--text-accent);
 }
 .view-tab-icon {
-    display: inline-block;
-    margin-right: 6px;
+    flex: 0 0 24px;
+    width: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin-right: 0;
 }
 .view-tab-icon:empty {
     margin-right: 0;
+}
+.view-tab-icon .toolbar-btn-icon-img {
+    max-width: 20px;
+    max-height: 20px;
+}
+.view-tab-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.15s;
+}
+:root {
+    --side-nav-width: 220px;
+}
+body.nav-collapsed {
+    --side-nav-width: 68px;
+}
+body {
+    padding-left: calc(var(--side-nav-width) + 20px);
+    transition: padding-left 0.2s ease;
+}
+.side-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--side-nav-width);
+    z-index: 60;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px 10px;
+    background: var(--surface-modal-panel);
+    border-right: 1px solid var(--border-header);
+    box-shadow: 2px 0 14px rgba(0, 0, 0, 0.25);
+    overflow-x: hidden;
+    overflow-y: auto;
+    transition: width 0.2s ease;
+}
+.side-nav-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    height: 40px;
+    padding: 0 2px 0 6px;
+}
+.side-nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: var(--text-white);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.side-nav-logo {
+    flex: 0 0 24px;
+    width: 24px;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.side-nav-logo img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    display: block;
+}
+.side-nav-toggle {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-modal);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.2s, background-color 0.15s, color 0.15s;
+}
+.side-nav-toggle:hover {
+    background: var(--tab-hover-bg);
+    color: var(--text-primary);
+}
+body.nav-collapsed .side-nav {
+    padding: 14px 8px;
+}
+body.nav-collapsed .side-nav-head {
+    flex-direction: column;
+    height: auto;
+    gap: 10px;
+    padding: 0;
+}
+body.nav-collapsed .side-nav-brand-text,
+body.nav-collapsed .view-tab-text {
+    display: none;
+}
+body.nav-collapsed .side-nav-toggle {
+    transform: rotate(180deg);
+}
+body.nav-collapsed .view-tab {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+}
+@media (max-width: 760px) {
+    :root, body.nav-collapsed { --side-nav-width: 68px; }
+    .side-nav-brand-text, .view-tab-text { display: none; }
+    .view-tab { justify-content: center; gap: 0; padding: 0; }
+    .side-nav-toggle { display: none; }
 }
 .view-tab-panel.hidden {
     display: none;
@@ -6562,7 +6703,6 @@ h1 {
 #backups-modal .backups-hsizer.dragging::after {
     background: var(--text-accent);
 }
-body.layout-left .view-tabs,
 body.layout-left #action-bar,
 body.layout-left .rig-header-grid,
 body.layout-left .rig-main,

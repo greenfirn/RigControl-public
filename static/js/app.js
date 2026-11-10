@@ -2191,27 +2191,39 @@ function setupHeaderBarHeightSync() {
     }
 }
 function syncActionOutputWidthVar() {
-    const tabs = document.getElementById("view-tabs");
-    const items = tabs ? tabs.querySelectorAll(".view-tab") : [];
-    if (!tabs || !items.length) {
-        document.documentElement.style.setProperty("--action-output-width", "100%");
-        return;
-    }
-    const first = items[0].getBoundingClientRect();
-    const last = items[items.length - 1].getBoundingClientRect();
-    const width = Math.max(0, last.right - first.left);
-    document.documentElement.style.setProperty("--action-output-width", `${width}px`);
+    document.documentElement.style.setProperty("--action-output-width", "100%");
 }
 function setupActionOutputWidthSync() {
-    const tabs = document.getElementById("view-tabs");
-    if (!tabs) return;
     syncActionOutputWidthVar();
-    if (window.ResizeObserver) {
-        const observer = new ResizeObserver(syncActionOutputWidthVar);
-        observer.observe(tabs);
-    } else {
-        window.addEventListener("resize", syncActionOutputWidthVar);
+}
+const SIDE_NAV_COLLAPSED_KEY = "sideNavCollapsed";
+function applySideNavCollapsed(collapsed) {
+    document.body.classList.toggle("nav-collapsed", collapsed);
+    const btn = document.getElementById("side-nav-toggle");
+    if (btn) {
+        const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+        btn.title = label;
+        btn.setAttribute("aria-label", label);
+        btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
     }
+    window.dispatchEvent(new Event("resize"));
+}
+function initSideNav() {
+    const btn = document.getElementById("side-nav-toggle");
+    if (!btn || btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(SIDE_NAV_COLLAPSED_KEY) === "1"; } catch (e) {}
+    document.querySelectorAll("#view-tabs .view-tab").forEach((tab) => {
+        const text = tab.querySelector(".view-tab-text");
+        if (text) tab.title = text.textContent.trim();
+    });
+    applySideNavCollapsed(collapsed);
+    btn.addEventListener("click", () => {
+        const next = !document.body.classList.contains("nav-collapsed");
+        try { localStorage.setItem(SIDE_NAV_COLLAPSED_KEY, next ? "1" : "0"); } catch (e) {}
+        applySideNavCollapsed(next);
+    });
 }
 function syncWorkerListWidthVar() {
     const grid = document.querySelector(".rig-header-grid");
@@ -15155,6 +15167,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     initRefreshTimer();
     initAfterConfig();
     initViewTabs();
+    initSideNav();
     render();
     setupRigEventDelegation();
     window.addEventListener('beforeunload', cleanupWebSocket);
