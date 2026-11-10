@@ -850,7 +850,7 @@ h1 {
     color: var(--button-danger-text);
 }
 .action-output {
-    width: var(--action-output-width, 100%);
+    width: var(--worker-list-width, var(--action-output-width, 100%));
     max-width: 100%;
     min-height: 28px;
     max-height: 28px;
@@ -6707,6 +6707,7 @@ body.layout-left #action-bar,
 body.layout-left .rig-header-grid,
 body.layout-left .rig-main,
 body.layout-left #action-stats-bar,
+body.layout-left .action-status,
 body.layout-left .pop-content {
     justify-content: flex-start;
 }
