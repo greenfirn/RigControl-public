@@ -230,7 +230,7 @@ if __name__ == "__main__":
 EOF
 sudo chmod +x /usr/local/bin/fan_curve.py
 sudo systemctl restart fan-curve.service
-sudo rm /usr/local/bin/nvtool.py
+sudo rm -f /usr/local/bin/nvtool.py
 
 sudo systemctl status fan-curve.service
 journalctl -u fan-curve.service -n 20 --no-pager
