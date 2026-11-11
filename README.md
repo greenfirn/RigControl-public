@@ -42,6 +42,8 @@ sudo cp -a /opt/miners/keryx-miner /opt/miners/custom/keryx-miner
 
 * [Overclocks](Overclocks)
 
+* [gpu-vram-temps](py-nvtool/gpu-vram-temps)
+
 * [Fan-control](Fan-control)
 
 * [themes](themes)
