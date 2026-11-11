@@ -40,6 +40,8 @@ sudo cp -a /opt/miners/keryx-miner /opt/miners/custom/keryx-miner
 
 * [Docker-Events](Miner-scripts/Docker-Events)
 
+* [py-nvtool](py-nvtool/py-nvtool-install-usage.txt)
+
 * [Overclocks](Overclocks)
 
 * [gpu-vram-temps](py-nvtool/gpu-vram-temps)
