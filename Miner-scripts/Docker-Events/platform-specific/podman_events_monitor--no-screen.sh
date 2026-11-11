@@ -5,7 +5,7 @@ shopt -s inherit_errexit
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
 PODMAN_READY=false
-: "${IDLE_CONFIRM_LOOPS:=3}"
+: "${IDLE_CONFIRM_LOOPS:=7}"
 : "${MAX_LOG_BYTES:=10485760}"
 : "${LOG_CHECK_INTERVAL:=60}"
 : "${ALWAYS_LOGS:=true}"

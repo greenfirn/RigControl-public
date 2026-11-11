@@ -4,7 +4,7 @@ set -Eeuo pipefail
 shopt -s inherit_errexit
 : "${POWER_LIMIT:=}"
 SHUTDOWN_REQUESTED=0
-: "${IDLE_CONFIRM_LOOPS:=3}"
+: "${IDLE_CONFIRM_LOOPS:=7}"
 
 IGNORED_IMAGES=(
     "vastai/test:bandwidth-test-nvidia"
@@ -499,7 +499,7 @@ Requires=docker.service
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-gpu.json"
-Environment="IDLE_CONFIRM_LOOPS=3"
+Environment="IDLE_CONFIRM_LOOPS=7"
 Environment="POWER_LIMIT="
 ExecStopPost=/usr/local/bin/gpu_reset_poststop.sh
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
@@ -526,7 +526,7 @@ Requires=docker.service
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-cpu.json"
-Environment="IDLE_CONFIRM_LOOPS=3"
+Environment="IDLE_CONFIRM_LOOPS=7"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
@@ -551,7 +551,7 @@ Requires=docker.service
 Type=simple
 User=root
 Environment="OC_FILE=/etc/rigcontrol/rig-aux.json"
-Environment="IDLE_CONFIRM_LOOPS=3"
+Environment="IDLE_CONFIRM_LOOPS=7"
 ExecStartPre=/bin/chmod +x /usr/local/bin/docker_events_universal.sh
 ExecStart=/usr/local/bin/docker_events_universal.sh
 Restart=always
