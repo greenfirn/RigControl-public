@@ -14,7 +14,7 @@ sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
 ```
 sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 ```
-2. download the needed files: [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh), [rigcontrol_agent.sh](rigcontrol_agent.sh), [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh), [rigcontrol_cmd.sh](rigcontrol_cmd.sh), [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
+2. download the needed files: [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh), [rigcontrol_agent.sh](rigcontrol_agent.sh), [rigcontrol_agent-service.sh](rigcontrol_agent-service.sh), [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh), [rigcontrol_cmd.sh](rigcontrol_cmd.sh), [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
 
 3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
 
