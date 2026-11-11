@@ -22,8 +22,6 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 
 5. 'generate-copy-paste-update.bat -> copy-paste-update.sh' then copy/paste contents to write the files to a rig
 
-6. create, enable, start the service [rigcontrol_agent-service.sh](rigcontrol_agent-service.sh), watch logs for connection to mqtt
-
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
 
 ![test-windows](../images/Screenshot-test-windows.png)
