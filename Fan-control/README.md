@@ -28,7 +28,7 @@ the GPU is idle or fully loaded.
 
 | File | Purpose |
 |---|---|
-| [nvtool.py](py-nvtool/nvtool.py) | Python NVML bindings + a small standalone CLI (query/set clocks, power limit, fan speed per GPU). Imported as a library by `fan_curve.py`. |
+| `/usr/sbin/py-nvtool` | **Upstream** [Akisoft41/py-nvtool](https://github.com/Akisoft41/py-nvtool), not bundled here. Python NVML bindings plus a CLI (clocks, offsets, power limit, fan speed per GPU). Used from the command line by `gpu_reset_poststop.sh` and loaded as a library by `fan_curve.py`. |
 | `fan_curve.py` | The fan curve daemon. Polls GPU temps on an interval and drives fan speed via NVML according to a configurable temp→fan% curve. (written to `/usr/local/bin/` by [fan_curve.sh](py-nvtool/fan_curve.sh)) |
 | `fan-curve.service` | systemd unit to run the daemon on boot, with clean shutdown (resets fans to AUTO on stop). (written by [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) or [fan-curve.service.sh](py-nvtool/fan-curve.service.sh)) |
 | [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) | One-time full setup for a new rig: writes `fan_curve.py` and `fan-curve.service`, enables and starts the service. |
@@ -47,18 +47,28 @@ the GPU is idle or fully loaded.
 **New rig — setup:**
 
 ```bash
-# create nvtool.py and copy in text
-sudo nano /usr/local/bin/nvtool.py
+# 1. install upstream py-nvtool (same binary gpu_reset_poststop.sh uses)
+wget https://github.com/Akisoft41/py-nvtool/releases/download/v0.2.0/py-nvtool.py
+chmod +x py-nvtool.py
+sudo cp py-nvtool.py /usr/sbin/py-nvtool
 
-or
+# check it works from the command line
+sudo py-nvtool
 
-# copy nvtool.py to rig
-pscp "C:\Users\-windows-username-\Downloads\nvtool.py" user@rig-ip:/home/user/nvtool.py
-
-# copy on rig into place...
-sudo cp -v /home/user/nvtool.py /usr/local/bin/nvtool.py
-
+# 2. write fan_curve.py + fan-curve.service, enable and start
+sudo bash install_fan-curve.sh
 ```
+
+`fan_curve.py` loads `/usr/sbin/py-nvtool` directly — no copy or rename needed. Upstream
+has no `if __name__ == "__main__"` guard (its CLI runs at module level), so `fan_curve.py`
+loads only its definitions (constants, classes, functions) and skips the CLI blocks. Upgrading
+py-nvtool is just replacing `/usr/sbin/py-nvtool` and restarting the service.
+
+To use a different location, pass `--nvtool /path/to/py-nvtool` in the unit's `ExecStart`
+(or set `NVTOOL_PATH`).
+
+If you previously installed the bundled `/usr/local/bin/nvtool.py`, it's no longer used and
+can be removed: `sudo rm /usr/local/bin/nvtool.py`
 
 [fan-curve.service.sh](py-nvtool/fan-curve.service.sh) rewrites the systemd unit and reloads/restarts it —
 edit the `--curve` (and other flags) in that script before running it.
@@ -81,6 +91,7 @@ sudo python3 fan_curve.py --curve "30:30,40:55,50:65,55:90,65:100"
 | `--curve` | `30:30,40:55,50:65,55:90,65:100` | Temp(°C):Fan(%) points, comma-separated, linearly interpolated between points |
 | `--cooldown-delta` | `10` | Temp drop (°C) below the recent peak that triggers a hold before lowering the fan. `0` disables holding. |
 | `--cooldown-seconds` | `15` | How long a drop must persist before the fan is actually lowered |
+| `--nvtool` | `/usr/sbin/py-nvtool` | Path to upstream py-nvtool (or set `NVTOOL_PATH`) |
 
 **Cooldown hold** debounces fan *decreases* specifically: if temp dips ≥`--cooldown-delta`
 below its recent peak, the fan holds at its current (higher) speed for
@@ -98,7 +109,7 @@ sudo bash fan-curve.service.sh
 ```
 
 This rewrites `fan-curve.service`, reloads systemd, and restarts the daemon —
-no need to touch `nvtool.py` or `fan_curve.py`.
+no need to touch `py-nvtool` or `fan_curve.py`.
 
 On `systemctl stop`/`restart`, fans are reset to automatic control before exit:
 
@@ -112,6 +123,7 @@ On `systemctl stop`/`restart`, fans are reset to automatic control before exit:
 
 | Symptom | Likely cause |
 |---|---|
+| `could not load py-nvtool from ...` | `/usr/sbin/py-nvtool` missing — install it (see Install) or pass `--nvtool` |
 | `nvmlInit failed` | NVIDIA driver not installed, or `libnvidia-ml.so.1` not on the library path |
 | `WARN fan-set failed (Not Supported)` | GPU/driver combo doesn't allow manual fan override via NVML |
 | `WARN could not reset to auto` | Same as above — `nvmlDeviceSetDefaultFanSpeed_v2` unsupported on that card |
@@ -120,6 +132,7 @@ On `systemctl stop`/`restart`, fans are reset to automatic control before exit:
 
 ## License / attribution
 
-`nvtool.py` includes NVIDIA's official pynvml bindings (BSD-3-Clause,
-© NVIDIA Corporation) plus a small custom CLI built on top. `fan_curve.py` and
-`fan-curve.service` are original to this project.
+`py-nvtool` is [Akisoft41/py-nvtool](https://github.com/Akisoft41/py-nvtool) (GPL-3.0-or-later),
+which embeds NVIDIA's pynvml bindings (BSD-3-Clause, © NVIDIA Corporation); it is installed
+from upstream, not redistributed here. `fan_curve.py` and `fan-curve.service` are original
+to this project.

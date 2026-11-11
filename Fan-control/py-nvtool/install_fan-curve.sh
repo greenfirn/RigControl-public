@@ -3,14 +3,53 @@ sudo tee /usr/local/bin/fan_curve.py > /dev/null << 'EOF'
 #!/usr/bin/env python3
 """
 fan_curve.py — NVML-based fan curve daemon. Resets fans to automatic control on exit.
+NVML bindings come from upstream py-nvtool (/usr/sbin/py-nvtool by default).
 """
 import argparse
+import ast
 import os
 import signal
 import socket
 import sys
 import time
-import nvtool as nv
+import types
+
+# Upstream py-nvtool (https://github.com/Akisoft41/py-nvtool), installed per its README:
+#   wget https://github.com/Akisoft41/py-nvtool/releases/download/v0.2.0/py-nvtool.py
+#   chmod +x py-nvtool.py && sudo cp py-nvtool.py /usr/sbin/py-nvtool
+DEFAULT_NVTOOL_PATH = "/usr/sbin/py-nvtool"
+
+# Set in main() by load_nvtool()
+nv = None
+
+def load_nvtool(path):
+    """Load upstream py-nvtool as a library.
+
+    py-nvtool has no `if __name__ == "__main__"` guard: its CLI (nvmlInit,
+    sys.argv parsing, sys.exit, nvmlShutdown) runs at module level, so a plain
+    import would execute it with *our* argv. Instead, parse the file and execute
+    only its definitions (imports, constants, classes, functions), skipping the
+    top-level CLI blocks. Works with any upstream version without editing it.
+    """
+    with open(path, "rb") as f:
+        source = f.read()
+    tree = ast.parse(source, filename=path)
+    keep = (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef,
+            ast.ClassDef, ast.Assign, ast.AnnAssign, ast.AugAssign)
+    tree.body = [node for node in tree.body if isinstance(node, keep)]
+    module = types.ModuleType("py_nvtool")
+    module.__file__ = path
+    sys.modules["py_nvtool"] = module
+    exec(compile(tree, path, "exec"), module.__dict__)
+    required = ("nvmlInit", "nvmlShutdown", "NVMLError", "NVML_TEMPERATURE_GPU",
+                "nvmlDeviceGetCount", "nvmlDeviceGetHandleByIndex",
+                "nvmlDeviceGetName", "nvmlDeviceGetTemperature",
+                "nvmlDeviceGetNumFans", "nvmlDeviceSetFanSpeed_v2",
+                "nvmlDeviceSetDefaultFanSpeed_v2")
+    missing = [name for name in required if not hasattr(module, name)]
+    if missing:
+        raise ImportError(f"{path} is missing: {', '.join(missing)}")
+    return module
 # Default temp(C) -> fan(%) curve. Edit to taste, or override with --curve.
 DEFAULT_CURVE = [
     (30, 30),
@@ -97,8 +136,19 @@ def main():
     parser.add_argument("--cooldown-seconds", type=float, default=15.0,
                          help="How long a drop must hold before the fan is "
                               "actually lowered (default: 15)")
+    parser.add_argument("--nvtool", type=str,
+                         default=os.environ.get("NVTOOL_PATH", DEFAULT_NVTOOL_PATH),
+                         help="Path to upstream py-nvtool "
+                              f"(default: {DEFAULT_NVTOOL_PATH}, or $NVTOOL_PATH)")
     args = parser.parse_args()
     curve = parse_curve(args.curve) if args.curve else DEFAULT_CURVE
+    global nv
+    try:
+        nv = load_nvtool(args.nvtool)
+    except (OSError, SyntaxError, ImportError) as error:
+        print(f"[FAN] FATAL: could not load py-nvtool from {args.nvtool}: {error}")
+        sys.exit(1)
+    print(f"[FAN] Using py-nvtool: {args.nvtool}")
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
     try:
