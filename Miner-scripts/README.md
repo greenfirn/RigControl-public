@@ -56,6 +56,9 @@ no screen versions: logs in service
   /opt/miners/, persistent state (stats DB, cmd log) in
   /var/lib/rigcontrol/, and PID/runtime miner logs in /run/rigcontrol/.
 
+# set power limit for rentals, applies when gpu reset is called or gpu service is stopped
+
+![set-power-limit](images/set-power-limit.png)
 
 ## What the scripts can do
 
