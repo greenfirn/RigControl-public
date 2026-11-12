@@ -1,19 +1,27 @@
-sudo systemctl stop rigcloud-agent.service
-sudo systemctl disable rigcloud-agent.service
+#sudo systemctl stop rigcloud-agent.service
+
 sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10
 BROKER_PORT=1883
 BROKER_USER=admin
-BROKER_PASS=**************
+BROKER_PASS=**********
 # comma seperated list of gpu stats safe images
-OVERRIDE_LIST="miner/miner:latest"
+OVERRIDE_LIST=""
+# gpu stats will still be collected for docker image names that include a known miner name
 STATS_DB_ENABLED=true
 # How many days of local telemetry history to keep before old rows are pruned
 STATS_DB_MAX_HISTORY_DAYS=7
 STATS_DB_INTERVAL_SECONDS=90
 # Minimum seconds between telemetry pulls, prevents overlapping collection calls
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
+#CPU_SERVICE_NAME=docker_events_cpu.service
+#GPU_SERVICE_NAME=docker_events_gpu.service
+#AUX_SERVICE_NAME=keryxd.service
+#WATCHDOG_SERVICE_NAME=rigcontrol_watchdog.service
+#CUSTOM_MINER_BIN_GPU=/opt/miners/my-custom-miner/current/my-custom-miner
+#CUSTOM_MINER_BIN_CPU=/opt/miners/my-custom-miner/current/my-custom-miner
+#CUSTOM_MINER_BIN_AUX=/opt/miners/my-custom-miner/current/my-custom-miner
 # Per-custom-miner overrides, keyed by the miner's own name (from CUSTOM_MINER
 # in rig-gpu/cpu/aux.conf or .json, sanitized to A-Z0-9_) - <NAME>_BIN for the
 # binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API,
@@ -29,7 +37,7 @@ KERYX_MINER_SUPR_API_PORT=3338
 #KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
 #KERYXD_LOG_STYLE=blocks
 EOF
-sudo systemctl restart rigcontrol-agent.service
+
 sudo tee /usr/local/bin/rigcontrol_telemetry.py > /dev/null <<'EOF'
 import os
 import subprocess
@@ -959,19 +967,155 @@ def docker_containers_running():
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
 _custom_miner_last_pid = {}
+# Names whose PID changed on the current detect_running_miners() poll - a one-poll-lived
+# signal (cleared and rebuilt every call, not one-shot-consumed like
+# consume_miners_changed_flag()) so any collector called later in the SAME poll cycle
+# (e.g. _collect_named_miner_block_log_stats() below) can tell "did this miner just
+# restart" without re-querying/re-caching its PID itself. Safe to rely on now that
+# detect_running_miners() matches on exact exe basename (not a substring of the whole
+# command line) - see its docstring for why that used to make _custom_miner_last_pid
+# flap between two different PIDs for what was logically one miner.
+_miner_pid_changed_this_poll = set()
+_RIG_CONF_SLOT_PATHS = (
+    ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
+    ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
+    ("aux", "/etc/rigcontrol/rig-aux.conf"),
+)
+def _read_conf_key(path, *keys, gpu_id="0"):
+    """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a
+    2-column KEY "value" variant, stored under an ALL fallback), returning the first key in
+    priority order with a resolved value. Duplicated from rigcontrol_agent.sh's identically-named
+    helper (there's no import path from here back into the agent) so detect_running_miners()
+    below can resolve a custom miner's slot straight from the flightsheet itself, instead of
+    only knowing about a slot once rigcontrol_agent.sh's resolve_custom_miner() has separately
+    registered it."""
+    if not os.path.isfile(path):
+        return ""
+    def _strip_quotes(v):
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+            v = v[1:-1]
+        return v
+    try:
+        rows = {}
+        with open(path, "r") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                parts = line.split(None, 2)
+                if len(parts) < 2:
+                    continue
+                file_key = parts[0]
+                if len(parts) == 2:
+                    rows.setdefault(file_key, {})["ALL"] = _strip_quotes(parts[1])
+                else:
+                    file_gpu = parts[1]
+                    value = _strip_quotes(parts[2])
+                    rows.setdefault(file_key, {})[file_gpu] = value
+        for key in keys:
+            entry = rows.get(key, {})
+            val = entry.get(gpu_id)
+            if not val:
+                val = entry.get("ALL")
+            if val:
+                return val
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+    return ""
+def _read_conf_key_json(path, *keys):
+    """JSON counterpart to _read_conf_key() - see that function's docstring for why this is
+    duplicated from rigcontrol_agent.sh rather than shared/imported."""
+    if not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        items = data.get("items") or []
+        if not items:
+            return ""
+        it = items[0]
+        miner = (it.get("miner") or "").strip()
+        miner_alt = (it.get("miner_alt") or "").strip()
+        mc = it.get("miner_config") or {}
+        mc_miner = (mc.get("miner") or "").strip()
+        is_custom = miner.lower() == "custom"
+        resolved = {
+            "CUSTOM_MINER": (miner_alt or mc_miner) if is_custom else "",
+            "MINER": "" if is_custom else (miner_alt or miner),
+        }
+        for key in keys:
+            val = resolved.get(key, "")
+            if val:
+                return val
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+    return ""
+_rig_slot_conf_cache = {"cpu": {"mtime": None, "name": ""}, "gpu": {"mtime": None, "name": ""}, "aux": {"mtime": None, "name": ""}}
+def _resolve_custom_name_for_slot(slot, conf_path):
+    """Returns the flightsheet-configured custom-miner process name for one slot
+    ("cpu"/"gpu"/"aux"), or "" if that slot isn't running a custom (unrecognized-by-name)
+    miner - i.e. its MINER field names something already in _BUILTIN_MINER_PROCESS_MAP (or is
+    unset). Mirrors rigcontrol_agent.sh's resolve_custom_miner() resolution order (CUSTOM_MINER_
+    BIN_<SLOT> override, then rig-<slot>.json, then rig-<slot>.conf) but is mtime-cached per slot
+    (checks the newer of the .json/.conf files) so detect_running_miners() can call this on every
+    single poll for free - only re-parses when the flightsheet actually changes. Called BEFORE
+    the ps aux scan below (not reactively after failing to match a line) so a slot's custom-miner
+    name is always known going into the match loop, whether or not that miner has ever been seen
+    running before."""
+    override_bin = _read_agent_conf_val(f"CUSTOM_MINER_BIN_{slot.upper()}").strip()
+    if override_bin:
+        return os.path.basename(override_bin.rstrip("/"))
+    json_path = conf_path[:-len(".conf")] + ".json"
+    try:
+        mtime = max(
+            os.path.getmtime(json_path) if os.path.isfile(json_path) else 0,
+            os.path.getmtime(conf_path) if os.path.isfile(conf_path) else 0,
+        )
+    except OSError:
+        mtime = 0
+    cache = _rig_slot_conf_cache[slot]
+    if mtime and cache["mtime"] == mtime:
+        return cache["name"]
+    resolved = _read_conf_key_json(json_path, "CUSTOM_MINER", "MINER") or _read_conf_key(conf_path, "CUSTOM_MINER", "MINER")
+    resolved_lower = resolved.strip().lower()
+    if resolved_lower in _BUILTIN_MINER_PROCESS_MAP or resolved_lower in set(_BUILTIN_MINER_PROCESS_MAP.values()):
+        resolved = ""  # a known built-in miner, not custom - same "already known" check resolve_custom_miner() does
+    cache["mtime"] = mtime
+    cache["name"] = resolved
+    return resolved
 def consume_miners_changed_flag():
     """Returns True if detect_running_miners() has observed the running-miner
     set change since this was last called, then clears the flag (one-shot).
-    Lets callers (e.g. custom-miner re-resolution in the agent) react only
-    when the running set actually changed instead of re-checking blindly
-    on every cycle."""
+    No longer used to gate custom-miner slot registration - detect_running_miners() below
+    resolves each slot's custom-miner name straight from the (cached) flightsheet on every
+    call now, so there's nothing left to gate on a "did the process set change" signal for.
+    Still available for any other caller that only cares about the running set changing."""
     global _miners_set_changed_flag
     changed = _miners_set_changed_flag
     _miners_set_changed_flag = False
     return changed
 def detect_running_miners():
-    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via ps aux and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
-    Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of that
+    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via `ps -eo pid=,args=` and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
+    Resolves each slot's custom-miner name from the flightsheet (via _resolve_custom_name_for_slot(),
+    mtime-cached) BEFORE building the match pattern, so a brand-new custom miner - keryx-miner
+    or anything else - gets matched to the right slot on the very same poll its process first shows
+    up, instead of needing a separate caller (rigcontrol_agent.sh's resolve_custom_miner()) to have
+    already registered it first.
+    Matches against each process's own invoked-executable basename (the first token of its `args`,
+    with any path stripped), NOT the full command line - matching the full line (as this used to,
+    via `ps aux | grep -E pattern`) means a wrapper/launcher script whose PATH argument merely
+    contains a miner's name (e.g. `bash /opt/miners/custom/keryxd/current/start-keryxd.sh`) matches
+    just as readily as the miner's own process line, even though the wrapper isn't the miner. Two
+    lines matching the same name for what's logically one miner meant whichever one `ps` happened
+    to list last that poll won the PID comparison below - not guaranteed stable poll to poll, so it
+    could flap between the wrapper's PID and the real binary's PID and look like a restart on every
+    flap (this is what broke keryxd's share counters after the PID-restart fix started trusting this
+    signal directly instead of re-querying independently). Matching on just the exe basename can't
+    be fooled by a wrapper's path/args this way; this fleet already runs miners inside detached
+    `screen -S <slot>` sessions, whose real binary always shows up as its own separate process with
+    its own accurate exe basename, not merged into screen's.
+    Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of the
     set-membership flag: a miner that crashes and restarts (or gets reinstalled to a new
     version) keeps the same "custom_log_<slot>" key the whole time, so the set never changes
     and consume_miners_changed_flag() alone would never notice. Comparing PIDs catches that
@@ -986,38 +1130,78 @@ def detect_running_miners():
     take effect right away, without waiting on the next incidental conf write."""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
+    _miner_pid_changed_this_poll.clear()
     try:
-        with _custom_miner_lock:
-            custom_names = dict(_CUSTOM_MINER_PROCESS_NAMES)
-        grep_pattern = ("(xmrig|lolminer|bzminer|rigel|srbminer|"
-                         "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer")
-        for _slot, _cname in custom_names.items():
-            if _cname:
-                grep_pattern += "|" + re.escape(_cname)
-        grep_pattern += ")"
+        custom_names = {}
+        for _slot, _path in _RIG_CONF_SLOT_PATHS:
+            _cname = _resolve_custom_name_for_slot(_slot, _path)
+            custom_names[_slot] = _cname
+            with _custom_miner_lock:
+                if _CUSTOM_MINER_PROCESS_NAMES.get(_slot) != _cname:
+                    _CUSTOM_MINER_PROCESS_NAMES[_slot] = _cname
+        name_pattern = re.compile("(xmrig|lolminer|bzminer|rigel|srbminer|"
+                                   "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer"
+                                   + "".join(f"|{re.escape(_cname)}" for _cname in custom_names.values() if _cname)
+                                   + ")", re.IGNORECASE)
+        # No `grep` pipeline needed - `-eo pid=,args=` gives PID and the full argv as two
+        # cleanly-splittable fields directly, and matching happens in Python below against
+        # just the exe basename, so there's nothing left for a shell-side grep to filter.
         result = subprocess.run(
-            ["bash", "-c", f"ps aux | grep -E {shlex.quote(grep_pattern)} | grep -v grep"],
+            ["bash", "-c", "ps -eo pid=,args="],
             capture_output=True, text=True, timeout=2
         )
         if result.returncode == 0 and result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
-                line_lower = line.lower()
+                line = line.strip()
+                if not line:
+                    continue
+                _pid, _, _args = line.partition(' ')
+                if not _pid.isdigit() or not _args:
+                    continue
+                _exe_token = _args.split(None, 1)[0]
+                _exe_name = os.path.basename(_exe_token).lower()
+                if not name_pattern.search(_exe_name):
+                    continue
+                # Figure out which custom-miner NAME this process is (whether or not it's
+                # currently attributed to a slot) before touching PID tracking at all -
+                # _custom_miner_last_pid/_named_miner_version_cache are both keyed by name,
+                # not by slot, so PID-change detection shouldn't depend on slot resolution
+                # having succeeded. _matched_slot is only used below for the found[] key.
                 _matched_slot = None
+                _matched_name = None
                 for _slot, _cname in custom_names.items():
-                    if _cname and _cname in line_lower:
+                    if _cname and _cname in _exe_name:
                         _matched_slot = _slot
+                        _matched_name = _cname
                         break
-                if _matched_slot:
-                    found[f"custom_log_{_matched_slot}"] = True
-                    _pid_fields = line.split(None, 2)
-                    _pid = _pid_fields[1] if len(_pid_fields) > 1 else None
-                    if _pid and _custom_miner_last_pid.get(_matched_slot) != _pid:
-                        _custom_miner_last_pid[_matched_slot] = _pid
+                if _matched_name is None:
+                    # keryx-miner/keryxd are the only names hardcoded into name_pattern ahead
+                    # of any slot resolution (see the base pattern above) - matching one here
+                    # with no assigned slot means it's running but not named in any flightsheet
+                    # right now. Still worth tracking its PID/version; just nothing to attribute
+                    # it to in found[] until a flightsheet actually claims it.
+                    for _hint_name in ("keryx-miner", "keryxd"):
+                        if _hint_name in _exe_name:
+                            _matched_name = _hint_name
+                            break
+                if _matched_name:
+                    if _matched_slot:
+                        found[f"custom_log_{_matched_slot}"] = True
+                    if _custom_miner_last_pid.get(_matched_name) != _pid:
+                        _custom_miner_last_pid[_matched_name] = _pid
+                        _miner_pid_changed_this_poll.add(_matched_name)
                         _agent_conf_cache["mtime"] = None
-                        _named_miner_version(custom_names[_matched_slot], force=True)
+                        # Also force _resolve_custom_name_for_slot()'s per-slot cache to
+                        # re-read rig-*.conf/.json on the next call - a restart is exactly
+                        # the moment a flightsheet reassignment is most likely to need to
+                        # take effect immediately rather than waiting on its own mtime check
+                        # (which only fires on an actual file edit, not a miner restart).
+                        for _c in _rig_slot_conf_cache.values():
+                            _c["mtime"] = None
+                        _named_miner_version(_matched_name, force=True)
                     continue
                 for proc_name, miner_name in _BUILTIN_MINER_PROCESS_MAP.items():
-                    if proc_name in line_lower:
+                    if proc_name in _exe_name:
                         found[miner_name] = True
                         break
     except Exception as e:
@@ -2208,11 +2392,33 @@ def collect_named_custom_miner_stats(slot):
         return _collect_named_miner_block_log_stats(name, log_path, mining_type)
     return _collect_named_miner_generic_log_stats(name, key, log_path, mining_type)
 def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
-    """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected block counts, and (on
-    builds that report it - confirmed on keryx-miner-supr 0.11.10) real per-device temp/fan/power/
-    clock/vram readings. Older builds/other custom miners that don't report those per-device fields
-    just get None there, and temp/fan/power for those still come from collect_nvidia_gpu_stats()
-    (the frontend already merges the system GPU list with each miner's own "gpus" list by index)."""
+    """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected OPoI SHARE counts, and
+    (on builds that report it) real per-device temp/fan/power/clock/vram readings. The API's own
+    JSON keys are literally named "accepted_blocks"/"rejected_blocks"/"blocks_accepted"/
+    "blocks_rejected" (kept as-is below since that's what the miner actually calls them), but for
+    keryx-MINER (this function) they count accepted/rejected OPoI shares this rig submitted, not
+    distinct blockchain blocks - "block" in that literal sense only applies to keryxD, the node
+    (see _collect_named_miner_block_log_stats() below, which really does count blocks off keryxd's
+    own log). Confirmed live via:
+      $ curl 127.0.0.1:3338/stats
+      {"started_epoch_s":..., "uptime_s":512, "synced":true, "opoi_challenge_active":false,
+       "mining_address":"keryx:...", "api_port":3338, "total_hashrate_hs":2163142,
+       "accepted_blocks":5, "rejected_blocks":0, "claimed_outputs":2913,
+       "claimed_sompi":303660659242, "escrow_pending_outputs":1451,
+       "escrow_pending_sompi":150064094454, "last_update_epoch_s":..., "devices":[
+         {"id":"#0 (NVIDIA GeForce RTX 3090)", "hashrate_hs":2163142, "blocks_accepted":5,
+          "blocks_rejected":0, "temp_c":57, "memory_temp_c":null, "fan_percent":92,
+          "power_draw_w":333.238}
+       ]}
+    (claimed_outputs/claimed_sompi/escrow_pending_outputs/escrow_pending_sompi are Keryx-protocol
+    wallet/escrow bookkeeping, not GPU or mining-rate data - not surfaced here, same as the Windows
+    agent's collect_keryx_stats().)
+    Deliberately NOT used for temp/fan/power/clock/vram even when a build reports them (e.g.
+    0.11.10's per-device temp_c/fan_percent/power_draw_w/core_mhz/mem_mhz/vram_total_mb/
+    vram_used_mb) - those always come from collect_nvidia_gpu_stats() (nvidia-smi) instead, same
+    as the Windows agent's collect_keryx_stats(), so there's a single source of truth for GPU
+    sensor readings instead of the miner's own numbers disagreeing with it. The frontend merges
+    the system GPU list with each miner's own "gpus" list by index."""
     data = None
     last_err = None
     for path in ("/stats", "/v1/miner/stats"):
@@ -2232,11 +2438,11 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
     # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
     # /stats response pasted from a live 0.11.10 rig. dev.get("id") or dev.get("name") and the
-    # accepted_blocks/rejected_blocks fallback below handle both the old and new shape, so this keeps
+    # accepted_shares/rejected_shares fallback below handle both the old and new shape, so this keeps
     # working across the schema change either direction without needing to pin a version. That same
     # 0.11.10 response also includes real per-device core_mhz/mem_mhz/fan_pct/power_w/temp_c/
-    # vram_total_mb/vram_used_mb readings that were never being read before - extracted below into
-    # the same canonical gpu-entry key names the other Linux miner collectors already use.
+    # vram_total_mb/vram_used_mb readings, but those are never read here - see the docstring above
+    # for why GPU sensor readings always come from collect_nvidia_gpu_stats() instead.
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
     raw_devices = data.get("devices", []) or []
     parsed_devices = []
@@ -2248,13 +2454,17 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
         parsed_devices.append((idx, gname, dev))
     parsed_devices.sort(key=lambda d: d[0])
     total_hr_hs = data.get("total_hashrate_hs", 0)
+    # Despite the API's own "accepted_blocks"/"rejected_blocks" key names, these are accepted/
+    # rejected OPoI SHARE counts for keryx-miner, not distinct blockchain blocks - see the
+    # docstring above. Named accepted_shares/rejected_shares here (rather than mirroring the API's
+    # own "_blocks" naming) so this doesn't read as literal block counts anywhere below.
     if "accepted_blocks" in data or "rejected_blocks" in data:
-        accepted_blocks = data.get("accepted_blocks", 0)
-        rejected_blocks = data.get("rejected_blocks", 0)
+        accepted_shares = data.get("accepted_blocks", 0)
+        rejected_shares = data.get("rejected_blocks", 0)
     else:
         shares = data.get("shares") or {}
-        accepted_blocks = shares.get("accepted", 0)
-        rejected_blocks = shares.get("rejected", 0)
+        accepted_shares = shares.get("accepted", 0)
+        rejected_shares = shares.get("rejected", 0)
     uptime_s = data.get("uptime_s", 0)
     cache = _named_miner_version_cache.setdefault(name, {"version": "", "queried": False, "last_uptime_s": None})
     # Newer keryx-miner-supr builds (confirmed on 0.11.10) report their own "version" field directly
@@ -2269,20 +2479,22 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     elif cache.get("last_uptime_s") is None or uptime_s < cache["last_uptime_s"]:
         _named_miner_version(name, force=True)
     cache["last_uptime_s"] = uptime_s
-    # Same reasoning as the Windows agent's collect_keryx_stats(): the API only ever reports
-    # accepted/rejected in AGGREGATE, never broken down per device, so there's no way to honestly
-    # attribute them to a specific GPU on a multi-GPU rig. On a single-GPU rig there's no ambiguity -
-    # the one GPU IS the whole aggregate - so attribute the totals to it directly.
+    # Confirmed live (see docstring above), each device object reports its own real
+    # "blocks_accepted"/"blocks_rejected" share counts - prefer those over the aggregate whenever
+    # a device actually has them, so multi-GPU rigs get honest per-device accepted/rejected
+    # instead of None. Same reasoning as the Windows agent's collect_keryx_stats() for the
+    # fallback below: older builds only report accepted/rejected in AGGREGATE, never broken down
+    # per device, so there's no way to honestly attribute them to a specific GPU on a multi-GPU
+    # rig - but on a single-GPU rig there's no ambiguity, the one GPU IS the whole aggregate.
     single_gpu = len(parsed_devices) == 1
+    # No power/core_clock/mem_clock/temperature/mem_temp/fan_speed/vram_*/efficiency_mhs_per_w
+    # here even when a device reports them - see the docstring above, GPU sensor readings never
+    # come from this API, only from collect_nvidia_gpu_stats() (merged in by the frontend by index).
     gpus = [
         _build_gpu_entry(
             idx, name=gname, hashrate_hs=dev.get("hashrate_hs", 0),
-            accepted_shares=accepted_blocks if single_gpu else None,
-            rejected_shares=rejected_blocks if single_gpu else None,
-            power=dev.get("power_w"), core_clock=dev.get("core_mhz"), mem_clock=dev.get("mem_mhz"),
-            temperature=dev.get("temp_c"), fan_speed=dev.get("fan_pct"),
-            vram_total_mb=dev.get("vram_total_mb"), vram_used_mb=dev.get("vram_used_mb"),
-            efficiency_mhs_per_w=dev.get("efficiency_mhs_per_w"),
+            accepted_shares=dev.get("blocks_accepted", accepted_shares if single_gpu else None),
+            rejected_shares=dev.get("blocks_rejected", rejected_shares if single_gpu else None),
         )
         for idx, gname, dev in parsed_devices
     ]
@@ -2296,13 +2508,24 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
             cpu_hashrate_hs=total_hr_hs if mining_type == "CPU" else 0,
             gpu_hashrate_hs=total_hr_hs if mining_type == "GPU" else 0,
             mining_type=mining_type,
-            accepted_shares=accepted_blocks,
-            rejected_shares=rejected_blocks,
+            accepted_shares=accepted_shares,
+            rejected_shares=rejected_shares,
         )],
         gpus=gpus,
         synced=data.get("synced"),
         mining_address=data.get("mining_address", ""),
     )
+# Real "Accepted N blocks"/"N via submit block" batches seen in practice
+# top out in the low tens (e.g. 14, 4, 2) - never anywhere close to
+# thousands. A captured digit group this large almost certainly isn't a
+# real batch count; it's a corrupted/torn line (e.g. two concurrently-
+# written log lines interleaved so some unrelated large number ends up
+# right where a count was expected). Discarding rather than trusting it
+# stops a single bad line from permanently poisoning the cumulative
+# counter - on top of, not instead of, the line-anchoring and PID-restart
+# fixes below.
+_NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH = 1000
+
 def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
     counts since the last poll, offset-tracked via _read_new_log_bytes -
@@ -2316,10 +2539,35 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
     signal - that sub-count is tracked as a second, separate running
     total and surfaced as accepted_shares/total_accepted_shares,
     alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
-    total-blocks-accepted metric above.
+    total-blocks-accepted metric above. Both totals reset to 0 whenever
+    the miner itself restarts - detected two ways: the log file going
+    small (a real replace/truncate) OR the miner's PID changing (catches
+    restarts where the service wrapper just keeps appending to the same
+    log file, which the file-size check alone would miss forever). This
+    is only ever called (via collect_named_custom_miner_stats()) for a
+    name detect_running_miners() already matched THIS poll, so its
+    PID-change signal (_miner_pid_changed_this_poll, populated at the
+    exact point detect_running_miners() already does its own PID compare
+    against _custom_miner_last_pid) is reused directly here instead of
+    re-querying/re-caching the PID independently.
+
+    The line regex below is anchored to the real line shape - timestamp +
+    "[LEVEL]" + "Accepted N blocks" - rather than just "digits near the
+    right words" anywhere in the tail window. That means a corrupted/torn
+    line can only produce a match if it also happens to start with a
+    well-formed timestamp, which is far less likely than merely landing
+    next to "via submit block". group(1) is the total count, group(2) is
+    the submit-block sub-count (None on relay-only lines).
     """
-    accepted_re = re.compile(r"Accepted\s+(\d+)\s+blocks?", re.IGNORECASE)
-    submit_block_re = re.compile(r"(\d+)\s+via\s+submit\s+blocks?", re.IGNORECASE)
+    line_re = re.compile(
+        r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2}[ \t]+"
+        r"\[[A-Za-z]+\s*\][ \t]+Accepted[ \t]+(\d+)[ \t]+blocks?"
+        r"(?:[^\n]*?[ \t](\d+)[ \t]+via[ \t]+submit[ \t]+blocks?)?",
+        re.MULTILINE,
+    )
+
+    miner_restarted = name in _miner_pid_changed_this_poll
+
     share_state = _log_event_state.setdefault(
         log_path, {"offset": 0, "accepted_shares": 0, "submit_block_shares": 0}
     )
@@ -2329,16 +2577,21 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
             "error", name, error=f"could not read log file '{log_path}'",
             miner_version=_named_miner_version(name),
         )
-    if share_state.get("reset"):
+    if share_state.get("reset") or miner_restarted:
+        # A real restart - detected either way above - starts a genuinely
+        # new session; zero both counts instead of carrying them forward.
         share_state["accepted_shares"] = 0
         share_state["submit_block_shares"] = 0
-    for match in accepted_re.finditer(new_text):
-        share_state["accepted_shares"] += int(match.group(1))
-    for match in submit_block_re.finditer(new_text):
-        share_state["submit_block_shares"] += int(match.group(1))
+    for match in line_re.finditer(new_text):
+        total_n = int(match.group(1))
+        if total_n <= _NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH:
+            share_state["accepted_shares"] += total_n
+        submit_n = int(match.group(2)) if match.group(2) else 0
+        if submit_n <= _NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH:
+            share_state["submit_block_shares"] += submit_n
     accepted_shares = share_state["accepted_shares"]
     submit_block_shares = share_state["submit_block_shares"]
-    _named_miner_version(name, force=share_state.get("reset", False))
+    _named_miner_version(name, force=(share_state.get("reset") or miner_restarted))
     return _build_miner_result(
         "ok", name,
         miner_version=_named_miner_version_cache[name]["version"],
@@ -2471,6 +2724,7 @@ def collect_full_stats(visible_groups=None):
     print(f"[Telemetry] Requested groups: {requested_label} | Collected: {sorted(active_groups) if active_groups else 'NONE'}")
     return stats
 EOF
+
 sudo tee /usr/local/bin/rigcontrol_cmd.sh > /dev/null <<'EOF'
 #!/bin/bash
 set -e
@@ -2529,6 +2783,7 @@ rc_miner_api_fetch() {
         echo "$body"
     fi
 }
+# Read entire command from STDIN (multi-line safe)
 RAW_CMD="$(cat)"
 if [[ -z "$RAW_CMD" ]]; then
     echo "No command received"
@@ -2537,10 +2792,12 @@ fi
 echo "==================================================" >> "$LOG"
 echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
 echo "$RAW_CMD" >> "$LOG"
+# Parse first line for structured commands
 FIRST_LINE="$(echo "$RAW_CMD" | head -n1)"
 CMD="$(echo "$FIRST_LINE" | awk '{print $1}')"
 ARG="$(echo "$FIRST_LINE" | cut -d' ' -f2-)"
 case "$CMD" in
+    # GPU Miner Controls
     gpu.start)
         systemctl start "$GPU_SERVICE"
         echo "Started $GPU_SERVICE"
@@ -2553,6 +2810,7 @@ case "$CMD" in
         systemctl restart "$GPU_SERVICE"
         echo "Restarted $GPU_SERVICE"
         ;;
+    # CPU Miner Controls
     cpu.start)
         systemctl start "$CPU_SERVICE"
         echo "Started $CPU_SERVICE"
@@ -2565,6 +2823,7 @@ case "$CMD" in
         systemctl restart "$CPU_SERVICE"
         echo "Restarted $CPU_SERVICE"
         ;;
+    # AUX Service Controls
     aux.start)
         systemctl start "$AUX_SERVICE"
         echo "Started $AUX_SERVICE"
@@ -2577,6 +2836,7 @@ case "$CMD" in
         systemctl restart "$AUX_SERVICE"
         echo "Restarted $AUX_SERVICE"
         ;;
+    # Watchdog Controls (single unified service - see WATCHDOG_SERVICE)
     watchdog.start)
         systemctl enable "$WATCHDOG_SERVICE"
         systemctl start "$WATCHDOG_SERVICE"
@@ -2591,6 +2851,7 @@ case "$CMD" in
         systemctl restart "$WATCHDOG_SERVICE"
         echo "Restarted $WATCHDOG_SERVICE"
         ;;
+    # MINER API CALL (Workers tab -> Logs -> CPU/GPU/AUX API)
     cpu.api)
         rc_miner_api_fetch CPU
         ;;
@@ -2600,6 +2861,7 @@ case "$CMD" in
     aux.api)
         rc_miner_api_fetch AUX
         ;;
+    # MODE SWITCHING
     mode.set)
         MODE="$(echo "$ARG" | tr '[:lower:]' '[:upper:]')"
         systemctl stop "$CPU_SERVICE" "$GPU_SERVICE"
@@ -2617,10 +2879,12 @@ case "$CMD" in
             exit 1
         fi
         ;;
+    # SYSTEM REBOOT
     reboot)
         echo "Rebooting system..."
         systemctl reboot
         ;;
+    # RAW MULTI-LINE SHELL COMMAND (DEFAULT)
     *)
         echo "[RAW EXECUTION]"
         # Delivered via stdin (here-string), NOT as `bash -c "$RAW_CMD"` - passing the whole
@@ -2634,6 +2898,7 @@ case "$CMD" in
 esac
 EOF
 sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh
+
 sudo tee /usr/local/bin/rigcontrol_agent.py > /dev/null <<'EOF'
 import rigcontrol_telemetry as telemetry
 import asyncio
@@ -2679,6 +2944,7 @@ def load_broker_config():
     except Exception as e:
         log(f"Config load error: {e}")
     return cfg
+# CONFIG - LOCAL MQTT OR AWS
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
 if USE_AWS:
@@ -2703,6 +2969,7 @@ telemetry.OVERRIDE_LIST = [
 ]
 if telemetry.OVERRIDE_LIST:
     log(f"[Config] OVERRIDE_LIST = {telemetry.OVERRIDE_LIST}")
+# CONFIG - CUSTOM MINER (unknown-API log-scraper) DETECTION
 def _read_conf_key(path, *keys, gpu_id="0"):
     """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY "value" variant, stored under an ALL fallback), returning the first key in priority order with a resolved value."""
     if not os.path.isfile(path):
@@ -2766,22 +3033,25 @@ def _read_conf_key_json(path, *keys):
     except Exception as e:
         log(f"[Config] Error reading {path}: {e}")
     return ""
-_custom_miner_slot = ""
-_custom_miner_conf_path = ""
-_resolved_name = ""
+_custom_miner_slots = {"cpu": "", "gpu": "", "aux": ""}
+_custom_miner_conf_paths = {"cpu": "", "gpu": "", "aux": ""}
 def resolve_custom_miner():
-    """Re-resolves the custom-miner slot/name/env vars. Called once at
-    startup, then re-run whenever telemetry.consume_miners_changed_flag()
-    reports the running-miner process set changed (see publish_status /
-    stats_db_periodic_loop) so a miner binary/version change picked up
-    while the agent is already running doesn't require an agent restart
-    to be detected."""
-    global _custom_miner_slot, _custom_miner_conf_path, _resolved_name
-    _custom_miner_slot = ""
-    _custom_miner_conf_path = ""
-    _resolved_name = ""
-    for _rig_conf_path in ("/etc/rigcontrol/rig-gpu.conf", "/etc/rigcontrol/rig-cpu.conf", "/etc/rigcontrol/rig-aux.conf"):
-        _slot_name = "gpu" if "rig-gpu" in _rig_conf_path else ("cpu" if "rig-cpu" in _rig_conf_path else "aux")
+    """Re-resolves the custom-miner slot/name/env vars for ALL THREE slots
+    (cpu/gpu/aux) independently - more than one slot can simultaneously run
+    a miner unrecognized by telemetry._BUILTIN_MINER_PROCESS_MAP (e.g. GPU
+    running keryx-miner while AUX runs keryxd), and each slot needs its own
+    registered custom-miner name so neither one starves the other out of
+    telemetry collection. Called once at startup, then re-run whenever
+    telemetry.consume_miners_changed_flag() reports the running-miner
+    process set changed (see publish_status / stats_db_periodic_loop) so a
+    miner binary/version change picked up while the agent is already
+    running doesn't require an agent restart to be detected."""
+    global _custom_miner_slots, _custom_miner_conf_paths
+    for _slot_name, _rig_conf_path in (
+        ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
+        ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
+        ("aux", "/etc/rigcontrol/rig-aux.conf"),
+    ):
         _override_bin = cfg.get(f"CUSTOM_MINER_BIN_{_slot_name.upper()}", "").strip()
         if _override_bin:
             _resolved_name = os.path.basename(_override_bin.rstrip("/"))
@@ -2794,6 +3064,9 @@ def resolve_custom_miner():
             else:
                 _resolved_name = _read_conf_key(_rig_conf_path, "CUSTOM_MINER", "MINER")
         if not _resolved_name:
+            telemetry.set_custom_miner_process_name(_slot_name, "")
+            _custom_miner_slots[_slot_name] = ""
+            _custom_miner_conf_paths[_slot_name] = ""
             continue
         _resolved_lower = _resolved_name.strip().lower()
         _already_known = (
@@ -2803,31 +3076,31 @@ def resolve_custom_miner():
         if _already_known:
             _source_desc = f"CUSTOM_MINER_BIN_{_slot_name.upper()} basename" if _override_bin else str(_rig_conf_path)
             log(f"[Config] {_source_desc} MINER='{_resolved_name}' already has a known collector - not treating as custom")
+            telemetry.set_custom_miner_process_name(_slot_name, "")
+            _custom_miner_slots[_slot_name] = ""
+            _custom_miner_conf_paths[_slot_name] = ""
             continue
-        telemetry.set_custom_miner_process_name(_resolved_name)
-        _custom_miner_slot = _slot_name
-        _custom_miner_conf_path = _rig_conf_path
+        telemetry.set_custom_miner_process_name(_slot_name, _resolved_name)
+        _custom_miner_slots[_slot_name] = _resolved_name
+        _custom_miner_conf_paths[_slot_name] = _rig_conf_path
         if _override_bin:
             log(f"[Config] CUSTOM_MINER_PROCESS_NAME (manual, from CUSTOM_MINER_BIN_{_slot_name.upper()} basename, conf/json skipped) = {_resolved_name}")
         else:
             log(f"[Config] CUSTOM_MINER_PROCESS_NAME (auto-detected from {_rig_conf_path}) = {_resolved_name}")
-        break
-    else:
-        telemetry.set_custom_miner_process_name("")
-    if _custom_miner_slot:
         _miner_key = telemetry._sanitize_miner_key(_resolved_name)
         for _cfg_key, _cfg_val in cfg.items():
             if _cfg_key.startswith(f"{_miner_key}_") and _cfg_val.strip():
                 os.environ[_cfg_key] = _cfg_val.strip()
                 log(f"[Config] {_cfg_key} (rigcontrol-agent.conf) = {_cfg_val.strip()}")
-        _custom_bin_override = cfg.get(f"CUSTOM_MINER_BIN_{_custom_miner_slot.upper()}", "").strip()
+        _custom_bin_override = cfg.get(f"CUSTOM_MINER_BIN_{_slot_name.upper()}", "").strip()
         if _custom_bin_override and f"{_miner_key}_BIN" not in os.environ:
             os.environ[f"{_miner_key}_BIN"] = _custom_bin_override
-            log(f"[Config] {_miner_key}_BIN (from CUSTOM_MINER_BIN_{_custom_miner_slot.upper()}) = {_custom_bin_override}")
+            log(f"[Config] {_miner_key}_BIN (from CUSTOM_MINER_BIN_{_slot_name.upper()}) = {_custom_bin_override}")
         if f"{_miner_key}_LOG_PATH" not in os.environ:
-            os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_custom_miner_slot}_miner.log"
-            log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_custom_miner_slot} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
+            os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_slot_name}_miner.log"
+            log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_slot_name} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
 resolve_custom_miner()
+# CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
     STATS_DB_MAX_HISTORY_DAYS = int(cfg.get("STATS_DB_MAX_HISTORY_DAYS", STATS_DB_MAX_HISTORY_DAYS))
@@ -2849,6 +3122,7 @@ log(f"[Config] Local stats DB enabled = {STATS_DB_ENABLED}")
 log(f"[Config] Local stats DB max history days = {STATS_DB_MAX_HISTORY_DAYS}")
 log(f"[Config] Local stats DB periodic save interval = {STATS_DB_INTERVAL_SECONDS}s")
 log(f"[Config] Minimum telemetry pull interval = {MIN_TELEMETRY_PULL_INTERVAL_SECONDS}s")
+# CONFIG - SERVICE NAMES
 CPU_SERVICE_NAME = cfg.get("CPU_SERVICE_NAME", "").strip() or "docker_events_cpu.service"
 GPU_SERVICE_NAME = cfg.get("GPU_SERVICE_NAME", "").strip() or "docker_events_gpu.service"
 WATCHDOG_SERVICE_NAME = cfg.get("WATCHDOG_SERVICE_NAME", "").strip() or "rigcontrol_watchdog.service"
@@ -3055,8 +3329,16 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         if STATS_DB_ENABLED and (time.time() - _stats_db_last_save) >= STATS_DB_INTERVAL_SECONDS:
             effective_visible_groups = None
         try:
-            if telemetry.consume_miners_changed_flag():
-                await asyncio.to_thread(resolve_custom_miner)
+            # Unconditional every cycle (not gated behind telemetry.consume_miners_changed_flag())
+            # - that flag only flips when detect_running_miners()'s found-set changes, which
+            # requires a process to already be recognized (a registered custom slot, or a builtin)
+            # before its appearance/disappearance can register as a "change" at all. A brand-new
+            # custom-miner name configured while the agent is already running is invisible to that
+            # detection loop until IT'S resolved, so gating registration behind it is a chicken-
+            # and-egg that only self-heals via an unrelated flag flip or a full agent restart.
+            # resolve_custom_miner() itself is just a couple of small conf/json file reads (no
+            # network calls), cheap enough to run on every ~5s telemetry cycle unconditionally.
+            await asyncio.to_thread(resolve_custom_miner)
         except Exception as e:
             log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
         payload = await asyncio.to_thread(
@@ -3264,8 +3546,9 @@ async def stats_db_periodic_loop():
             continue
         try:
             try:
-                if telemetry.consume_miners_changed_flag():
-                    await asyncio.to_thread(resolve_custom_miner)
+                # See the matching call in the main telemetry-pull path for why this is
+                # unconditional now instead of gated behind telemetry.consume_miners_changed_flag().
+                await asyncio.to_thread(resolve_custom_miner)
             except Exception as e:
                 log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
             payload = await asyncio.to_thread(telemetry.collect_full_stats)
@@ -3345,6 +3628,7 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 EOF
+
 AGENT_VENV="/usr/local/lib/rigcontrol-agent/.venv"
 if [ ! -x "$AGENT_VENV/bin/pip" ]; then
     echo "Creating rigcontrol-agent virtual environment at $AGENT_VENV ..."

@@ -35,4 +35,3 @@ KERYX_MINER_SUPR_API_PORT=3338
 #KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
 #KERYXD_LOG_STYLE=blocks
 EOF
-sudo systemctl restart rigcontrol-agent.service

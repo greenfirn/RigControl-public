@@ -11,7 +11,6 @@ for %%F in (rigcontrol-agent-local.sh rigcontrol_telemetry.sh rigcontrol_cmd.sh 
 )
 (
     echo #sudo systemctl stop rigcloud-agent.service
-    echo #sudo systemctl disable rigcloud-agent.service
     echo.
     type "rigcontrol-agent-local.sh"
     echo.

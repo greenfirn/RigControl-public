@@ -31,4 +31,3 @@ KERYXD_LOG_STYLE=blocks
 #KERYX_MINER_SUPR_API_HOST=127.0.0.1
 #KERYX_MINER_SUPR_API_PORT=3338
 EOF
-sudo systemctl restart rigcontrol-agent.service
