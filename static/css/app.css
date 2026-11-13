@@ -158,7 +158,7 @@
     --button-apply-qa-border: #4fc3f7;
     --button-apply-qa-text: #4fc3f7;
     --button-apply-qa-hover-bg: #2e4a66;
-    --button-save-border: #444;
+    --button-save-border: #66bb6a;
     --button-save-bg: #2e2e2e;
     --button-save-text: #66bb6a;
     --button-save-hover-bg: #424242;
@@ -183,13 +183,13 @@
     --button-test-alert-border: #4fc3f7;
     --button-test-alert-text: #4fc3f7;
     --button-test-alert-hover-bg: #203040;
-    --button-reset-bg: #b00020;
-    --button-reset-hover-bg: #ff1744;
-    --button-danger-bg: #dc3545;
-    --button-danger-border: #dc3545;
-    --button-danger-text: white;
-    --button-danger-hover-bg: #e94f5f;
-    --button-danger-hover-border: #c82333;
+    --button-reset-bg: #8c4a52;
+    --button-reset-hover-bg: #b45a64;
+    --button-danger-bg: #2e2e2e;
+    --button-danger-border: #8c4a52;
+    --button-danger-text: #ef8f8f;
+    --button-danger-hover-bg: #3b2a2d;
+    --button-danger-hover-border: #b45a64;
     --button-notify-hover-bg: rgba(144, 238, 144, 0.1);
     --button-notify-text: #90ee90;
     --button-notify-bg: #2e2e2e;
@@ -227,10 +227,10 @@
     --button-saved-cmd-save-border: #444;
     --button-saved-cmd-save-text: #eee;
     --button-saved-cmd-save-hover-bg: #424242;
-    --button-saved-cmd-delete-bg: #dc3545;
-    --button-saved-cmd-delete-border: #dc3545;
-    --button-saved-cmd-delete-text: white;
-    --button-saved-cmd-delete-hover-bg: #e94f5f;
+    --button-saved-cmd-delete-bg: #2e2e2e;
+    --button-saved-cmd-delete-border: #8c4a52;
+    --button-saved-cmd-delete-text: #ef8f8f;
+    --button-saved-cmd-delete-hover-bg: #3b2a2d;
     --button-cmd-clear-bg: #2e2e2e;
     --button-cmd-clear-border: #555;
     --button-cmd-clear-text: #4fc3f7;
@@ -1657,12 +1657,13 @@ h1 {
     opacity: 0.85;
 }
 .cmd-btn.danger {
-    background: var(--text-danger);
-    color: #fff;
-    border-color: var(--text-danger);
+    background: var(--button-danger-bg);
+    color: var(--button-danger-text);
+    border-color: var(--button-danger-border);
 }
 .cmd-btn.danger:hover {
-    opacity: 0.85;
+    background: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
 }
 #btn-new-fs,
 #btn-new-oc {
