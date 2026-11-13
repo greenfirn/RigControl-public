@@ -2225,17 +2225,38 @@ function initSideNav() {
         applySideNavCollapsed(next);
     });
 }
+const WORKER_LIST_WIDTH_KEY = "rigcontrol_worker_list_width";
+let lastWorkerListWidth = 0;
+function setWorkerListWidthVar(widthPx) {
+    document.documentElement.style.setProperty("--worker-list-width", `${widthPx}px`);
+}
 function syncWorkerListWidthVar() {
     const grid = document.querySelector(".rig-header-grid");
     const items = grid ? grid.querySelectorAll(".header-item") : [];
-    if (!grid || !items.length) {
-        document.documentElement.style.setProperty("--worker-list-width", "100%");
+    let width = 0;
+    if (grid && items.length) {
+        const first = items[0].getBoundingClientRect();
+        const last = items[items.length - 1].getBoundingClientRect();
+        width = Math.max(0, last.right - first.left);
+    }
+    if (width > 1) {
+        lastWorkerListWidth = width;
+        try { localStorage.setItem(WORKER_LIST_WIDTH_KEY, String(Math.round(width))); } catch (e) {}
+        setWorkerListWidthVar(width);
         return;
     }
-    const first = items[0].getBoundingClientRect();
-    const last = items[items.length - 1].getBoundingClientRect();
-    const width = Math.max(0, last.right - first.left);
-    document.documentElement.style.setProperty("--worker-list-width", `${width}px`);
+    // Workers tab hidden (display:none) or not laid out yet: every rect reads 0, so keep the last
+    // measured width instead of collapsing the action output / anything else sized from it.
+    if (!lastWorkerListWidth) {
+        let saved = 0;
+        try { saved = Number(localStorage.getItem(WORKER_LIST_WIDTH_KEY)) || 0; } catch (e) {}
+        if (saved > 1) lastWorkerListWidth = saved;
+    }
+    if (lastWorkerListWidth > 1) {
+        setWorkerListWidthVar(lastWorkerListWidth);
+    } else {
+        document.documentElement.style.setProperty("--worker-list-width", "100%");
+    }
 }
 function setupWorkerListWidthSync() {
     const grid = document.querySelector(".rig-header-grid");
