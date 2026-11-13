@@ -6181,7 +6181,7 @@ body {
     flex-direction: column;
     gap: 14px;
     padding: 14px 8px;
-    background: var(--surface-modal-panel);
+    background: var(--surface-tabs);
     border-right: 1px solid var(--border-header);
     box-shadow: 2px 0 14px rgba(0, 0, 0, 0.25);
     overflow-x: hidden;
