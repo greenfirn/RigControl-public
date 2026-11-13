@@ -188,7 +188,7 @@
     --button-danger-bg: #2e2e2e;
     --button-danger-border: #8c4a52;
     --button-danger-text: #ef8f8f;
-    --button-danger-hover-bg: #3b2a2d;
+    --button-danger-hover-bg: #5a2f35;
     --button-danger-hover-border: #b45a64;
     --button-notify-hover-bg: rgba(144, 238, 144, 0.1);
     --button-notify-text: #90ee90;
@@ -230,7 +230,7 @@
     --button-saved-cmd-delete-bg: #2e2e2e;
     --button-saved-cmd-delete-border: #8c4a52;
     --button-saved-cmd-delete-text: #ef8f8f;
-    --button-saved-cmd-delete-hover-bg: #3b2a2d;
+    --button-saved-cmd-delete-hover-bg: #5a2f35;
     --button-cmd-clear-bg: #2e2e2e;
     --button-cmd-clear-border: #555;
     --button-cmd-clear-text: #4fc3f7;
@@ -847,8 +847,8 @@ h1 {
     cursor: pointer;
 }
 .action-output-clear-btn:hover {
-    background: var(--button-danger-bg);
-    border-color: var(--button-danger-border);
+    background: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
     color: var(--button-danger-text);
 }
 .action-output {
@@ -2195,8 +2195,8 @@ h1 {
     cursor: pointer;
 }
 .color-picker-clear-btn:hover {
-    background: var(--button-danger-bg);
-    border-color: var(--button-danger-border);
+    background: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
     color: var(--button-danger-text);
 }
 .color-picker-input::-webkit-color-swatch-wrapper {
@@ -2349,8 +2349,8 @@ h1 {
     cursor: pointer;
 }
 .toolbar-icon-picker-list-item-delete:hover {
-    background: var(--button-danger-bg);
-    border-color: var(--button-danger-border);
+    background: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
     color: var(--button-danger-text);
 }
 .toolbar-icon-field label {
@@ -2516,8 +2516,8 @@ h1 {
     cursor: pointer;
 }
 .color-scheme-list-item-delete:hover {
-    background: var(--button-danger-bg);
-    border-color: var(--button-danger-border);
+    background: var(--button-danger-hover-bg);
+    border-color: var(--button-danger-hover-border);
     color: var(--button-danger-text);
 }
 .settings-section {
