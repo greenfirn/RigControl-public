@@ -70,7 +70,6 @@
     --toolbar-btn-height: 28px;
     --toolbar-btn-padding-x: 8px;
     --toolbar-btn-min-width: 40px;
-    --toolbar-btn-font-size: 12px;
     --wallpaper-image: none;
     --wallpaper-opacity: 0.45;
     --wallpaper-size: cover;
@@ -292,8 +291,8 @@
     --font-size-heading-page: 16px;
     --font-size-modal-header: 13px;
     --font-size-modal-title: 13px;
-    --font-size-section-header: 13px;
-    --font-size-toolbar-btn: 12px;
+    --font-size-section-header: 10px;
+    --font-size-toolbar-btn: 10px;
     --font-size-module-btn: 13px;
     --font-size-btn-secondary: 12px;
     --font-size-btn-micro: 10px;
@@ -301,34 +300,34 @@
     --font-size-list-item: 13px;
     --font-size-list-item-compact: 12px;
     --font-size-list-item-meta: 11px;
-    --font-size-main-list: 12px;
-    --font-size-worker-header: 12px;
-    --font-size-main-list-table: 12px;
+    --font-size-main-list: 10px;
+    --font-size-worker-header: 10px;
+    --font-size-main-list-table: 10px;
     --font-size-main-list-table-header: 10px;
-    --font-size-status-value-lg: 18px;
+    --font-size-status-value-lg: 14px;
     --font-size-status-value: 13px;
-    --font-size-status-label: 11px;
+    --font-size-status-label: 10px;
     --font-size-status-bar: 12px;
-    --font-size-popover: 13px;
+    --font-size-popover: 10px;
     --font-size-popover-label: 10px;
-    --font-size-popover-value: 12px;
+    --font-size-popover-value: 10px;
     --font-size-popover-stat-label: 0.7em;
     --font-size-popover-stat-value: 0.9em;
-    --font-size-label: 11px;
-    --font-size-checkbox-label: 11px;
+    --font-size-label: 10px;
+    --font-size-checkbox-label: 10px;
     --font-size-table: 12px;
     --font-size-table-header: 11px;
-    --font-size-input: 13px;
+    --font-size-input: 10px;
     --font-size-input-compact: 12px;
-    --font-size-input-lg: 13px;
-    --font-size-hint: 12px;
-    --font-size-hint-sm: 11px;
+    --font-size-input-lg: 10px;
+    --font-size-hint: 10px;
+    --font-size-hint-sm: 10px;
     --font-size-hint-xs: 10px;
     --font-size-banner: 12px;
     --font-size-banner-text: 13px;
     --font-size-output: 13px;
     --font-size-output-meta: 12px;
-    --font-size-action-output: 12px;
+    --font-size-action-output: 10px;
     --font-size-chart-title: 12px;
 }
 #fs-modal, #oc-modal, #wallet-modal, #wdconfig-modal {
@@ -567,7 +566,7 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--toolbar-btn-font-size, var(--font-size-toolbar-btn));
+    font-size: var(--font-size-toolbar-btn);
     background: color-mix(in srgb, var(--tab-bg) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     border: 1px solid var(--tab-border);
     color: var(--tab-text);
@@ -779,7 +778,7 @@ h1 {
     border: 1px solid var(--button-border);
     background: color-mix(in srgb, var(--button-bg) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     color: var(--button-text);
-    font-size: var(--toolbar-btn-font-size, var(--font-size-toolbar-btn));
+    font-size: var(--font-size-toolbar-btn);
     cursor: pointer;
 }
 .action-btn:hover {
@@ -901,7 +900,7 @@ h1 {
 }
 .action-output-timestamp {
     color: var(--text-primary);
-    font-size: var(--font-size-status-label);
+    font-size: var(--font-size-action-output);
     font-variant-numeric: tabular-nums;
     margin-right: 8px;
 }

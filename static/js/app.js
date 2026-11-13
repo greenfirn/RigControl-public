@@ -751,7 +751,6 @@ function applyToolbarBtnStyle(settings) {
     root.style.setProperty("--toolbar-btn-height", metrics.height);
     root.style.setProperty("--toolbar-btn-padding-x", metrics.paddingX);
     root.style.setProperty("--toolbar-btn-min-width", metrics.minWidth);
-    root.style.setProperty("--toolbar-btn-font-size", metrics.fontSize);
     const shapeSelect = document.getElementById("toolbar-btn-shape-select");
     if (shapeSelect) shapeSelect.value = shape;
     const sizeSelect = document.getElementById("toolbar-btn-size-select");
