@@ -447,6 +447,100 @@ def detect_board_partner(gpu_name, pnp_device_id=None, power_watts=0):
                                          ["asus", "evga", "msi", "gigabyte", "zotac"]):
         return "NVIDIA"
     return board_partner
+def _parse_float_or_none(raw):
+    """nvidia-smi prints '[N/A]' / '[Not Supported]' for fields a GPU/driver can't report; treat
+    that as unknown (None) instead of a misleading 0."""
+    try:
+        return float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+def _collect_nvidia_power_limits():
+    """Returns {gpu_index: {"power_limit_min","power_limit_default","power_limit_max","vbios_version"}}.
+    Queried in its OWN nvidia-smi call, separate from collect_gpu_stats()'s main query, so a driver
+    that rejects or blanks one of these fields can never drop the rest of the GPU stats. Newer
+    Windows drivers can report power.*_limit as [N/A] in --query-gpu CSV output; anything still
+    missing after the CSV pass is filled from the "nvidia-smi -q -d POWER" text report."""
+    limits = {}
+    try:
+        result = subprocess.run(
+            'nvidia-smi --query-gpu=index,vbios_version,power.min_limit,power.default_limit,power.max_limit '
+            '--format=csv,noheader,nounits',
+            shell=True, capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().splitlines():
+                f = [x.strip() for x in line.split(",")]
+                if len(f) < 5 or not f[0].isdigit():
+                    continue
+                vb = f[1] if f[1] and not f[1].startswith("[") else None
+                limits[int(f[0])] = {
+                    "vbios_version": vb,
+                    "power_limit_min": _parse_float_or_none(f[2]),
+                    "power_limit_default": _parse_float_or_none(f[3]),
+                    "power_limit_max": _parse_float_or_none(f[4]),
+                }
+    except Exception as e:
+        print(f"Error querying GPU power limits (csv): {e}")
+    try:
+        missing = [i for i, v in limits.items()
+                   if v["power_limit_min"] is None or v["power_limit_default"] is None or v["power_limit_max"] is None]
+        if missing or not limits:
+            result = subprocess.run("nvidia-smi -q -d POWER", shell=True, capture_output=True, text=True, timeout=8)
+            if result.returncode == 0:
+                sections = re.split(r"(?m)^GPU\s+[0-9A-Fa-f:.]+\s*$", result.stdout)[1:]
+                keymap = (("power_limit_min", r"Min Power Limit\s*:\s*([0-9.]+)"),
+                          ("power_limit_default", r"Default Power Limit\s*:\s*([0-9.]+)"),
+                          ("power_limit_max", r"Max Power Limit\s*:\s*([0-9.]+)"))
+                for pos, sec in enumerate(sections):
+                    entry = limits.setdefault(pos, {"vbios_version": None, "power_limit_min": None,
+                                                    "power_limit_default": None, "power_limit_max": None})
+                    for key, rx in keymap:
+                        if entry[key] is None:
+                            m = re.search(rx, sec)
+                            if m:
+                                entry[key] = float(m.group(1))
+    except Exception as e:
+        print(f"Error querying GPU power limits (-q): {e}")
+    return limits
+def _collect_nvidia_power_draw():
+    """Returns {gpu_index: watts} for GPUs whose plain "power.draw" came back [N/A]/0. Newer NVIDIA
+    drivers split the reading into power.draw.instant / power.draw.average and can report the old
+    power.draw as [N/A] on some cards, so the main query's power value ends up 0. Queried in its
+    own nvidia-smi call (an unknown field name on an older driver fails only this call, never the
+    main stats), then falls back to the "nvidia-smi -q -d POWER" text report."""
+    draw = {}
+    try:
+        result = subprocess.run(
+            'nvidia-smi --query-gpu=index,power.draw.instant,power.draw.average --format=csv,noheader,nounits',
+            shell=True, capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().splitlines():
+                f = [x.strip() for x in line.split(",")]
+                if len(f) < 3 or not f[0].isdigit():
+                    continue
+                for raw in (f[1], f[2]):
+                    v = _parse_float_or_none(raw)
+                    if v is not None and v > 0:
+                        draw[int(f[0])] = v
+                        break
+    except Exception as e:
+        print(f"Error querying GPU power draw (csv): {e}")
+    try:
+        result = subprocess.run("nvidia-smi -q -d POWER", shell=True, capture_output=True, text=True, timeout=8)
+        if result.returncode == 0:
+            sections = re.split(r"(?m)^GPU\s+[0-9A-Fa-f:.]+\s*$", result.stdout)[1:]
+            for pos, sec in enumerate(sections):
+                if pos in draw:
+                    continue
+                for label in ("Instantaneous Power Draw", "Average Power Draw", "Power Draw"):
+                    m = re.search(r"(?m)^\s*" + label + r"\s*:\s*([0-9.]+)\s*W", sec)
+                    if m and float(m.group(1)) > 0:
+                        draw[pos] = float(m.group(1))
+                        break
+    except Exception as e:
+        print(f"Error querying GPU power draw (-q): {e}")
+    return draw
 def collect_gpu_stats():
     gpus = []
     if platform.system() != "Windows":
@@ -533,6 +627,20 @@ def collect_gpu_stats():
                 continue
     except Exception as e:
         print(f"Error collecting GPU stats: {e}")
+    if gpus and any(g.get("power_watts", 0) <= 0 for g in gpus):
+        fallback_draw = _collect_nvidia_power_draw()
+        for g in gpus:
+            if g.get("power_watts", 0) <= 0 and g["index"] in fallback_draw:
+                g["power_watts"] = fallback_draw[g["index"]]
+    if gpus:
+        limits = _collect_nvidia_power_limits()
+        for g in gpus:
+            lim = limits.get(g["index"], {})
+            g["power_limit_min"] = lim.get("power_limit_min")
+            g["power_limit_default"] = lim.get("power_limit_default")
+            g["power_limit_max"] = lim.get("power_limit_max")
+            if lim.get("vbios_version"):
+                g["vbios_version"] = lim["vbios_version"]
     return gpus
 def has_nvidia_gpu():
     if platform.system() != "Windows":
