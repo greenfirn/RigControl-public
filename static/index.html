@@ -993,8 +993,16 @@
                         </span>
                     </div>
                     <div class="color-picker-row">
+                        <label for="size-tab">Tabs</label>
+                        <input type="number" id="size-tab" class="size-picker-input" min="8" max="24" step="1" title="Side panel tab text size">
+                    </div>
+                    <div class="color-picker-row">
                         <label for="size-toolbar-btn">Toolbar Buttons</label>
-                        <input type="number" id="size-toolbar-btn" class="size-picker-input" min="8" max="24" step="1" title="Main page button row (FS, OC, WD, A/B/C, etc.) text size">
+                        <input type="number" id="size-toolbar-btn" class="size-picker-input" min="8" max="24" step="1" title="Buttons in windows/modals (Send it, Apply, Close, etc.) text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-worker-toolbar">Worker Toolbar</label>
+                        <input type="number" id="size-worker-toolbar" class="size-picker-input" min="8" max="24" step="1" title="Main page worker toolbar (FS, OC, WD, A/B/C, etc.) text size">
                     </div>
                     <div class="color-picker-row">
                         <label for="size-status-value">Status Bar Numbers</label>
@@ -1007,14 +1015,6 @@
                     <div class="color-picker-row">
                         <label for="size-action-output">Status Output Text</label>
                         <input type="number" id="size-action-output" class="size-picker-input" min="8" max="24" step="1" title="'Mode: GPU' / action status line text size">
-                    </div>
-                    <div class="color-picker-row">
-                        <label for="size-worker-header">Worker List Title</label>
-                        <input type="number" id="size-worker-header" class="size-picker-input" min="8" max="24" step="1" title="Sticky worker list title row text size">
-                    </div>
-                    <div class="color-picker-row">
-                        <label for="size-main-list">Worker List Text</label>
-                        <input type="number" id="size-main-list" class="size-picker-input" min="8" max="24" step="1" title="Worker row text size (data rows, not the title)">
                     </div>
                 </div>
                     <div class="color-scheme-group color-scheme-group-tight">
@@ -1041,6 +1041,14 @@
                     <div class="color-picker-row">
                         <label for="size-gpu-table">GPU List Text</label>
                         <input type="number" id="size-gpu-table" class="size-picker-input" min="8" max="24" step="1" title="Per-GPU table text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-worker-header">Worker List Title</label>
+                        <input type="number" id="size-worker-header" class="size-picker-input" min="8" max="24" step="1" title="Sticky worker list title row text size">
+                    </div>
+                    <div class="color-picker-row">
+                        <label for="size-main-list">Worker List Text</label>
+                        <input type="number" id="size-main-list" class="size-picker-input" min="8" max="24" step="1" title="Worker row text size (data rows, not the title)">
                     </div>
                 </div>
                 </div>

@@ -486,6 +486,8 @@ const COLOR_SCHEME_MAP = {
 };
 const SIZE_SCHEME_MAP = {
     "size-toolbar-btn": ["--font-size-toolbar-btn"],
+    "size-worker-toolbar": ["--font-size-worker-toolbar"],
+    "size-tab": ["--font-size-tab"],
     "size-status-value": ["--font-size-status-value-lg"],
     "size-status-label": ["--font-size-status-label"],
     "size-action-output": ["--font-size-action-output"],
@@ -725,9 +727,9 @@ function saveToolbarBtnLock(locked) {
 }
 const TOOLBAR_BTN_SHAPE_RADIUS = { square: "4px", rounded: "6px", pill: "999px", circle: "50%" };
 const TOOLBAR_BTN_SIZE_METRICS = {
-    compact: { height: "22px", paddingX: "6px", minWidth: "30px", fontSize: "10px" },
-    normal: { height: "28px", paddingX: "8px", minWidth: "40px", fontSize: "12px" },
-    large: { height: "36px", paddingX: "12px", minWidth: "52px", fontSize: "14px" },
+    compact: { height: "2.2em", paddingX: "0.6em", minWidth: "3em" },
+    normal: { height: "2.3em", paddingX: "0.7em", minWidth: "3.3em" },
+    large: { height: "2.6em", paddingX: "0.85em", minWidth: "3.7em" },
 };
 function loadToolbarBtnStyle() {
     try {
@@ -2217,6 +2219,18 @@ function initSideNav() {
         const text = tab.querySelector(".view-tab-text");
         if (text) tab.title = text.textContent.trim();
     });
+    const nav = document.getElementById("side-nav");
+    if (nav && window.ResizeObserver) {
+        let lastW = 0;
+        new ResizeObserver(() => {
+            const w = Math.ceil(nav.getBoundingClientRect().width);
+            if (w && w !== lastW) {
+                lastW = w;
+                document.body.style.setProperty("--side-nav-width", `${w}px`);
+                window.dispatchEvent(new Event("resize"));
+            }
+        }).observe(nav);
+    }
     applySideNavCollapsed(collapsed);
     btn.addEventListener("click", () => {
         const next = !document.body.classList.contains("nav-collapsed");

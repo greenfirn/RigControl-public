@@ -67,9 +67,9 @@
     --stat-panel-image-size: cover;
     --stat-panel-image-repeat: no-repeat;
     --toolbar-btn-radius: 6px;
-    --toolbar-btn-height: 28px;
-    --toolbar-btn-padding-x: 8px;
-    --toolbar-btn-min-width: 40px;
+    --toolbar-btn-height: 2.3em;
+    --toolbar-btn-padding-x: 0.7em;
+    --toolbar-btn-min-width: 3.3em;
     --wallpaper-image: none;
     --wallpaper-opacity: 0.45;
     --wallpaper-size: cover;
@@ -293,8 +293,11 @@
     --font-size-modal-title: 13px;
     --font-size-section-header: 10px;
     --font-size-toolbar-btn: 10px;
-    --font-size-module-btn: 13px;
-    --font-size-btn-secondary: 12px;
+    --font-size-worker-toolbar: 10px;
+    --font-size-tab: 10px;
+    --tab-icon-size: calc(var(--font-size-tab) * 1.7);
+    --font-size-module-btn: var(--font-size-toolbar-btn);
+    --font-size-btn-secondary: var(--font-size-toolbar-btn);
     --font-size-btn-micro: 10px;
     --font-size-btn-remove: 13px;
     --font-size-list-item: 13px;
@@ -560,13 +563,13 @@ h1 {
     gap: 6px;
 }
 .action-tab {
-    height: var(--toolbar-btn-height, 28px);
-    padding: 0 var(--toolbar-btn-padding-x, 10px);
+    height: var(--toolbar-btn-height, 2.3em);
+    padding: 0 var(--toolbar-btn-padding-x, 0.7em);
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-size-toolbar-btn);
+    font-size: var(--font-size-worker-toolbar);
     background: color-mix(in srgb, var(--tab-bg) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     border: 1px solid var(--tab-border);
     color: var(--tab-text);
@@ -767,9 +770,9 @@ h1 {
     background: var(--surface-row);
 }
 .action-btn {
-    height: var(--toolbar-btn-height, 28px);
-    min-width: var(--toolbar-btn-min-width, 44px);
-    padding: 0 var(--toolbar-btn-padding-x, 8px);
+    height: var(--toolbar-btn-height, 2.3em);
+    min-width: var(--toolbar-btn-min-width, 3.3em);
+    padding: 0 var(--toolbar-btn-padding-x, 0.7em);
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -778,7 +781,7 @@ h1 {
     border: 1px solid var(--button-border);
     background: color-mix(in srgb, var(--button-bg) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     color: var(--button-text);
-    font-size: var(--font-size-toolbar-btn);
+    font-size: var(--font-size-worker-toolbar);
     cursor: pointer;
 }
 .action-btn:hover {
@@ -803,13 +806,13 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 1.6em;
+    height: 1.6em;
     margin-right: 6px;
     border-radius: 50%;
     background: var(--button-reset-bg);
     color: var(--text-white);
-    font-size: var(--font-size-toolbar-btn);
+    font-size: var(--font-size-worker-toolbar);
     cursor: pointer;
     user-select: none;
 }
@@ -1164,7 +1167,7 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-size-label);
+    font-size: var(--font-size-toolbar-btn);
     background: var(--tab-bg);
     border: 1px solid var(--tab-border);
     border-bottom: none;
@@ -1514,9 +1517,9 @@ h1 {
     padding-right: 14px;
 }
 .cmd-btn {
-    min-width: 44px;
-    height: 28px;
-    padding: 5px 10px;
+    min-width: 3.7em;
+    height: 2.3em;
+    padding: 0 0.8em;
     border-radius: 5px;
     border: 1px solid var(--button-border);
     background: var(--button-bg);
@@ -1896,7 +1899,7 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-size-label);
+    font-size: var(--font-size-toolbar-btn);
     background: var(--tab-bg);
     border: 1px solid var(--tab-border);
     color: var(--tab-text, var(--text-secondary));
@@ -2802,7 +2805,7 @@ h1 {
 }
 #refresh-modal .cmd-btn.secondary {
     min-width: auto;
-    padding: 5px 10px;
+    padding: 0 0.8em;
     font-size: var(--font-size-btn-secondary);
     opacity: 0.9;
 }
@@ -3283,7 +3286,7 @@ h1 {
     background: var(--tab-bg);
     color: var(--tab-text);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--font-size-toolbar-btn);
     line-height: 1;
 }
 .fs-copy-json-btn:hover {
@@ -3529,9 +3532,9 @@ h1 {
     width: 100%;
 }
 #fs-modal .cmd-btn {
-    min-width: 44px;
-    height: 28px;
-    padding: 5px 10px;
+    min-width: 3.7em;
+    height: 2.3em;
+    padding: 0 0.8em;
     border-radius: 5px;
     cursor: pointer;
     font-size: var(--font-size-module-btn);
@@ -3857,9 +3860,9 @@ h1 {
     width: 100%;
 }
 #oc-modal .cmd-btn {
-    min-width: 44px;
-    height: 28px;
-    padding: 5px 10px;
+    min-width: 3.7em;
+    height: 2.3em;
+    padding: 0 0.8em;
     border-radius: 5px;
     cursor: pointer;
     font-size: var(--font-size-module-btn);
@@ -4187,9 +4190,9 @@ h1 {
     width: 100%;
 }
 #wallet-modal .cmd-btn {
-    min-width: 44px;
-    height: 28px;
-    padding: 5px 10px;
+    min-width: 3.7em;
+    height: 2.3em;
+    padding: 0 0.8em;
     border-radius: 5px;
     cursor: pointer;
     font-size: var(--font-size-module-btn);
@@ -4990,7 +4993,7 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-size-label);
+    font-size: var(--font-size-toolbar-btn);
     background: var(--tab-bg);
     border: 1px solid var(--tab-border);
     color: var(--tab-text, var(--text-secondary));
@@ -5037,7 +5040,7 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-size-label);
+    font-size: var(--font-size-toolbar-btn);
     background: var(--tab-bg);
     border: 1px solid var(--tab-border);
     color: var(--tab-text, var(--text-secondary));
@@ -5449,9 +5452,9 @@ h1 {
     width: 100%;
 }
 #wdconfig-modal .cmd-btn {
-    min-width: 44px;
-    height: 28px;
-    padding: 5px 10px;
+    min-width: 3.7em;
+    height: 2.3em;
+    padding: 0 0.8em;
     border-radius: 5px;
     cursor: pointer;
     font-size: var(--font-size-module-btn);
@@ -6103,12 +6106,12 @@ h1 {
     display: flex;
     align-items: center;
     gap: 12px;
-    height: 40px;
+    height: max(28px, calc(var(--font-size-tab) * 2.9));
     padding: 0 12px;
     border-radius: 10px;
     cursor: pointer;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: var(--font-size-tab);
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -6134,20 +6137,20 @@ h1 {
     background: var(--text-accent);
 }
 .view-tab-icon {
-    flex: 0 0 24px;
-    width: 24px;
+    flex: 0 0 var(--tab-icon-size);
+    width: var(--tab-icon-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: calc(var(--font-size-tab) * 1.3);
     margin-right: 0;
 }
 .view-tab-icon:empty {
     margin-right: 0;
 }
 .view-tab-icon .toolbar-btn-icon-img {
-    max-width: 20px;
-    max-height: 20px;
+    max-width: calc(var(--font-size-tab) * 1.45);
+    max-height: calc(var(--font-size-tab) * 1.45);
 }
 .view-tab-text {
     overflow: hidden;
@@ -6155,10 +6158,10 @@ h1 {
     transition: opacity 0.15s;
 }
 :root {
-    --side-nav-width: 220px;
+    --side-nav-width: 170px;
 }
 body.nav-collapsed {
-    --side-nav-width: 68px;
+    --side-nav-width: 52px;
 }
 body {
     padding-left: calc(var(--side-nav-width) + 20px);
@@ -6169,19 +6172,19 @@ body {
     top: 0;
     left: 0;
     bottom: 0;
-    width: var(--side-nav-width);
+    width: max-content;
+    max-width: 100vw;
     z-index: 60;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    padding: 14px 10px;
+    padding: 14px 8px;
     background: var(--surface-modal-panel);
     border-right: 1px solid var(--border-header);
     box-shadow: 2px 0 14px rgba(0, 0, 0, 0.25);
     overflow-x: hidden;
     overflow-y: auto;
-    transition: width 0.2s ease;
 }
 .side-nav-head {
     display: flex;
@@ -6197,22 +6200,22 @@ body {
     gap: 10px;
     min-width: 0;
     color: var(--text-white);
-    font-size: 16px;
+    font-size: calc(var(--font-size-tab) * 1.15);
     font-weight: 700;
     letter-spacing: 0.02em;
     white-space: nowrap;
 }
 .side-nav-logo {
-    flex: 0 0 24px;
-    width: 24px;
+    flex: 0 0 var(--tab-icon-size);
+    width: var(--tab-icon-size);
     text-align: center;
     display: inline-flex;
     align-items: center;
     justify-content: center;
 }
 .side-nav-logo img {
-    width: 24px;
-    height: 24px;
+    width: var(--tab-icon-size);
+    height: var(--tab-icon-size);
     object-fit: contain;
     display: block;
 }
@@ -6235,7 +6238,7 @@ body {
     color: var(--text-primary);
 }
 body.nav-collapsed .side-nav {
-    padding: 14px 8px;
+    padding: 14px 4px;
 }
 body.nav-collapsed .side-nav-head {
     flex-direction: column;
@@ -6256,7 +6259,6 @@ body.nav-collapsed .view-tab {
     padding: 0;
 }
 @media (max-width: 760px) {
-    :root, body.nav-collapsed { --side-nav-width: 68px; }
     .side-nav-brand-text, .view-tab-text { display: none; }
     .view-tab { justify-content: center; gap: 0; padding: 0; }
     .side-nav-toggle { display: none; }
