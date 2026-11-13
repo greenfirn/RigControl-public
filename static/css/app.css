@@ -6254,6 +6254,25 @@ body.nav-collapsed .view-tab-text {
 body.nav-collapsed .side-nav-toggle {
     transform: rotate(180deg);
 }
+body.nav-collapsed.nav-peek .side-nav {
+    padding: 14px 8px;
+    box-shadow: 4px 0 18px rgba(0, 0, 0, 0.45);
+}
+body.nav-collapsed.nav-peek .side-nav-head {
+    flex-direction: row;
+    height: 40px;
+    gap: 6px;
+    padding: 0 2px 0 6px;
+}
+body.nav-collapsed.nav-peek .side-nav-brand-text,
+body.nav-collapsed.nav-peek .view-tab-text {
+    display: inline;
+}
+body.nav-collapsed.nav-peek .view-tab {
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 0 12px;
+}
 body.nav-collapsed .view-tab {
     justify-content: center;
     gap: 0;

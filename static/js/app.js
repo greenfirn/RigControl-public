@@ -2220,9 +2220,16 @@ function initSideNav() {
         if (text) tab.title = text.textContent.trim();
     });
     const nav = document.getElementById("side-nav");
+    if (nav) {
+        nav.addEventListener("mouseenter", () => {
+            if (document.body.classList.contains("nav-collapsed")) document.body.classList.add("nav-peek");
+        });
+        nav.addEventListener("mouseleave", () => document.body.classList.remove("nav-peek"));
+    }
     if (nav && window.ResizeObserver) {
         let lastW = 0;
         new ResizeObserver(() => {
+            if (document.body.classList.contains("nav-peek")) return;
             const w = Math.ceil(nav.getBoundingClientRect().width);
             if (w && w !== lastW) {
                 lastW = w;
@@ -2235,6 +2242,7 @@ function initSideNav() {
     btn.addEventListener("click", () => {
         const next = !document.body.classList.contains("nav-collapsed");
         try { localStorage.setItem(SIDE_NAV_COLLAPSED_KEY, next ? "1" : "0"); } catch (e) {}
+        document.body.classList.remove("nav-peek");
         applySideNavCollapsed(next);
     });
 }
