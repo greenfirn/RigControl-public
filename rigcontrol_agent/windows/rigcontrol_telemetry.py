@@ -541,6 +541,23 @@ def _collect_nvidia_power_draw():
     except Exception as e:
         print(f"Error querying GPU power draw (-q): {e}")
     return draw
+def _collect_nvidia_core_temps():
+    """Returns {gpu_index: core_temp_c} read from the "nvidia-smi -q -d TEMPERATURE" text report
+    ("GPU Current Temp : 47 C"). Used only for GPUs whose main-query temperature.gpu value came
+    back unparseable/0 (e.g. [N/A] or a decorated value on a newer driver), in its own nvidia-smi
+    call so it can't affect the rest of the GPU stats."""
+    temps = {}
+    try:
+        result = subprocess.run("nvidia-smi -q -d TEMPERATURE", shell=True, capture_output=True, text=True, timeout=8)
+        if result.returncode == 0:
+            sections = re.split(r"(?m)^GPU\s+[0-9A-Fa-f:.]+\s*$", result.stdout)[1:]
+            for pos, sec in enumerate(sections):
+                m = re.search(r"(?m)^\s*GPU Current Temp\s*:\s*(-?\d+(?:\.\d+)?)", sec)
+                if m and float(m.group(1)) > 0:
+                    temps[pos] = int(round(float(m.group(1))))
+    except Exception as e:
+        print(f"Error querying GPU core temp (-q): {e}")
+    return temps
 def collect_gpu_stats():
     gpus = []
     if platform.system() != "Windows":
@@ -591,7 +608,8 @@ def collect_gpu_stats():
                     except:
                         pass
                 board_partner = detect_board_partner(name, pnp_id, float(power_watts) if power_watts.replace('.', '', 1).isdigit() else 0)
-                temp_val = int(temp) if temp.isdigit() else 0
+                _tm = re.search(r"-?\d+(?:\.\d+)?", temp)
+                temp_val = int(round(float(_tm.group(0)))) if _tm else 0
                 util_val = int(util) if util.isdigit() else 0
                 memutil_val = int(mem_util) if mem_util.isdigit() else 0
                 watts_val = float(power_watts) if power_watts.replace('.', '', 1).isdigit() else 0.0
@@ -627,6 +645,11 @@ def collect_gpu_stats():
                 continue
     except Exception as e:
         print(f"Error collecting GPU stats: {e}")
+    if gpus and any(g.get("temp", 0) <= 0 for g in gpus):
+        fallback_temps = _collect_nvidia_core_temps()
+        for g in gpus:
+            if g.get("temp", 0) <= 0 and g["index"] in fallback_temps:
+                g["temp"] = fallback_temps[g["index"]]
     if gpus and any(g.get("power_watts", 0) <= 0 for g in gpus):
         fallback_draw = _collect_nvidia_power_draw()
         for g in gpus:
