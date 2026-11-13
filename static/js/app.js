@@ -466,6 +466,7 @@ const COLOR_SCHEME_MAP = {
     "color-button-send-it-hover-bg": ["--button-send-it-hover-bg"],
     "color-wd-toggle-bg": ["--wd-toggle-bg"],
     "color-wd-toggle-border": ["--wd-toggle-border"],
+    "color-wd-toggle-text": ["--wd-toggle-text"],
     "color-wd-toggle-hover-bg": ["--wd-toggle-hover-bg"],
     "color-wd-active-text": ["--rig-name-watchdog-active-text"],
     "color-wd-paused-text": ["--rig-name-watchdog-standby-text"],
