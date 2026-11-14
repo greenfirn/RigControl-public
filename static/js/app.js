@@ -5323,6 +5323,9 @@ function openCmdModal() {
 }
 function closeCmdModal() {
     document.getElementById("cmd-modal").classList.add("hidden");
+    // Silent sends (Confirm unchecked) feed submitCmd() through cmd-input without
+    // opening the modal, so never leave the History tab marked active once closed.
+    cmdActiveTab = "send";
     closeCmdApplyToDropdown();
     cmdModalRigOverride = null;
 }
@@ -6836,24 +6839,29 @@ async function recordCmdHistoryEntry(command) {
 }
 function withCurrentCmdApplyTo(text) {
     const stripped = (text || "").replace(/^# APPLY_TO=.*\n?/m, "");
-    return cmdApplyToRigs.size > 0
-        ? `# APPLY_TO=${Array.from(cmdApplyToRigs).join(",")}\n${stripped}`
+    const rigs = (cmdModalRigOverride && cmdModalRigOverride.length)
+        ? cmdModalRigOverride
+        : Array.from(cmdApplyToRigs);
+    return rigs.length > 0
+        ? `# APPLY_TO=${rigs.join(",")}\n${stripped}`
         : stripped;
 }
 function submitCmd() {
     const raw = getActiveCmdText();
-    if (!raw) return;
+    if (!raw) return Promise.resolve(null);
     // Rebuild with the CURRENT Apply To selection regardless of which tab
     // (send vs. history) supplied the text, so the recorded history entry
     // always reflects the workers actually targeted by this send.
     const cmd = withCurrentCmdApplyTo(raw);
-    sendCommandToSelectedRigs(cmd).then((result) => {
+    return sendCommandToSelectedRigs(cmd).then((result) => {
         if (result !== null) {
             recordCmdHistoryEntry(cmd);
         }
+        return result;
     }).catch(err => {
         console.error("Command send failed", err);
         alert("Failed to send command");
+        return null;
     });
 }
 function deleteActiveCmdSelection() {
@@ -12693,14 +12701,13 @@ function sendItConfEdit() {
         pendingAgentConfApplyRigs = new Set(targetRigsForReply);
         pendingAgentConfApplyLabel = confLabel;
         if (statusEl) statusEl.textContent = `Sending ${confLabel} to ${targetLabel}…`;
-        sendCommandToSelectedRigs(command).then((result) => {
+        // Goes through submitCmd() (same path as Send Cmd) so it is recorded in
+        // Send Cmd history for later review.
+        if (input) input.value = command;
+        submitCmd().then((result) => {
             if (result === null) {
                 pendingAgentConfApplyRigs.clear();
             }
-        }).catch(err => {
-            pendingAgentConfApplyRigs.clear();
-            console.error(`Failed to send ${confLabel}`, err);
-            alert(`Failed to send ${confLabel}`);
         });
     }
 }
