@@ -13,7 +13,7 @@
         }
     </script>
 </head>
-<body>
+<body class="tabs-top">
     <nav id="side-nav" class="side-nav" aria-label="Main navigation">
         <div class="side-nav-head">
             <span class="side-nav-brand"><span class="side-nav-logo"><img src="./static/favicon.ico" alt="" width="24" height="24"></span><span class="side-nav-brand-text">RigControl</span></span>
@@ -668,8 +668,8 @@
                         <span class="stat-panel-style-field">
                             <label for="tab-layout-select">Tab Layout</label>
                             <select id="tab-layout-select" class="cmd-select" title="Show the main tabs in a left side panel, or in the original row across the top of the page">
-                                <option value="side">Side panel</option>
                                 <option value="top">Top tabs</option>
+                                <option value="side">Side panel</option>
                             </select>
                         </span>
                         <span class="stat-panel-style-field">
@@ -920,7 +920,11 @@
                     </div>
                     <div class="color-picker-row">
                         <label for="color-surface-row">Worker Rows</label>
-                        <input type="color" id="color-surface-row" class="color-picker-input" title="Worker row background">
+                        <span class="color-picker-input-wrap">
+                            <input type="color" id="color-surface-row" class="color-picker-input" title="Worker row background (color A - odd rows)">
+                            <input type="color" id="color-surface-row-alt" class="color-picker-input" title="Worker row background (color B - even rows). Same as color A by default for no alternating.">
+                            <button type="button" class="color-picker-clear-btn" id="btn-clear-color-surface-row-alt" title="Clear color B - rows go back to a single color">✕</button>
+                        </span>
                     </div>
                     <div class="color-picker-row">
                         <label for="color-surface-row-header">Worker List Header</label>

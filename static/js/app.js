@@ -327,6 +327,7 @@ const COLOR_SCHEME_MAP = {
     "color-action-output-bg": ["--action-output-bg", "--action-output-expanded-bg"],
     "color-surface-panel": ["--surface-panel"],
     "color-surface-row": ["--surface-row"],
+    "color-surface-row-alt": ["--surface-row-alt"],
     "color-surface-row-header": ["--surface-row-header"],
     "color-surface-modal": ["--surface-modal", "--surface-modal-panel", "--surface-refresh-modal-panel"],
     "color-surface-popup": ["--surface-popover"],
@@ -2708,6 +2709,9 @@ function initColorSchemeControls() {
     document.getElementById("btn-clear-color-surface-header")?.addEventListener("click", () => {
         clearColorSchemeOverride("color-surface-header");
     });
+    document.getElementById("btn-clear-color-surface-row-alt")?.addEventListener("click", () => {
+        clearColorSchemeOverride("color-surface-row-alt");
+    });
     document.getElementById("btn-clear-color-surface-tabs")?.addEventListener("click", () => {
         clearColorSchemeOverride("color-surface-tabs");
     });
@@ -2959,10 +2963,11 @@ function applyPageAlign(align) {
     if (select) select.value = value;
 }
 const TAB_LAYOUT_STORAGE_KEY = "rigcontrol_tab_layout";
-const TAB_LAYOUT_DEFAULT = "side";
+const TAB_LAYOUT_DEFAULT = "top";
 function loadTabLayout() {
     try {
-        return localStorage.getItem(TAB_LAYOUT_STORAGE_KEY) === "top" ? "top" : TAB_LAYOUT_DEFAULT;
+        const saved = localStorage.getItem(TAB_LAYOUT_STORAGE_KEY);
+        return saved === "top" || saved === "side" ? saved : TAB_LAYOUT_DEFAULT;
     } catch (e) {
         return TAB_LAYOUT_DEFAULT;
     }
@@ -2971,7 +2976,7 @@ function saveTabLayout(mode) {
     try { localStorage.setItem(TAB_LAYOUT_STORAGE_KEY, mode); } catch (e) {}
 }
 function applyTabLayout(mode) {
-    const value = mode === "top" ? "top" : TAB_LAYOUT_DEFAULT;
+    const value = mode === "side" ? "side" : mode === "top" ? "top" : TAB_LAYOUT_DEFAULT;
     document.body.classList.toggle("tabs-top", value === "top");
     const tabs = document.getElementById("view-tabs");
     if (tabs) {
@@ -2990,7 +2995,7 @@ function applyThemeDataTabLayout(data) {
 function initTabLayoutControl() {
     const select = document.getElementById("tab-layout-select");
     select?.addEventListener("change", () => {
-        const value = select.value === "top" ? "top" : TAB_LAYOUT_DEFAULT;
+        const value = select.value === "side" ? "side" : "top";
         applyTabLayout(value);
         saveTabLayout(value);
     });

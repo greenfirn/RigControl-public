@@ -47,6 +47,7 @@
     --surface-suggestions: #21232b;
     --border-suggestions: #3c3f4a;
     --surface-row: #262931;
+    --surface-row-alt: #30333b;
     --border-row: #3c3f4a;
     --surface-theme-list-selected: #1f2d3d;
     --surface-row-header: #262931;
@@ -4307,6 +4308,9 @@ h1 {
     width: fit-content;
     max-width: 100%;
     font-size: var(--font-size-main-list);
+}
+.rig-row:nth-child(even) {
+    background: color-mix(in srgb, var(--surface-row-alt) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
 }
 .rig-row.selected {
     border-color: var(--text-accent);
