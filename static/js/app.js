@@ -1174,13 +1174,15 @@ const LOGS_TYPE_LABELS = {
     "watchdog.conf": "Watchdog conf",
     "watchdog.svclog": "Watchdog log",
     "fancurve.conf": "Fan curve conf",
+    "oc.conf": "Overclock script",
+    "gpureset.conf": "GPU reset script",
     "fancurve.svclog": "Fan curve log",
     "sys.nvidiasmi": "nvidia-smi",
     "sys.rocmsmi": "rocm-smi",
     "sys.df": "Disk usage (df -h)",
     "sys.top": "Processes (ps, by CPU)",
 };
-const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "cpu.svc", "gpu.svc", "aux.svc", "agent.conf", "watchdog.conf", "fancurve.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
+const LOGS_TYPES_WITHOUT_LINES = new Set(["cpu.api", "gpu.api", "aux.api", "cpu.conf", "gpu.conf", "aux.conf", "cpu.svc", "gpu.svc", "aux.svc", "agent.conf", "watchdog.conf", "fancurve.conf", "oc.conf", "gpureset.conf", "sys.nvidiasmi", "sys.rocmsmi", "sys.df"]);
 const LOGS_TYPES_PRESERVE_SCROLL = new Set(["sys.top"]);
 const LOGS_COMMAND_BUILDERS = {
     "cpu.log": (n) => `tail -n ${n} /run/rigcontrol/cpu_miner.log`,
@@ -1203,6 +1205,8 @@ const LOGS_COMMAND_BUILDERS = {
     "watchdog.conf": () => "cat /etc/rigcontrol/rigcontrol-watchdog.conf",
     "watchdog.svclog": (n) => `journalctl -u "$WATCHDOG_SERVICE_NAME" -n ${n} --no-pager`,
     "fancurve.conf": () => "cat /etc/systemd/system/fan-curve.service",
+    "oc.conf": () => "cat /usr/local/bin/gpu_apply_ocs.sh",
+    "gpureset.conf": () => "cat /usr/local/bin/gpu_reset_poststop.sh",
     "fancurve.svclog": (n) => `journalctl -u fan-curve.service -n ${n} --no-pager`,
     "sys.nvidiasmi": () => "nvidia-smi",
     "sys.rocmsmi": () => "rocm-smi",
@@ -1259,6 +1263,16 @@ const CONF_EDIT_TYPES = {
         path: () => "/etc/systemd/system/fan-curve.service",
         reloadCmd: () => "sudo systemctl daemon-reload",
         restartCmd: () => "sudo systemctl restart fan-curve.service",
+    },
+    "oc.conf": {
+        dir: () => "/usr/local/bin",
+        path: () => "/usr/local/bin/gpu_apply_ocs.sh",
+        postCmd: () => "sudo chmod +x /usr/local/bin/gpu_apply_ocs.sh",
+    },
+    "gpureset.conf": {
+        dir: () => "/usr/local/bin",
+        path: () => "/usr/local/bin/gpu_reset_poststop.sh",
+        postCmd: () => "sudo chmod +x /usr/local/bin/gpu_reset_poststop.sh",
     },
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
@@ -4677,6 +4691,13 @@ function render() {
         }
         main.appendChild(nameEl);
         mainWrap.appendChild(main);
+        const settingsBtn = document.createElement("button");
+        settingsBtn.type = "button";
+        settingsBtn.className = "rig-settings-btn";
+        settingsBtn.dataset.rigName = rigName;
+        settingsBtn.title = `Open settings for ${rigName}`;
+        settingsBtn.textContent = "\uD83D\uDD27";
+        mainWrap.appendChild(settingsBtn);
         row.appendChild(mainWrap);
         const cpuColumn = DataHelper.getCpuColumnContent(d);
         const gpuColumn = DataHelper.getGpuColumnContent(d);
@@ -4880,6 +4901,21 @@ function setupRigEventDelegation() {
     }
     let lastRigNameClick = { name: null, time: 0 };
     newContainer.addEventListener("click", (ev) => {
+        const settingsEl = ev.target.closest(".rig-settings-btn");
+        if (settingsEl) {
+            ev.stopPropagation();
+            const rigForSettings = settingsEl.dataset.rigName;
+            if (!rigForSettings) return;
+            selectedRigs.clear();
+            selectedRigs.add(rigForSettings);
+            agentconfApplyToRigs.clear();
+            updateAgentconfApplyToToggleLabel();
+            statsApplyToRigs.clear();
+            updateStatsApplyToToggleLabel();
+            render();
+            openRefreshModal();
+            return;
+        }
         const cbEl = ev.target.closest(".rig-select-checkbox");
         if (cbEl) {
             ev.stopPropagation();
@@ -12588,8 +12624,9 @@ function wrapConfEditCommand(confType, bareContent, includeRestart) {
         bareContent +
         (bareContent.endsWith("\n") ? "" : "\n") +
         CONF_EDIT_HEREDOC_TAG;
+    if (cfg.postCmd) command += `\n${cfg.postCmd()}`;
     if (cfg.reloadCmd) command += `\n${cfg.reloadCmd()}`;
-    if (includeRestart) command += `\n${cfg.restartCmd()}`;
+    if (includeRestart && cfg.restartCmd) command += `\n${cfg.restartCmd()}`;
     return command;
 }
 function unwrapConfEditCommand(text) {
