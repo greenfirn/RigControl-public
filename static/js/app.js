@@ -6274,6 +6274,13 @@ function openRefreshModal() {
     loadSettingsFromServer();
     updateStatusDisplay();
     updateStatsSettingsTargetCount();
+    const confRawEl = document.getElementById("agentconf-raw");
+    if (confRawEl) {
+        confRawEl.value = "";
+        resizeAgentConfRaw();
+    }
+    const confStatusEl = document.getElementById("agentconf-status");
+    if (confStatusEl) confStatusEl.textContent = "";
     switchViewTab("settings");
     switchSettingsMainTab("agentconf");
 }
