@@ -1761,7 +1761,15 @@ def collect_onezerominer_stats():
         return _build_miner_result("offline", "onezerominer", error=str(e))
     algorithms = []
     combined_gpu_hr = {}
+    dev_accepted, dev_rejected, dev_invalid = {}, {}, {}
+    def _add_dev_shares(target, values):
+        for i, v in enumerate(values or []):
+            if isinstance(v, (int, float)):
+                target[i] = target.get(i, 0) + v
     for algo_data in data.get("algos", []):
+        _add_dev_shares(dev_accepted, algo_data.get("devices_accepted_shares"))
+        _add_dev_shares(dev_rejected, algo_data.get("devices_rejected_shares"))
+        _add_dev_shares(dev_invalid,  algo_data.get("devices_invalid_shares"))
         name        = algo_data.get("name", "unknown")
         total_hr    = algo_data.get("total_hashrate", 0)
         device_hr   = algo_data.get("hashrates", [])
@@ -1775,17 +1783,21 @@ def collect_onezerominer_stats():
             hashrate_hs=total_hr,
             accepted_shares=algo_data.get("total_accepted_shares", 0),
             rejected_shares=algo_data.get("total_rejected_shares", 0),
+            invalid_shares=algo_data.get("total_invalid_shares", 0),
             pool=extract_pool_host(pool_str), pool_url=pool_str,
             thread_hashrates=thread_hr or None,
             pool_status=algo_data.get("pool_status", "unknown"), split=algo_data.get("split", False),
             session_active=session.get("active", False), next_session=session.get("next_session", 0),
             devices_accepted_shares=algo_data.get("devices_accepted_shares", []),
             devices_rejected_shares=algo_data.get("devices_rejected_shares", []),
+            devices_invalid_shares=algo_data.get("devices_invalid_shares", []),
         ))
     gpus = [
         _build_gpu_entry(
             d.get("id", i), name=d.get("name", "Unknown GPU"),
             hashrate_hs=combined_gpu_hr.get(f"gpu_{i}", 0),
+            accepted_shares=dev_accepted.get(i, 0), rejected_shares=dev_rejected.get(i, 0),
+            invalid_shares=dev_invalid.get(i, 0),
             power=d.get("power", 0), core_clock=d.get("cclk", 0), mem_clock=d.get("mclk", 0),
             temperature=d.get("temp", 0), mem_temp=d.get("mem_temp"), fan_speed=d.get("fan", 0),
             bus_id=d.get("bus_id", 0),
