@@ -5412,6 +5412,9 @@ function closeCmdModal() {
     cmdActiveTab = "send";
     closeCmdApplyToDropdown();
     cmdModalRigOverride = null;
+    // Drop the dialog's own worker pick too, so a later silent send (Confirm
+    // unchecked) falls back to the main list's selection instead of a stale pick.
+    cmdApplyToRigs = new Set();
 }
 function initCmdMainTabs() {
     const tabBar = document.getElementById("cmd-main-tabs");
@@ -9958,7 +9961,51 @@ function wireUpFsPoolsSchemeToken(tokenId, tokenText) {
         e.stopPropagation();
     });
 }
+async function sendSelectedFlightsheets(ids) {
+    const items = ids
+        .map(id => flightsheets.find(f => f.FlightsheetId === id))
+        .filter(fs => fs && (fs.Value || "").trim());
+    if (items.length === 0) {
+        alert("Selected flightsheets are empty");
+        return;
+    }
+    const prepared = items.map(fs => {
+        const workers = extractFsApplyToFromRaw(fs.Value);
+        return {
+            id: fs.FlightsheetId,
+            workers,
+            raw: withApplyToLine(fs.Value.trim(), new Set(workers)),
+        };
+    });
+    if (selectedRigs.size === 0 && prepared.some(p => p.workers.length === 0)) {
+        alert("No workers selected - pick workers in the main list, or set 'Apply to' on each flightsheet.");
+        return;
+    }
+    if (prepared.length > 1) {
+        const names = prepared.map(p => p.id).join(", ");
+        if (!confirm(`Send ${prepared.length} flightsheets?\n\n${names}`)) return;
+    }
+    const input = document.getElementById("cmd-input");
+    if (prepared.length === 1 && document.getElementById("confirm-fs")?.checked) {
+        input.value = prepared[0].raw;
+        cmdModalRigOverride = prepared[0].workers.length > 0 ? prepared[0].workers : null;
+        openCmdModal();
+        return;
+    }
+    for (const p of prepared) {
+        input.value = p.raw;
+        cmdModalRigOverride = p.workers.length > 0 ? p.workers : null;
+        await submitCmd();
+    }
+    const status = document.getElementById("fs-status");
+    if (status) status.textContent = `Sent ${prepared.length} flightsheet${prepared.length === 1 ? "" : "s"}`;
+}
 function sendItFs() {
+    const checkedIds = Array.from(selectedFlightsheetIds).filter(id => flightsheets.some(f => f.FlightsheetId === id));
+    if (checkedIds.length > 1 || (checkedIds.length === 1 && checkedIds[0] !== selectedFlightsheetId)) {
+        sendSelectedFlightsheets(checkedIds);
+        return;
+    }
     const raw = fsFinalizeRawForAction().trim();
     if (!raw) {
         alert("Flightsheet is empty");
