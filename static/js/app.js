@@ -2686,6 +2686,7 @@ function initColorSchemeControls() {
         localStorage.removeItem(TOOLBAR_BTN_STYLE_STORAGE_KEY);
         localStorage.removeItem(TOOLBAR_BTN_ICON_STORAGE_KEY);
         localStorage.removeItem(TOOLBAR_BTN_LOCK_STORAGE_KEY);
+        localStorage.removeItem(TAB_LAYOUT_STORAGE_KEY);
         localStorage.removeItem(TAB_ICON_STORAGE_KEY);
         localStorage.removeItem(TOOLBAR_CUSTOM_ICONS_STORAGE_KEY);
         localStorage.removeItem(ACTIVE_THEME_NAME_KEY);
@@ -2956,6 +2957,44 @@ function applyPageAlign(align) {
     document.body.classList.toggle("layout-left", value === "left");
     const select = document.getElementById("page-align-select");
     if (select) select.value = value;
+}
+const TAB_LAYOUT_STORAGE_KEY = "rigcontrol_tab_layout";
+const TAB_LAYOUT_DEFAULT = "side";
+function loadTabLayout() {
+    try {
+        return localStorage.getItem(TAB_LAYOUT_STORAGE_KEY) === "top" ? "top" : TAB_LAYOUT_DEFAULT;
+    } catch (e) {
+        return TAB_LAYOUT_DEFAULT;
+    }
+}
+function saveTabLayout(mode) {
+    try { localStorage.setItem(TAB_LAYOUT_STORAGE_KEY, mode); } catch (e) {}
+}
+function applyTabLayout(mode) {
+    const value = mode === "top" ? "top" : TAB_LAYOUT_DEFAULT;
+    document.body.classList.toggle("tabs-top", value === "top");
+    const tabs = document.getElementById("view-tabs");
+    if (tabs) {
+        const target = document.getElementById(value === "top" ? "sticky-top-wrap" : "side-nav");
+        if (target && tabs.parentElement !== target) target.appendChild(tabs);
+    }
+    const select = document.getElementById("tab-layout-select");
+    if (select) select.value = value;
+    window.dispatchEvent(new Event("resize"));
+}
+function applyThemeDataTabLayout(data) {
+    if (!data || (data.tabLayout !== "top" && data.tabLayout !== "side")) return;
+    saveTabLayout(data.tabLayout);
+    applyTabLayout(data.tabLayout);
+}
+function initTabLayoutControl() {
+    const select = document.getElementById("tab-layout-select");
+    select?.addEventListener("change", () => {
+        const value = select.value === "top" ? "top" : TAB_LAYOUT_DEFAULT;
+        applyTabLayout(value);
+        saveTabLayout(value);
+    });
+    applyTabLayout(loadTabLayout());
 }
 function initPageAlignControl() {
     const select = document.getElementById("page-align-select");
@@ -3354,6 +3393,7 @@ function buildCurrentColorSchemeData() {
     const toolbarBtnStyle = loadToolbarBtnStyle();
     data.toolbarBtnShape = toolbarBtnStyle.shape;
     data.toolbarBtnSize = toolbarBtnStyle.size;
+    data.tabLayout = loadTabLayout();
     const toolbarBtnIcons = loadToolbarBtnIcons();
     if (Object.keys(toolbarBtnIcons).length > 0) data.toolbarBtnIcons = toolbarBtnIcons;
     return data;
@@ -3459,6 +3499,7 @@ function applyPastedColorSchemeJson() {
     applyThemeDataStatPanelImage(data);
     applyThemeDataStatPanelStyle(data);
     applyThemeDataToolbarBtnStyle(data);
+    applyThemeDataTabLayout(data);
     applyThemeDataToolbarBtnIcons(data);
     setActiveThemeName(name);
     if (textarea) textarea.value = "";
@@ -3479,6 +3520,7 @@ async function loadSelectedColorSchemeFromServer() {
         applyThemeDataStatPanelImage(data);
         applyThemeDataStatPanelStyle(data);
         applyThemeDataToolbarBtnStyle(data);
+        applyThemeDataTabLayout(data);
         applyThemeDataToolbarBtnIcons(data);
         location.reload();
     } catch (err) {
@@ -3501,6 +3543,7 @@ function loadSelectedColorSchemeIntoCurrentSession() {
         applyThemeDataStatPanelImage(data);
         applyThemeDataStatPanelStyle(data);
         applyThemeDataToolbarBtnStyle(data);
+        applyThemeDataTabLayout(data);
         applyThemeDataToolbarBtnIcons(data);
         refreshColorSchemeInputsFromOverrides();
     } catch (err) {
@@ -14377,6 +14420,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     initStatPanelStyleControls();
     initToolbarBtnStyleControls();
     initPageAlignControl();
+    initTabLayoutControl();
     document.querySelectorAll(".action-tab").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const mode = e.target.dataset.mode;

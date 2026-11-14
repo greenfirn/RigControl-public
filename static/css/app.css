@@ -6927,3 +6927,62 @@ body.layout-left .rig-header {
 #fs-fields-panel .fs-mc-portal-hidden {
     display: none;
 }
+
+body.tabs-top {
+    padding-left: 20px;
+}
+body.tabs-top .side-nav {
+    display: none;
+}
+body.tabs-top .view-tabs {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    padding: 8px 14px;
+    flex-wrap: wrap;
+    background: var(--surface-tabs);
+}
+body.layout-left.tabs-top .view-tabs {
+    justify-content: flex-start;
+}
+body.tabs-top .view-tab {
+    height: auto;
+    padding: 0;
+    gap: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: none;
+}
+body.tabs-top .view-tab:hover {
+    background: none;
+}
+body.tabs-top .view-tab.active {
+    background: none;
+    text-decoration: underline;
+    text-underline-offset: 6px;
+}
+body.tabs-top .view-tab.active::before {
+    display: none;
+}
+body.tabs-top .view-tab-icon {
+    flex: 0 0 auto;
+    width: auto;
+    margin-right: 6px;
+    font-size: inherit;
+}
+body.tabs-top .view-tab-icon:empty {
+    margin-right: 0;
+}
+body.tabs-top .view-tab-icon .toolbar-btn-icon-img {
+    max-width: calc(var(--font-size-tab) * 1.45);
+    max-height: calc(var(--font-size-tab) * 1.45);
+}
+body.tabs-top .view-tabs .view-tab-text {
+    display: inline;
+    overflow: visible;
+}
+body.tabs-top .view-tabs .view-tab {
+    justify-content: flex-start;
+    gap: 0;
+}
