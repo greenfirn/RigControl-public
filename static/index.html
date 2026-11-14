@@ -2067,7 +2067,7 @@ nvidia-smi
                                         <th title="0 = don't set/skip">Power Limit W</th>
                                         <th title="0 = don't lock/skip">Lock Mem</th>
                                         <th>Mem Offset</th>
-                                        <th title="A plain number sets a static fan %. A curve like 30:30,40:45,50:65,55:90,65:100 (temp:percent pairs) deploys/updates the fan-curve.service instead. Blank = don't touch fan for this algo. Note: the curve is global - applied once as a single fan-curve.service for the whole rig, not per algorithm.">Fan % or Curve <button type="button" id="oc-fan-curve-example-btn" title="Fill the active row's Fan field with an example fan curve (temp:percent pairs)">curve example</button></th>
+                                        <th title="A plain number sets a static fan %. A curve like 30:30,40:45,50:65,55:90,65:100 (temp:percent pairs) deploys/updates the fan-curve.service instead. Blank = don't touch fan for this algo.">Fan % or Curve <button type="button" id="oc-fan-curve-example-btn" title="Fill the active row's Fan field with an example fan curve (temp:percent pairs)">curve example</button></th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -2551,7 +2551,7 @@ nvidia-smi
                                 <div class="fs-apply-to-workers" id="agentconf-apply-to-workers"></div>
                             </div>
                         </div>
-                        <label class="checkbox-label" title="Restart the relevant service on the worker after writing, so the change takes effect immediately instead of waiting on a live-reload (which for agent.conf only covers a subset of settings anyway).">
+                        <label class="checkbox-label" title="Restart the relevant service on the worker after writing, so the change takes effect immediately.">
                             <input type="checkbox" id="agentconf-restart-after-apply" checked>
                             <span class="checkbox-text">Restart after apply</span>
                         </label>
