@@ -1233,17 +1233,20 @@ const CONF_EDIT_TYPES = {
     "cpu.svc": {
         dir: () => "/etc/systemd/system",
         path: () => "/etc/systemd/system/docker_events_cpu.service",
-        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart docker_events_cpu",
+        reloadCmd: () => "sudo systemctl daemon-reload",
+        restartCmd: () => "sudo systemctl restart docker_events_cpu",
     },
     "gpu.svc": {
         dir: () => "/etc/systemd/system",
         path: () => "/etc/systemd/system/docker_events_gpu.service",
-        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart docker_events_gpu",
+        reloadCmd: () => "sudo systemctl daemon-reload",
+        restartCmd: () => "sudo systemctl restart docker_events_gpu",
     },
     "aux.svc": {
         dir: () => "/etc/systemd/system",
         path: () => "/etc/systemd/system/docker_events_aux.service",
-        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart docker_events_aux",
+        reloadCmd: () => "sudo systemctl daemon-reload",
+        restartCmd: () => "sudo systemctl restart docker_events_aux",
     },
     "watchdog.conf": {
         dir: () => TEMPLATES_CONFIG.watchdog.conf_dir,
@@ -1253,7 +1256,8 @@ const CONF_EDIT_TYPES = {
     "fancurve.conf": {
         dir: () => "/etc/systemd/system",
         path: () => "/etc/systemd/system/fan-curve.service",
-        restartCmd: () => "sudo systemctl daemon-reload\nsudo systemctl restart fan-curve.service",
+        reloadCmd: () => "sudo systemctl daemon-reload",
+        restartCmd: () => "sudo systemctl restart fan-curve.service",
     },
 };
 const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
@@ -3973,7 +3977,7 @@ function handleCommandResponse(response) {
             const raw = stripAnsi(r.stdout).replace(/^\[RAW EXECUTION\]\r?\n/, "");
             const rawEl = document.getElementById("agentconf-raw");
             const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
-            if (rawEl) rawEl.value = wrapConfEditCommand(confType, raw, includeRestart);
+            if (rawEl) rawEl.value = withApplyToLine(wrapConfEditCommand(confType, raw, includeRestart), agentconfApplyToRigs);
             resizeAgentConfRaw();
             if (statusEl) statusEl.textContent = `Loaded current ${confLabel} from ${r.rig}`;
         } else {
@@ -7228,6 +7232,7 @@ function syncFsRawAfterApplyToChange() {
     } else {
         rawEl.value = newBody;
     }
+    rawEl.value = withApplyToLine(rawEl.value, fsApplyToRigs);
     autoResizeFsRaw();
 }
 async function loadFlightsheets() {
@@ -7268,6 +7273,19 @@ function extractFsPoolListDisplay(rawText) {
         return values.POOL || "";
     }
     return extractFsRawValue(rawText, "POOL");
+}
+function stripApplyToLine(text) {
+    return (text || "").replace(/^# APPLY_TO=.*\n?/m, "");
+}
+function getApplyToFromText(text) {
+    const m = (text || "").match(/^# APPLY_TO=(.*)$/m);
+    return m ? m[1].split(",").map(s => s.trim()).filter(Boolean) : [];
+}
+function withApplyToLine(text, rigSet) {
+    const stripped = stripApplyToLine(text);
+    return rigSet && rigSet.size > 0
+        ? `# APPLY_TO=${Array.from(rigSet).join(",")}\n${stripped}`
+        : stripped;
 }
 function extractFsApplyToFromRaw(rawText) {
     if (!rawText) return [];
@@ -8326,7 +8344,6 @@ function buildRigGpuItemObject(values, stash) {
 function buildRigGpuJsonBody(values) {
     const item = buildRigGpuItemObject(values, snapshotFsLiveStash());
     const body = { items: [item] };
-    if (fsApplyToRigs.size > 0) body.apply_to_workers = Array.from(fsApplyToRigs);
     return JSON.stringify(body, null, 2);
 }
 function parseNativeRigGpuItemsFromRaw(rawText) {
@@ -8679,9 +8696,11 @@ function parseFlightsheetItemsFromAnyFormat(rawText) {
     return null;
 }
 function parseRigGpuItemsFromRaw(rawText) {
-    const native = parseNativeRigGpuItemsFromRaw(rawText);
-    if (native) return native;
-    return parseFlightsheetItemsFromAnyFormat(rawText);
+    const lineWorkers = getApplyToFromText(rawText);
+    const cleanText = stripApplyToLine(rawText);
+    const result = parseNativeRigGpuItemsFromRaw(cleanText) || parseFlightsheetItemsFromAnyFormat(cleanText);
+    if (result && lineWorkers.length > 0) result.apply_to_workers = lineWorkers;
+    return result;
 }
 function parseRigGpuJsonFromRaw(rawText) {
     const parsedItems = parseRigGpuItemsFromRaw(rawText);
@@ -8983,7 +9002,7 @@ function buildFsBlock(mode) {
     const withRestart = fsApplyRestartLine(block, mode, values.RESTART === "true");
     const withEnable = fsApplyEnableLine(withRestart, mode, values.ENABLE === "true");
     const withDisable = fsApplyDisableLine(withEnable, mode, values.DISABLE === "true");
-    return fsApplyVersionBlock(withDisable, values.VERSION, values.MINER);
+    return withApplyToLine(fsApplyVersionBlock(withDisable, values.VERSION, values.MINER), fsApplyToRigs);
 }
 function buildFsCombinedBlock() {
     const activeService = getCurrentFsServiceType();
@@ -9005,7 +9024,6 @@ function buildFsCombinedBlock() {
         if (!slot) continue;
         const item = buildRigGpuItemObject(slot.values, slot.stash);
         const body = { items: [item] };
-        if (fsApplyToRigs.size > 0) body.apply_to_workers = Array.from(fsApplyToRigs);
         const block = fillPlaceholders(fsTemplateForService(svc), {
             RIG_GPU_JSON: JSON.stringify(body, null, 2),
         });
@@ -9014,7 +9032,8 @@ function buildFsCombinedBlock() {
         const withDisable = fsApplyDisableLine(withEnable, svc, slot.values.DISABLE === "true");
         blocks.push(fsApplyVersionBlock(withDisable, slot.values.VERSION, slot.values.MINER));
     }
-    return blocks.join("\n");
+    if (blocks.length === 0) return "";
+    return withApplyToLine(blocks.join("\n"), fsApplyToRigs);
 }
 function fsHasOtherRealSlot(activeService) {
     return ["gpu", "cpu", "aux"].some((svc) => svc !== activeService && !!fsDualModeSlots[svc]);
@@ -9157,7 +9176,6 @@ function buildFsCombinedJson() {
         const withPoolSlugAux = addPoolSlugForClipboard([activeItem]);
         const clipboardItemsAux = resolveUrlTokenForClipboard(withPoolSlugAux);
         const bodyAux = { items: clipboardItemsAux };
-        if (fsApplyToRigs.size > 0) bodyAux.apply_to_workers = Array.from(fsApplyToRigs);
         return JSON.stringify(bodyAux, null, 2);
     }
     const otherService = activeService === "cpu" ? "gpu" : "cpu";
@@ -9169,7 +9187,6 @@ function buildFsCombinedJson() {
     const withPoolSlug = addPoolSlugForClipboard(items);
     const clipboardItems = resolveUrlTokenForClipboard(withPoolSlug);
     const body = { items: clipboardItems };
-    if (fsApplyToRigs.size > 0) body.apply_to_workers = Array.from(fsApplyToRigs);
     return JSON.stringify(body, null, 2);
 }
 async function copyFsCombinedJsonToClipboard() {
@@ -9678,11 +9695,10 @@ function populateFsFieldsFromRaw(rawText) {
                 autoResizeFsRaw();
             } else {
                 const enrichedBody = { items: parsedItems.items };
-                if (fsApplyToRigs.size > 0) enrichedBody.apply_to_workers = Array.from(fsApplyToRigs);
-                rawEl.value = rawText.replace(
+                rawEl.value = withApplyToLine(rawText.replace(
                     /(<<'EOF'\n)[\s\S]*?(\n[ \t]*EOF[ \t]*)(?=\n|$)/,
                     (_full, pre, post) => `${pre}${JSON.stringify(enrichedBody, null, 2)}${post}`
-                );
+                ), fsApplyToRigs);
                 autoResizeFsRaw();
             }
         }
@@ -10653,13 +10669,6 @@ function sendOcCmdPreview() {
     cmdModalRigOverride = ocApplyToRigs.size > 0 ? Array.from(ocApplyToRigs) : null;
     if (document.getElementById("confirm-oc")?.checked) {
         openCmdModal();
-        // openCmdModal() consumes the override into cmdApplyToRigs (so the Apply To
-        // toggle/count and eventual send still target the right workers) and its sync
-        // prepends a "# APPLY_TO=..." bookkeeping line onto cmd-input for that - keep
-        // the reviewed command clean here; the line still gets re-applied under the
-        // hood by submitCmd() when actually sent, and recorded in history as usual.
-        const input = document.getElementById("cmd-input");
-        if (input) input.value = raw;
     } else {
         submitCmd();
     }
@@ -12523,6 +12532,7 @@ function wrapConfEditCommand(confType, bareContent, includeRestart) {
         bareContent +
         (bareContent.endsWith("\n") ? "" : "\n") +
         CONF_EDIT_HEREDOC_TAG;
+    if (cfg.reloadCmd) command += `\n${cfg.reloadCmd()}`;
     if (includeRestart) command += `\n${cfg.restartCmd()}`;
     return command;
 }
@@ -12579,6 +12589,7 @@ function populateAgentconfApplyToWorkerList() {
             else agentconfApplyToRigs.delete(name);
             updateAgentconfApplyToToggleLabel();
             updateAgentconfApplyToWorkersOptionCheckedState();
+            syncAgentconfRawApplyTo();
         });
         const span = document.createElement("span");
         span.textContent = name;
@@ -12588,16 +12599,24 @@ function populateAgentconfApplyToWorkerList() {
     });
     updateAgentconfApplyToWorkersOptionCheckedState();
 }
+function syncAgentconfRawApplyTo() {
+    const rawEl = document.getElementById("agentconf-raw");
+    if (!rawEl || rawEl.value.trim() === "") return;
+    rawEl.value = withApplyToLine(rawEl.value, agentconfApplyToRigs);
+    resizeAgentConfRaw();
+}
 function clearAgentconfApplyToSelection() {
     agentconfApplyToRigs.clear();
     updateAgentconfApplyToToggleLabel();
     populateAgentconfApplyToWorkerList();
+    syncAgentconfRawApplyTo();
 }
 function selectAllAgentconfApplyTo() {
     const rigNames = Object.keys(rigsState || {}).filter(name => name !== "rigs");
     agentconfApplyToRigs = new Set(rigNames);
     updateAgentconfApplyToToggleLabel();
     populateAgentconfApplyToWorkerList();
+    syncAgentconfRawApplyTo();
 }
 function updateConfEditTypeUi() {
     const cfg = CONF_EDIT_TYPES[selectedConfEditType];
@@ -12610,7 +12629,7 @@ function loadDefaultConfEditTemplate() {
     if (selectedConfEditType !== "agent.conf") return;
     const rawEl = document.getElementById("agentconf-raw");
     const includeRestart = document.getElementById("agentconf-restart-after-apply")?.checked ?? false;
-    if (rawEl) rawEl.value = wrapConfEditCommand("agent.conf", AGENT_CONF_DEFAULT_TEMPLATE, includeRestart);
+    if (rawEl) rawEl.value = withApplyToLine(wrapConfEditCommand("agent.conf", AGENT_CONF_DEFAULT_TEMPLATE, includeRestart), agentconfApplyToRigs);
     resizeAgentConfRaw();
     const statusEl = document.getElementById("agentconf-status");
     if (statusEl) statusEl.textContent = "Loaded blank example template (not read from any worker)";
@@ -12642,7 +12661,7 @@ function buildConfEditCommand() {
 function sendItConfEdit() {
     const confType = selectedConfEditType;
     const confLabel = LOGS_TYPE_LABELS[confType] || confType;
-    const command = buildConfEditCommand();
+    const command = withApplyToLine(buildConfEditCommand(), agentconfApplyToRigs);
     if (!command.trim()) {
         alert(`${confLabel} content is empty`);
         return;
@@ -15061,6 +15080,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         agentconfApplyToRigs.clear();
         updateAgentconfApplyToToggleLabel();
         closeAgentconfApplyToDropdown();
+        syncAgentconfRawApplyTo();
     });
     document.getElementById("agentconf-apply-to-select-all-btn")?.addEventListener("click", () => {
         selectAllAgentconfApplyTo();
@@ -15096,7 +15116,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("agentconf-restart-after-apply")?.addEventListener("change", (e) => {
         const rawEl = document.getElementById("agentconf-raw");
         if (!rawEl) return;
-        rawEl.value = wrapConfEditCommand(selectedConfEditType, unwrapConfEditCommand(rawEl.value), e.target.checked);
+        rawEl.value = withApplyToLine(wrapConfEditCommand(selectedConfEditType, unwrapConfEditCommand(rawEl.value), e.target.checked), agentconfApplyToRigs);
         resizeAgentConfRaw();
     });
     initSendConfirmCheckbox("confirm-agentconf", "agentconf");
