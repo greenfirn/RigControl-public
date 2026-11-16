@@ -1,4 +1,4 @@
-sudo tee /usr/local/bin/rigcontrol_cmd.sh > /dev/null <<'EOF'
+sudo tee /usr/local/bin/rigcontrol_cmd.sh.new > /dev/null <<'EOF'
 #!/bin/bash
 set -e
 LOG="/var/lib/rigcontrol/rigcontrol_cmd.log"
@@ -34,4 +34,7 @@ case "$CMD" in
         ;;
 esac
 EOF
-sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh
+sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh.new
+# Atomic swap (rename, new inode): a copy of this script that is currently running keeps
+# reading its old file, so redeploying through Send Cmd cannot corrupt the running shell.
+sudo mv -f /usr/local/bin/rigcontrol_cmd.sh.new /usr/local/bin/rigcontrol_cmd.sh

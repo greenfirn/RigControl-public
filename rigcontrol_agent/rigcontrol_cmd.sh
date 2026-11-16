@@ -1,6 +1,11 @@
-sudo tee /usr/local/bin/rigcontrol_cmd.sh > /dev/null <<'EOF'
+sudo tee /usr/local/bin/rigcontrol_cmd.sh.new > /dev/null <<'EOF'
 #!/bin/bash
 set -e
+# The whole body is wrapped in ONE brace group so bash parses all of it before running
+# anything. Otherwise redeploying this file THROUGH itself (Send Cmd running
+# "sudo tee /usr/local/bin/rigcontrol_cmd.sh") rewrites the script under the running shell,
+# which then resumes at a stale byte offset and reports a bogus "unexpected EOF" (rc=2).
+{
 LOG="/var/lib/rigcontrol/rigcontrol_cmd.log"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 GPU_SERVICE="${GPU_SERVICE_NAME:-docker_events_gpu.service}"
@@ -174,5 +179,10 @@ case "$CMD" in
         bash <<< "$RAW_CMD"
         ;;
 esac
+exit $?
+}
 EOF
-sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh
+sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh.new
+# Atomic swap (rename, new inode): a copy of this script that is currently running keeps
+# reading its old file, so redeploying through Send Cmd cannot corrupt the running shell.
+sudo mv -f /usr/local/bin/rigcontrol_cmd.sh.new /usr/local/bin/rigcontrol_cmd.sh
