@@ -298,7 +298,7 @@ let isLocalConnection = true;
 const VIEW_ONLY_DISABLED_IDS = [
     "btn-cmd-send", "btn-cmd-clear-send",
     "btn-open-logs", "btn-logs-refresh",
-    "btn-action-start", "btn-action-stop", "btn-action-restart", "btn-wd-enable",
+    "btn-action-start", "btn-action-stop", "btn-action-restart", "btn-action-enable", "btn-action-disable", "btn-action-reboot", "btn-action-shutdown", "btn-wd-enable",
     "btn-quick-a", "btn-quick-b", "btn-quick-c",
     "btn-reset",
     "btn-send-it-fs", "btn-save-fs", "btn-delete-fs", "btn-clear-fs",
@@ -715,7 +715,7 @@ function applyThemeDataStatPanelStyle(data) {
     saveStatPanelStyle(settings);
 }
 const TOOLBAR_BTN_STYLE_STORAGE_KEY = "rigcontrol_toolbar_btn_style";
-const TOOLBAR_BTN_STYLE_DEFAULT = { shape: "rounded", size: "normal" };
+const TOOLBAR_BTN_STYLE_DEFAULT = { shape: "rounded", size: "compact" };
 const TOOLBAR_BTN_LOCK_STORAGE_KEY = "rigcontrol_toolbar_btn_lock";
 function loadToolbarBtnLock() {
     return localStorage.getItem(TOOLBAR_BTN_LOCK_STORAGE_KEY) === "1";
@@ -771,6 +771,28 @@ function applyThemeDataToolbarBtnStyle(data) {
     saveToolbarBtnStyle(settings);
 }
 const TOOLBAR_BTN_ICON_STORAGE_KEY = "rigcontrol_toolbar_btn_icons";
+const POWER_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+    '<mask id="m"><rect width="24" height="24" fill="#fff"/>' +
+    '<g fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round">' +
+    '<path d="M12 6v6.2"/><path d="M8.1 8.1a6 6 0 1 0 7.8 0"/></g></mask>' +
+    '<circle cx="12" cy="12" r="11" fill="#ff8f8f" mask="url(#m)"/></svg>'
+);
+const REBOOT_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+    '<mask id="m"><rect width="24" height="24" fill="#fff"/>' +
+    '<path d="M15.9 8.1A5.8 5.8 0 1 1 12 6.2" fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round"/>' +
+    '<path d="M11.6 3.3L15.6 6.2L11.6 9.1Z" fill="#000" stroke="#000" stroke-width="0.8" stroke-linejoin="round"/></mask>' +
+    '<circle cx="12" cy="12" r="11" fill="#ff8f8f" mask="url(#m)"/></svg>'
+);
+const ENABLE_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#7ddc8a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="12" r="9"/><path d="M7.8 12.3l3 3 5.4-6"/></svg>'
+);
+const DISABLE_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ff8f8f" stroke-width="2.4" stroke-linecap="round">' +
+    '<circle cx="12" cy="12" r="9"/><path d="M5.8 5.8L18.2 18.2"/></svg>'
+);
 const TOOLBAR_BTN_ICON_DEFAULTS = {
     "btn-mode-all": "ALL",
     "btn-mode-cpu": "CPU",
@@ -780,6 +802,10 @@ const TOOLBAR_BTN_ICON_DEFAULTS = {
     "btn-action-start": "\u25B6",
     "btn-action-stop": "\u25A0",
     "btn-action-restart": "\u21BB",
+    "btn-action-enable": ENABLE_ICON_DATA_URI,
+    "btn-action-disable": DISABLE_ICON_DATA_URI,
+    "btn-action-reboot": REBOOT_ICON_DATA_URI,
+    "btn-action-shutdown": POWER_ICON_DATA_URI,
     "btn-quick-a": "A",
     "btn-quick-b": "B",
     "btn-quick-c": "C",
@@ -7113,6 +7139,83 @@ function actionStop() {
         cpuStop();
         gpuStop();
     }
+}
+function sendToolbarCommandWithHistory(command) {
+    // Goes through submitCmd() so it lands in Send Cmd history like every other
+    // worker-targeted command (targets = the main list's selection).
+    const input = document.getElementById("cmd-input");
+    if (input) input.value = command;
+    cmdModalRigOverride = null;
+    return submitCmd();
+}
+function actionEnable() {
+    if (selectedRigs.size === 0) {
+        alert("No workers selected");
+        return;
+    }
+    let label, command;
+    if (wdEnabled) {
+        label = "Enabling watchdog (starts on boot)";
+        command = 'sudo systemctl enable "${WATCHDOG_SERVICE_NAME:-rigcontrol_watchdog.service}"';
+    } else if (currentActionMode === "cpu") {
+        label = "Enabling CPU miners (start on boot)";
+        command = 'sudo systemctl enable "${CPU_SERVICE_NAME:-docker_events_cpu.service}"';
+    } else if (currentActionMode === "gpu") {
+        label = "Enabling GPU miners (start on boot)";
+        command = 'sudo systemctl enable "${GPU_SERVICE_NAME:-docker_events_gpu.service}"';
+    } else if (currentActionMode === "aux") {
+        label = "Enabling AUX service (starts on boot)";
+        command = 'sudo systemctl enable "${AUX_SERVICE_NAME:-docker_events_aux.service}"';
+    } else {
+        label = "Enabling ALL miners (start on boot)";
+        command = 'sudo systemctl enable "${CPU_SERVICE_NAME:-docker_events_cpu.service}" "${GPU_SERVICE_NAME:-docker_events_gpu.service}" "${AUX_SERVICE_NAME:-docker_events_aux.service}"';
+    }
+    setActionOutput(label + "…");
+    sendToolbarCommandWithHistory(command);
+}
+function actionDisable() {
+    if (selectedRigs.size === 0) {
+        alert("No workers selected");
+        return;
+    }
+    let label, command;
+    if (wdEnabled) {
+        label = "Disabling watchdog (won't start on boot)";
+        command = 'sudo systemctl disable "${WATCHDOG_SERVICE_NAME:-rigcontrol_watchdog.service}"';
+    } else if (currentActionMode === "cpu") {
+        label = "Disabling CPU miners (won't start on boot)";
+        command = 'sudo systemctl disable "${CPU_SERVICE_NAME:-docker_events_cpu.service}"';
+    } else if (currentActionMode === "gpu") {
+        label = "Disabling GPU miners (won't start on boot)";
+        command = 'sudo systemctl disable "${GPU_SERVICE_NAME:-docker_events_gpu.service}"';
+    } else if (currentActionMode === "aux") {
+        label = "Disabling AUX service (won't start on boot)";
+        command = 'sudo systemctl disable "${AUX_SERVICE_NAME:-docker_events_aux.service}"';
+    } else {
+        label = "Disabling ALL miners (won't start on boot)";
+        command = 'sudo systemctl disable "${CPU_SERVICE_NAME:-docker_events_cpu.service}" "${GPU_SERVICE_NAME:-docker_events_gpu.service}" "${AUX_SERVICE_NAME:-docker_events_aux.service}"';
+    }
+    setActionOutput(label + "…");
+    sendToolbarCommandWithHistory(command);
+}
+function confirmPowerAction(verb, detail) {
+    const names = Array.from(selectedRigs);
+    if (names.length === 0) {
+        alert("No workers selected");
+        return false;
+    }
+    const shown = names.length > 12 ? `${names.slice(0, 12).join(", ")}, +${names.length - 12} more` : names.join(", ");
+    return window.confirm(`${verb} ${names.length} selected worker${names.length !== 1 ? "s" : ""}?\n\n${shown}\n\n${detail}`);
+}
+function actionReboot() {
+    if (!confirmPowerAction("Reboot", "Mining stops and the workers go offline until they boot back up.")) return;
+    setActionOutput("Rebooting selected workers…");
+    sendToolbarCommandWithHistory("reboot");
+}
+function actionShutdown() {
+    if (!confirmPowerAction("Shut down", "The workers power off and must be turned back on manually.")) return;
+    setActionOutput("Shutting down selected workers…");
+    sendToolbarCommandWithHistory("shutdown now");
 }
 function actionRestart() {
     if (wdEnabled) {
@@ -14611,6 +14714,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-action-start")?.addEventListener("click", actionStart);
     document.getElementById("btn-action-stop")?.addEventListener("click", actionStop);
     document.getElementById("btn-action-restart")?.addEventListener("click", actionRestart);
+    document.getElementById("btn-action-enable")?.addEventListener("click", actionEnable);
+    document.getElementById("btn-action-disable")?.addEventListener("click", actionDisable);
+    document.getElementById("btn-action-reboot")?.addEventListener("click", actionReboot);
+    document.getElementById("btn-action-shutdown")?.addEventListener("click", actionShutdown);
     document.getElementById("btn-quick-a")?.addEventListener("click", (e) => handleQuickActionClick("a", e));
     document.getElementById("btn-quick-b")?.addEventListener("click", (e) => handleQuickActionClick("b", e));
     document.getElementById("btn-quick-c")?.addEventListener("click", (e) => handleQuickActionClick("c", e));

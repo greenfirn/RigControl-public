@@ -68,9 +68,9 @@
     --stat-panel-image-size: cover;
     --stat-panel-image-repeat: no-repeat;
     --toolbar-btn-radius: 6px;
-    --toolbar-btn-height: 2.3em;
-    --toolbar-btn-padding-x: 0.7em;
-    --toolbar-btn-min-width: 3.3em;
+    --toolbar-btn-height: 2.2em;
+    --toolbar-btn-padding-x: 0.6em;
+    --toolbar-btn-min-width: 3em;
     --wallpaper-image: none;
     --wallpaper-opacity: 0.45;
     --wallpaper-size: cover;

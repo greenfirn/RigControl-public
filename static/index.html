@@ -700,7 +700,7 @@
                         </span>
                         <span class="stat-panel-style-field">
                             <label for="toolbar-btn-size-select">Size</label>
-                            <select id="toolbar-btn-size-select" class="cmd-select" title="Height/padding/font size of all toolbar buttons and tabs">
+                            <select id="toolbar-btn-size-select" class="cmd-select" title="Height and padding of all toolbar buttons and tabs">
                                 <option value="compact">Compact</option>
                                 <option value="normal">Normal</option>
                                 <option value="large">Large</option>
@@ -747,6 +747,26 @@
                             <label for="toolbar-icon-input-btn-action-restart">Restart</label>
                             <input type="text" id="toolbar-icon-input-btn-action-restart" class="toolbar-icon-input" value="↻" title="Custom text/icon for the Restart button - leave as-is to keep the default">
                             <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-restart" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-enable">Enable</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-enable" class="toolbar-icon-input" value="&#10003;" title="Custom text/icon for the Enable button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-enable" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-disable">Disable</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-disable" class="toolbar-icon-input" value="⊘" title="Custom text/icon for the Disable button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-disable" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-reboot">Reboot</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-reboot" class="toolbar-icon-input" value="R" title="Custom text/icon for the Reboot button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-reboot" alt="">
+                        </span>
+                        <span class="toolbar-icon-field">
+                            <label for="toolbar-icon-input-btn-action-shutdown">Shutdown</label>
+                            <input type="text" id="toolbar-icon-input-btn-action-shutdown" class="toolbar-icon-input" value="⏻" title="Custom text/icon for the Shutdown button - leave as-is to keep the default">
+                            <img class="toolbar-icon-input-preview" id="toolbar-icon-preview-btn-action-shutdown" alt="">
                         </span>
                         <span class="toolbar-icon-field">
                             <label for="toolbar-icon-input-btn-quick-a">Quick A</label>
@@ -1413,6 +1433,10 @@
             <button class="action-btn" id="btn-action-start" title="Start ALL/CPU/GPU/AUX">▶</button>
             <button class="action-btn" id="btn-action-stop" title="Stop ALL/CPU/GPU/AUX">■</button>
             <button class="action-btn" id="btn-action-restart" title="Restart ALL/CPU/GPU/AUX">↻</button>
+            <button class="action-btn" id="btn-action-enable" title="Enable All/CPU/GPU/AUX so they start on boot">&#10003;</button>
+            <button class="action-btn" id="btn-action-disable" title="Disable All/CPU/GPU/AUX so they don't start on boot">⊘</button>
+            <button class="action-btn" id="btn-action-reboot" title="Reboot selected workers">R</button>
+            <button class="action-btn" id="btn-action-shutdown" title="Shutdown selected workers">⏻</button>
         </div>
         <div class="action-quick-buttons">
             <button class="action-btn" id="btn-quick-a" title="Quick action A - Ctrl+click to edit">A</button>

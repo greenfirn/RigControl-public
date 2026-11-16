@@ -1,0 +1,30 @@
+{
+  "dark": {
+    "size-tab": 12,
+    "color-surface-row": "#0f0f0f",
+    "color-surface-app": "#000000",
+    "color-surface-tabs": "#000000",
+    "color-surface-row-alt": "#000000",
+    "color-search-border": "#0f0f0f",
+    "color-surface-header": "#000000",
+    "color-surface-row-header": "#000000",
+    "color-search-bg": "#0f0f0f",
+    "color-surface-panel": "#0f0f0f",
+    "color-text-worker-name": "#e8e8e8",
+    "color-text-header": "#eeeeee",
+    "size-worker-header": 10,
+    "color-surface-popup": "#0f0f0f",
+    "color-docker-popover-bg": "#0f0f0f",
+    "color-list-item-hover": "#0f0f0f",
+    "color-surface-modal": "#0f0f0f",
+    "color-button-bg": "#0f0f0f",
+    "color-tab-bg": "#0f0f0f",
+    "color-text-white": "#e2e2e2",
+    "statPanelShape": "rounded",
+    "statPanelSize": "compact",
+    "statPanelLayout": "horizontal",
+    "toolbarBtnShape": "rounded",
+    "toolbarBtnSize": "normal",
+    "tabLayout": "top"
+  }
+}
