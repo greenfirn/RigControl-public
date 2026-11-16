@@ -7210,7 +7210,7 @@ function confirmPowerAction(verb, detail) {
 function actionReboot() {
     if (!confirmPowerAction("Reboot", "Mining stops and the workers go offline until they boot back up.")) return;
     setActionOutput("Rebooting selected workers…");
-    sendToolbarCommandWithHistory("reboot");
+    sendToolbarCommandWithHistory("reboot now");
 }
 function actionShutdown() {
     if (!confirmPowerAction("Shut down", "The workers power off and must be turned back on manually.")) return;

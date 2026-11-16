@@ -2894,7 +2894,12 @@ case "$CMD" in
     # SYSTEM REBOOT
     reboot)
         echo "Rebooting system..."
-        systemctl reboot
+        shutdown -r now
+        ;;
+    # SYSTEM SHUTDOWN
+    shutdown)
+        echo "Shutting down system..."
+        shutdown now
         ;;
     # RAW MULTI-LINE SHELL COMMAND (DEFAULT)
     *)

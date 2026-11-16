@@ -16,7 +16,11 @@ CMD="$(echo "$FIRST_LINE" | awk '{print $1}')"
 case "$CMD" in
     reboot)
         echo "Rebooting system..."
-        systemctl reboot
+        shutdown -r now
+        ;;
+    shutdown)
+        echo "Shutting down system..."
+        shutdown now
         ;;
     *)
         echo "[RAW EXECUTION]"
