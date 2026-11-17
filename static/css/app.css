@@ -4302,9 +4302,9 @@ h1 {
     color: var(--list-text);
     background: color-mix(in srgb, var(--surface-row-alt) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 0;
     padding: 6px 10px;
-    margin: 0 auto 6px auto;
+    margin: 0 auto;
     width: fit-content;
     max-width: 100%;
     font-size: var(--font-size-main-list);
@@ -4325,9 +4325,9 @@ h1 {
     z-index: 40;
     background: color-mix(in srgb, var(--surface-row-header) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 0;
     padding: 6px 10px;
-    margin: 0 auto 6px auto;
+    margin: 0 auto;
     width: fit-content;
     max-width: 100%;
     font-size: var(--font-size-worker-header);
