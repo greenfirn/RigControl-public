@@ -295,7 +295,7 @@
     --font-size-section-header: 10px;
     --font-size-toolbar-btn: 10px;
     --font-size-worker-toolbar: 10px;
-    --font-size-tab: 10px;
+    --font-size-tab: 12px;
     --tab-icon-size: calc(var(--font-size-tab) * 1.7);
     --font-size-module-btn: var(--font-size-toolbar-btn);
     --font-size-btn-secondary: var(--font-size-toolbar-btn);
