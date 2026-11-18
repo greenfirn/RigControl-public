@@ -772,18 +772,12 @@ function applyThemeDataToolbarBtnStyle(data) {
 }
 const TOOLBAR_BTN_ICON_STORAGE_KEY = "rigcontrol_toolbar_btn_icons";
 const POWER_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-    '<mask id="m"><rect width="24" height="24" fill="#fff"/>' +
-    '<g fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round">' +
-    '<path d="M12 6v6.2"/><path d="M8.1 8.1a6 6 0 1 0 7.8 0"/></g></mask>' +
-    '<circle cx="12" cy="12" r="11" fill="#ff8f8f" mask="url(#m)"/></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ff8f8f" stroke-width="2.4" stroke-linecap="round">' +
+    '<path d="M12 3.5v8"/><path d="M7.2 6.9a7.6 7.6 0 1 0 9.6 0"/></svg>'
 );
 const REBOOT_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-    '<mask id="m"><rect width="24" height="24" fill="#fff"/>' +
-    '<path d="M15.9 8.1A5.8 5.8 0 1 1 12 6.2" fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round"/>' +
-    '<path d="M11.6 3.3L15.6 6.2L11.6 9.1Z" fill="#000" stroke="#000" stroke-width="0.8" stroke-linejoin="round"/></mask>' +
-    '<circle cx="12" cy="12" r="11" fill="#ff8f8f" mask="url(#m)"/></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ff8f8f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M18.2 8.6A7.4 7.4 0 1 1 12 4.6"/><path d="M11.4 1.6L15.2 4.6L11.4 7.6Z" fill="#ff8f8f"/></svg>'
 );
 const ENABLE_ICON_DATA_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#7ddc8a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
