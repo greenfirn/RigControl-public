@@ -401,7 +401,7 @@ install_custom_miner() {
         echo "CUSTOM_MINER already installed (found $bin_name), skipping."
     fi
     local reported_version
-    reported_version="$("$miner_dir/$bin_name" --version 2>&1 | head -n1)"
+    reported_version="$("$miner_dir/$bin_name" --version 2>&1 | head -n1 || true)"
     if [ -n "$reported_version" ]; then
         echo "  Binary reports: $reported_version"
     else
