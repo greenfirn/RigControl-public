@@ -110,6 +110,10 @@ MINER_PROCESSES = {
     # "quanpool-miner-6.2.0-windows-x86_64.exe".
     "quanpool-miner.exe": "custom_log",
     "quanpool-miner": "custom_log",
+    # suprminer-neptune (NEB) - same log-scrape path; start-neb-log-output.bat tees its output
+    # into C:\\Temp\\gpu-miner.log. Matches "suprminer-neptune.exe" and versioned filenames.
+    "suprminer-neptune.exe": "custom_log",
+    "suprminer-neptune": "custom_log",
 }
 # Processes checked by exact name (not substring) BEFORE the MINER_PROCESSES scan, so they're
 # never misclassified as the miner they share a name substring with (e.g. lolMinerGUI.exe vs lolMiner)
@@ -1941,38 +1945,52 @@ CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"
 # any static path) changes every release. Cached per-PID so a steady-state miner doesn't
 # re-shell-out on every ~10s poll - only a PID change (miner restarted, e.g. after an update)
 # triggers a fresh query.
-_quanpool_version_cache = {"pid": None, "version": ""}
-def _detect_quanpool_version():
-    """Finds the running quanpool-miner process, resolves its own exe path, and runs
-    `<exe> --version` to get the real version string (see cache note above). Returns "" if the
-    process isn't found, its exe path can't be resolved (e.g. access denied), or the binary
-    doesn't respond to --version."""
+# Process-name substrings handled by the custom_log collector. First running match wins.
+CUSTOM_LOG_MINER_NAMES = ("quanpool-miner", "suprminer-neptune")
+# Version fallback scraped from the log when `--version` isn't supported (suprminer-neptune exits
+# non-zero on it): matches e.g. "suprminer-neptune v1.2.3" / "suprminer-neptune 1.2.3".
+_CUSTOM_LOG_VERSION_RE = re.compile(r"(suprminer[-\w]*|quanpool-miner)[\s_:]+v?(\d+(?:\.\d+)+\S*)", re.IGNORECASE)
+_custom_log_version_cache = {"pid": None, "name": "", "version": ""}
+def _detect_custom_log_miner(log_text=""):
+    """Finds the running custom_log miner process and returns (display_name, version).
+    Version comes from `<exe> --version` (cached per PID); if that yields nothing, falls back to
+    scanning the log text for a "<name> <x.y.z>" string. Returns (default display name, "") if
+    no matching process is running."""
     try:
         for proc in psutil.process_iter(['name', 'exe']):
             try:
                 proc_name = proc.info.get('name') or ""
-                if "quanpool-miner" not in proc_name.lower():
+                low = proc_name.lower()
+                match = next((n for n in CUSTOM_LOG_MINER_NAMES if n in low), None)
+                if not match:
                     continue
                 pid = proc.pid
                 exe_path = proc.info.get('exe') or ""
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
-            if pid == _quanpool_version_cache["pid"] and _quanpool_version_cache["version"]:
-                return _quanpool_version_cache["version"]
+            if pid == _custom_log_version_cache["pid"] and _custom_log_version_cache["version"]:
+                return match, _custom_log_version_cache["version"]
             version = ""
             if exe_path:
                 try:
                     out = subprocess.run([exe_path, "--version"], capture_output=True, text=True, timeout=2.0)
-                    text = (out.stdout or out.stderr or "").strip()
-                    version = text.splitlines()[0] if text else ""
+                    if out.returncode == 0:
+                        text = (out.stdout or out.stderr or "").strip()
+                        version = text.splitlines()[0] if text else ""
                 except Exception:
                     version = ""
-            _quanpool_version_cache["pid"] = pid
-            _quanpool_version_cache["version"] = version
-            return version
+            if not version and log_text:
+                m = None
+                for m in _CUSTOM_LOG_VERSION_RE.finditer(log_text):
+                    pass
+                if m:
+                    version = f"{m.group(1)} {m.group(2)}"
+            _custom_log_version_cache["pid"] = pid if version else None
+            _custom_log_version_cache["version"] = version
+            return match, version
     except Exception:
         pass
-    return ""
+    return CUSTOM_LOG_MINER_DISPLAY_NAME, ""
 def collect_custom_log_miner_stats():
     """
     Best-effort telemetry for a custom miner with no known stats API,
@@ -2018,8 +2036,9 @@ def collect_custom_log_miner_stats():
     log_path = _custom_miner_log_path()
     tail_bytes = int(os.environ.get("CUSTOM_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
+    display_name, detected_version = _detect_custom_log_miner(text or "")
     if text is None:
-        return _build_miner_result("error", CUSTOM_LOG_MINER_DISPLAY_NAME, error=f"could not read log file '{log_path}'")
+        return _build_miner_result("error", display_name, error=f"could not read log file '{log_path}'")
     hashrate_hs = 0.0
     hr_matches = list(_CUSTOM_HASHRATE_RE.finditer(text))
     if hr_matches:
@@ -2034,8 +2053,8 @@ def collect_custom_log_miner_stats():
     if rej_matches:
         rejected_shares = int(rej_matches[-1].group(1))
     return _build_miner_result(
-        "ok", CUSTOM_LOG_MINER_DISPLAY_NAME,
-        miner_version=_detect_quanpool_version(),
+        "ok", display_name,
+        miner_version=detected_version,
         algorithms=[_build_algo_entry(
             "unknown",
             hashrate_hs=hashrate_hs,
