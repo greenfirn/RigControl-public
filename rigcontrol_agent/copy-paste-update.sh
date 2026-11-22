@@ -2405,6 +2405,56 @@ def collect_named_custom_miner_stats(slot):
     if log_style.lower() == "blocks":
         return _collect_named_miner_block_log_stats(name, log_path, mining_type)
     return _collect_named_miner_generic_log_stats(name, key, log_path, mining_type)
+def _parse_hive_style_miner_stats(name, data, mining_type="GPU"):
+    """Parses HiveOS-format miner stats (suprminer-neptune), e.g.
+      {"hs":[305052200.41],"hs_units":"hs","temp":[51],"fan":[72],"power":[222],
+       "core_clock":[2580],"mem_clock":[5001],"ar":[69,1,0],"algo":"neb","ver":"1.9.52",
+       "uptime":1393,"total_khs":305052.2,"pool":"stratum+tcp://...","diff":25224620361,
+       "active":true}
+    "ar" is [accepted, rejected, invalid] in aggregate (not per GPU), so per-GPU share counts are
+    only attributed on a single-GPU rig. hs values are scaled by "hs_units" (hs/khs/mhs/ghs)."""
+    mult = {"hs": 1, "khs": 1e3, "mhs": 1e6, "ghs": 1e9}.get(str(data.get("hs_units", "hs")).lower(), 1)
+    hs = [float(x or 0) * mult for x in (data.get("hs") or [])]
+    total_hr = sum(hs)
+    if not total_hr and data.get("total_khs"):
+        total_hr = float(data["total_khs"]) * 1e3
+    ar = list(data.get("ar") or [])
+    ar += [0] * (3 - len(ar))
+    accepted, rejected, invalid = int(ar[0] or 0), int(ar[1] or 0), int(ar[2] or 0)
+    single = len(hs) == 1
+    def _at(key, i):
+        v = data.get(key)
+        return v[i] if isinstance(v, list) and i < len(v) else None
+    gpus = [
+        _build_gpu_entry(
+            i, hashrate_hs=h,
+            accepted_shares=accepted if single else None,
+            rejected_shares=rejected if single else None,
+            invalid_shares=invalid if single else None,
+        )
+        for i, h in enumerate(hs)
+    ]
+    cache = _named_miner_version_cache.setdefault(name, {"version": "", "queried": False, "last_uptime_s": None})
+    if data.get("ver"):
+        cache["version"] = f"{name} {data['ver']}"
+        cache["queried"] = True
+    cache["last_uptime_s"] = data.get("uptime", 0)
+    pool = data.get("pool")
+    return _build_miner_result(
+        "ok", name,
+        miner_version=cache["version"],
+        uptime_s=data.get("uptime", 0),
+        algorithms=[_build_algo_entry(
+            str(data.get("algo") or "unknown").lower(),
+            hashrate_hs=total_hr,
+            cpu_hashrate_hs=total_hr if mining_type == "CPU" else 0,
+            gpu_hashrate_hs=total_hr if mining_type == "GPU" else 0,
+            mining_type=mining_type,
+            accepted_shares=accepted, rejected_shares=rejected, invalid_shares=invalid,
+            pool=pool, pool_url=pool, difficulty=data.get("diff"),
+        )],
+        gpus=gpus,
+    )
 def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected OPoI SHARE counts, and
     (on builds that report it) real per-device temp/fan/power/clock/vram readings. The API's own
@@ -2435,7 +2485,7 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
     the system GPU list with each miner's own "gpus" list by index."""
     data = None
     last_err = None
-    for path in ("/stats", "/v1/miner/stats"):
+    for path in ("/stats", "/v1/miner/stats", "/"):
         try:
             with urllib.request.urlopen(f"http://{api_host}:{api_port}{path}", timeout=2.0) as r:
                 data = json.loads(r.read().decode())
@@ -2448,6 +2498,11 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
             error=f"{name} API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}",
             miner_version=_named_miner_version(name),
         )
+    # HiveOS-style stats (suprminer-neptune): {"hs":[..],"hs_units":"hs","ar":[acc,rej,invalid],
+    # "algo":"neb","ver":"1.9.52","uptime":N,"pool":..,"diff":..,"temp":[..],...}. Handled
+    # separately; GPU sensors still come from nvidia-smi like every other miner here.
+    if isinstance(data, dict) and isinstance(data.get("hs"), list) and "ar" in data:
+        return _parse_hive_style_miner_stats(name, data, mining_type)
     # keryx-miner-supr 0.11.10 changed its device key from "id" to "name" (still holding the same
     # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
     # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
