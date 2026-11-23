@@ -1064,6 +1064,7 @@ h1 {
     background: var(--button-hover-bg);
 }
 .fs-apply-to-list {
+    box-sizing: border-box;
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
@@ -1074,12 +1075,11 @@ h1 {
     border: 1px solid var(--button-border);
     border-radius: 5px;
     padding: 4px;
-    z-index: 20;
+    z-index: 2000;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .fs-apply-to-list.open-upward {
-    top: auto;
-    bottom: calc(100% + 6px);
+    /* top/bottom set inline by positionApplyToDropdown() (fixed positioning) */
 }
 .fs-apply-to-list.hidden {
     display: none;
@@ -3342,17 +3342,14 @@ h1 {
 #fs-modal .fs-wallet-suggestions,
 #fs-miner-config-modal .fs-wallet-suggestions,
 #wallet-modal .fs-wallet-suggestions {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 100%;
-    margin-top: 4px;
+    position: fixed;
+    margin-top: 0; /* left/top/width/max-height set inline by positionFloatingList() */
     background: var(--surface-suggestions);
     border: 1px solid var(--border-suggestions);
     border-radius: 3px;
-    max-height: 160px;
+    max-height: 60vh;
     overflow-y: auto;
-    z-index: 20;
+    z-index: 2000;
     box-shadow: 0 4px 12px var(--shadow-suggestions);
 }
 #fs-modal .fs-wallet-suggestions.hidden,
@@ -3441,17 +3438,14 @@ h1 {
 #fs-miner-config-modal .fs-algo-suggestions,
 #fs-miner-config-modal .fs-pass-suggestions,
 #fs-miner-config-modal .fs-pool-suggestions {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 100%;
-    margin-top: 4px;
+    position: fixed;
+    margin-top: 0; /* left/top/width/max-height set inline by positionFloatingList() */
     background: var(--surface-suggestions);
     border: 1px solid var(--border-suggestions);
     border-radius: 3px;
-    max-height: 160px;
+    max-height: 60vh;
     overflow-y: auto;
-    z-index: 20;
+    z-index: 2000;
     box-shadow: 0 4px 12px var(--shadow-suggestions);
 }
 #fs-modal .fs-miner-suggestions.hidden,

@@ -6307,15 +6307,69 @@ function openRefreshModal() {
     switchViewTab("settings");
     switchSettingsMainTab("agentconf");
 }
+// Shared placement for every floating dropdown/suggestion list: fixed positioning (never clipped by
+// a modal), above all page chrome (z-index 2000 via CSS), opens on whichever side of the anchor has
+// more room, and its height can grow all the way to the edge of the page (scrolls beyond that).
+function positionFloatingList(list, anchor, opts) {
+    if (!list || !anchor) return;
+    const o = Object.assign({ minWidth: 0, matchWidth: false }, opts || {});
+    const margin = 4, gap = 6;
+    const r = anchor.getBoundingClientRect();
+    list.style.maxHeight = "";
+    list.style.position = "fixed";
+    const natural = list.scrollHeight || 280;
+    const spaceBelow = window.innerHeight - r.bottom - gap - margin;
+    const spaceAbove = r.top - gap - margin;
+    const up = spaceBelow < natural && spaceAbove > spaceBelow;
+    const avail = Math.max(80, up ? spaceAbove : spaceBelow);
+    const width = Math.max(o.minWidth, r.width);
+    list.classList.toggle("open-upward", up);
+    list.style.maxHeight = avail + "px";
+    list.style.left = Math.max(margin, Math.min(r.left, window.innerWidth - width - margin)) + "px";
+    list.style.right = "auto";
+    if (o.matchWidth) list.style.width = r.width + "px";
+    else list.style.minWidth = width + "px";
+    if (up) {
+        list.style.top = "auto";
+        list.style.bottom = (window.innerHeight - r.top + gap) + "px";
+    } else {
+        list.style.bottom = "auto";
+        list.style.top = (r.bottom + gap) + "px";
+    }
+}
 function positionApplyToDropdown(toggleId, listId) {
-    const toggle = document.getElementById(toggleId);
-    const list = document.getElementById(listId);
-    if (!toggle || !list) return;
-    const toggleRect = toggle.getBoundingClientRect();
-    const neededHeight = Math.min(list.scrollHeight || 280, 280);
-    const spaceBelow = window.innerHeight - toggleRect.bottom;
-    const spaceAbove = toggleRect.top;
-    list.classList.toggle("open-upward", spaceBelow < neededHeight && spaceAbove > spaceBelow);
+    positionFloatingList(document.getElementById(listId), document.getElementById(toggleId), { minWidth: 220 });
+}
+const FLOATING_SUGGESTION_SELECTOR =
+    ".fs-wallet-suggestions, .fs-miner-suggestions, .fs-algo-suggestions, .fs-pass-suggestions, " +
+    ".fs-pool-suggestions, .wdconfig-algo-suggestions";
+function positionSuggestionBox(box) {
+    if (!box || box.classList.contains("hidden")) return;
+    const anchor = box.parentElement?.querySelector("input, textarea") || box.parentElement;
+    positionFloatingList(box, anchor, { minWidth: 80, matchWidth: true });
+}
+function initFloatingSuggestionPlacement() {
+    // Re-place a suggestion box whenever it is shown or its items change (renders add children).
+    const observer = new MutationObserver((mutations) => {
+        const seen = new Set();
+        for (const m of mutations) {
+            const box = m.type === "attributes" ? m.target
+                : (m.target.matches?.(FLOATING_SUGGESTION_SELECTOR) ? m.target : null);
+            if (box && box.matches?.(FLOATING_SUGGESTION_SELECTOR) && !seen.has(box)) {
+                seen.add(box);
+                positionSuggestionBox(box);
+            }
+        }
+    });
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+    const replaceAll = () => document.querySelectorAll(FLOATING_SUGGESTION_SELECTOR).forEach(positionSuggestionBox);
+    window.addEventListener("resize", replaceAll);
+    document.addEventListener("scroll", (e) => {
+        document.querySelectorAll(FLOATING_SUGGESTION_SELECTOR).forEach(box => {
+            if (box === e.target || box.contains(e.target)) return;
+            positionSuggestionBox(box);
+        });
+    }, true);
 }
 let statsApplyToRigs = new Set();
 function isStatsApplyToDropdownOpen() {
@@ -12759,11 +12813,25 @@ function saveAgentConfRawHeight() {
     const el = document.getElementById("agentconf-raw");
     if (el && el.style.height) localStorage.setItem(AGENTCONF_RAW_HEIGHT_KEY, el.style.height);
 }
-function resizeAgentConfRaw() {
-    const el = document.getElementById("agentconf-raw");
+// Auto-grow a textarea without the page jumping: setting height "auto" briefly collapses it, which
+// shrinks the page and makes the browser clamp scroll positions back to the top. Save and restore
+// the scroll position of every scrollable ancestor (and the window) around the resize.
+function autoGrowTextareaKeepScroll(el) {
     if (!el) return;
+    const saved = [];
+    for (let n = el.parentElement; n; n = n.parentElement) {
+        if (n.scrollTop || n.scrollLeft) saved.push([n, n.scrollTop, n.scrollLeft]);
+    }
+    const wx = window.scrollX, wy = window.scrollY;
+    const caretTop = el.scrollTop;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+    el.scrollTop = caretTop;
+    saved.forEach(([n, t, l]) => { n.scrollTop = t; n.scrollLeft = l; });
+    if (window.scrollX !== wx || window.scrollY !== wy) window.scrollTo(wx, wy);
+}
+function resizeAgentConfRaw() {
+    autoGrowTextareaKeepScroll(document.getElementById("agentconf-raw"));
 }
 const CONF_EDIT_HEREDOC_TAG = "RIGCONTROL_CONF_EDIT_EOF";
 function wrapConfEditCommand(confType, bareContent, includeRestart) {
@@ -12948,10 +13016,7 @@ function sendItConfEdit() {
     }
 }
 function resizeTemplatesConfigRaw() {
-    const el = document.getElementById("templates-config-raw");
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    autoGrowTextareaKeepScroll(document.getElementById("templates-config-raw"));
 }
 function loadTemplatesConfigTab() {
     const rawEl = document.getElementById("templates-config-raw");
@@ -15256,17 +15321,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             box.innerHTML = "";
         });
     });
-    document.addEventListener("scroll", (e) => {
-        document.querySelectorAll(".wdconfig-algo-suggestions:not(.hidden)").forEach(box => {
-            if (box === e.target || box.contains(e.target)) return;
-            const inputEl = box.parentElement?.querySelector("input");
-            if (!inputEl) return;
-            const rect = inputEl.getBoundingClientRect();
-            box.style.left = `${rect.left}px`;
-            box.style.top = `${rect.bottom + 4}px`;
-            box.style.width = `${rect.width}px`;
-        });
-    }, true);
+    initFloatingSuggestionPlacement();
     document.getElementById("btn-load-wdconfig")?.addEventListener("click", loadSelectedWatchdogProfile);
     document.getElementById("btn-save-wdconfig")?.addEventListener("click", saveWatchdogProfileFromDialog);
     document.getElementById("btn-delete-wdconfig")?.addEventListener("click", deleteWatchdogProfile);
