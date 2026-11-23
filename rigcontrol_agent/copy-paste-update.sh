@@ -15,6 +15,8 @@ STATS_DB_MAX_HISTORY_DAYS=7
 STATS_DB_INTERVAL_SECONDS=90
 # Minimum seconds between telemetry pulls, prevents overlapping collection calls
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
+# Use OctaSpace node (osn) metrics for GPU + CPU/memory stats - no local GPU fallback (0 = ignore osn)
+OSN_PRIMARY=1
 #CPU_SERVICE_NAME=docker_events_cpu.service
 #GPU_SERVICE_NAME=docker_events_gpu.service
 #AUX_SERVICE_NAME=keryxd.service
@@ -2726,6 +2728,185 @@ ALL_TELEMETRY_GROUPS = {
     "cpu_temp", "cpu_usage", "load", "memory", "uptime", "gpu", "miner", "docker", "network",
     "cpu_service", "gpu_service", "aux_service", "watchdog_service",
 }
+# ---- OctaSpace node (osn) stats -------------------------------------------------------------
+# Scrapes the osn agent's local Prometheus endpoint. Returns None when osn isn't running/reachable
+# so stats["octaspace"] is only present when osn data is actually available.
+OSN_URL = os.environ.get("OSN_METRICS_URL", "http://127.0.0.1:18888/metrics")
+OSN_UNIT = os.environ.get("OSN_SERVICE_NAME", "osn")
+_OSN_LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+(\S+)')
+_OSN_LABEL = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
+# Label names that identify a GPU / NIC / disk, in order of preference.
+_OSN_ID_KEYS = ("index", "gpu", "uuid", "bus_id", "pci", "device", "iface", "interface", "name")
+def _osn_parse(text):
+    for line in text.splitlines():
+        if not line or line[0] == "#":
+            continue
+        m = _OSN_LINE.match(line)
+        if not m:
+            continue
+        name, raw_labels, raw_val = m.groups()
+        labels = {k: v.encode().decode("unicode_escape") for k, v in _OSN_LABEL.findall(raw_labels or "")}
+        try:
+            val = float(raw_val)
+        except ValueError:
+            continue
+        yield name, labels, val
+def _osn_num(v):
+    try:
+        return int(v) if v is not None and v == int(v) else v
+    except (ValueError, OverflowError):
+        return v
+def _osn_service_active():
+    try:
+        r = subprocess.run(["systemctl", "is-active", OSN_UNIT], capture_output=True, text=True, timeout=2)
+        return r.stdout.strip() == "active"
+    except Exception:
+        return None
+def _osn_group(samples, prefix):
+    """osn_gpu_temp{index="0"} -> {"0": {"temp": ...}}"""
+    out = {}
+    for name, labels, val in samples:
+        if not name.startswith(prefix):
+            continue
+        key = next((labels[k] for k in _OSN_ID_KEYS if k in labels), "_")
+        field = name[len(prefix):]
+        extra = {k: v for k, v in labels.items() if k not in _OSN_ID_KEYS}
+        if extra:
+            field += "_" + "_".join(extra.values())
+        out.setdefault(key, {})[field] = _osn_num(val)
+    return out
+def _osn_gpus(samples):
+    """Per-GPU dict keyed by GPU index (str), already in the universal gpus[] field names, built from
+    osn's explicit osn_gpu_* series (labels: gpu, uuid, model, bus_id; clock/reason for sub-series).
+    Units converted: clock Hz -> MHz, memory bytes -> MB."""
+    gpus = {}
+    def g(labels):
+        return gpus.setdefault(str(labels.get("gpu", "0")), {})
+    for name, labels, val in samples:
+        if not name.startswith("osn_gpu_") or "gpu" not in labels:
+            continue
+        d = g(labels)
+        if labels.get("model"):
+            d["name"] = labels["model"]
+        if labels.get("uuid"):
+            d["uuid"] = labels["uuid"]
+        if labels.get("bus_id"):
+            d["pci_bus_id"] = labels["bus_id"]
+            d["pci_slot"] = labels["bus_id"].lower()
+        f = name[len("osn_gpu_"):]
+        clk = labels.get("clock")
+        if f == "utilization_percent":            d["util"] = int(val)
+        elif f == "temperature_celsius":          d["temp"] = int(val)
+        elif f == "fan_percent":                  d["fan_percent"] = int(val)
+        elif f == "memory_temperature_celsius":   d["mem_temp"] = int(val)   # AMD only
+        elif f == "hotspot_temperature_celsius":  d["hotspot_temp"] = int(val)  # AMD only
+        elif f == "power_draw_watts":             d["power_watts"] = val
+        elif f == "power_limit_watts":            d["power_limit"] = val
+        elif f == "power_default_limit_watts":    d["power_limit_default"] = val
+        elif f == "clock_hertz" and clk == "graphics":        d["sm_clock"] = int(val / 1e6)
+        elif f == "clock_hertz" and clk == "memory":          d["mem_clock"] = int(val / 1e6)
+        elif f == "clock_limit_hertz" and clk == "graphics":  d["sm_clock_max"] = int(val / 1e6)
+        elif f == "clock_limit_hertz" and clk == "memory":    d["mem_clock_max"] = int(val / 1e6)
+        elif f == "memory_total_bytes":           d["vram_total"] = int(val / 1048576)
+        elif f == "memory_used_bytes":            d["vram_used"] = int(val / 1048576)
+        elif f == "pcie_link_gen":                d["pcie_gen"] = int(val)
+        elif f == "pcie_link_gen_max":            d["pcie_gen_max"] = int(val)
+        elif f == "pcie_link_width":              d["pcie_width"] = int(val)
+        elif f == "pcie_link_width_max":          d["pcie_width_max"] = int(val)
+        elif f == "energy_joules_total":          d["energy_joules"] = val
+        elif f == "clocks_event_reason" and val:  d.setdefault("throttle_reasons", []).append(labels.get("reason"))
+        elif f == "info":
+            d["pstate"] = labels.get("pstate")
+    return gpus
+def collect_osn(timeout=2):
+    """Returns the osn stats dict, or None if osn's metrics endpoint isn't reachable."""
+    try:
+        text = urllib.request.urlopen(OSN_URL, timeout=timeout).read().decode()
+    except Exception:
+        return None
+    samples = list(_osn_parse(text))
+    flat = {n: v for n, l, v in samples if not l}
+    res = {"up": 1, "service_active": _osn_service_active()}
+    info = next((l for n, l, v in samples if n == "osn_info"), {})
+    res["version"] = info.get("version")
+    res["driver"] = info.get("gpu_driver")
+    res["cuda"] = info.get("cuda")
+    start = flat.get("osn_start_time_seconds")
+    res["uptime_s"] = int(time.time() - start) if start else None
+    # These two emit no sample when idle, so absent == 0.
+    res["activity"] = _osn_num(flat.get("osn_activity", 0))
+    res["link"] = {
+        "connected": _osn_num(flat.get("osn_link_connected", 0)),
+        "heartbeat_age_s": _osn_num(flat.get("osn_link_heartbeat_age_seconds")),
+        "reconnects": _osn_num(flat.get("osn_link_reconnects_total")),
+        "rejected": _osn_num(flat.get("osn_link_rejected", 0)),
+    }
+    res["collect_failed"] = [l.get("part") for n, l, v in samples if n == "osn_collect_failed" and v]
+    res["containers_running"] = _osn_num(flat.get("osn_containers_running"))
+    res["cpu_load_pct"] = _osn_num(flat.get("osn_cpu_load_percent"))
+    res["mem_used"] = _osn_num(flat.get("osn_memory_used_bytes"))
+    res["mem_total"] = _osn_num(flat.get("osn_memory_total_bytes"))
+    res["disk_free"] = _osn_num(flat.get("osn_docker_disk_free_bytes"))
+    res["disk_total"] = _osn_num(flat.get("osn_docker_disk_total_bytes"))
+    res["gpu_passthrough"] = _osn_num(flat.get("osn_gpu_passthrough_active", 0))
+    # osn says GPU readings are stale while the GPUs are passed through to a VM, and are zeros/missing
+    # when its own GPU read failed - in both cases treat osn as having no GPU data so the local
+    # nvidia-smi values (and OSN_GPU_ONLY's fallback) take over.
+    if res["gpu_passthrough"] or "gpus" in res["collect_failed"]:
+        res["gpus"] = {}
+    else:
+        res["gpus"] = _osn_gpus(samples)
+    res["gpu_vendor"] = info.get("gpu_vendor")
+    res["net"] = _osn_group(samples, "osn_network_")
+    return res
+def _osn_primary_enabled():
+    """OctaSpace node (osn) is the primary source of GPU and system stats (default ON). Set
+    OSN_PRIMARY=0 (rigcontrol-agent.conf or env) to ignore osn and use local collection instead.
+    While ON: GPU metrics come ONLY from osn - there is NO local GPU fallback (nvidia-smi/amd tools
+    are never run), so if osn is down or reports stale GPU data (passthrough) the GPU list is simply
+    empty. CPU/memory use osn when reachable and the local /proc values otherwise. Miner API stats
+    are always collected locally."""
+    v = (_read_agent_conf_val("OSN_PRIMARY") or os.environ.get("OSN_PRIMARY", "")).strip().strip("\"'").lower()
+    return v not in ("0", "false", "no", "off")
+def _apply_osn_stats(stats, osn, active_groups):
+    """osn -> the SAME universal fields the dashboard already reads (gpus[], cpu_usage, memory), so no
+    frontend change is needed. Miner API stats are never touched. Fields osn doesn't report
+    (mem_temp/mem_util on NVIDIA, vbios_version, power_limit_min/max, board_partner, load average,
+    network rates, uptime, docker, services) are simply not provided by it; local sources still fill
+    the ones that don't depend on nvidia-smi (load/network/uptime/docker/services)."""
+    if "cpu_usage" in active_groups and osn.get("cpu_load_pct") is not None:
+        stats["cpu_usage"] = round(float(osn["cpu_load_pct"]), 1)
+    if "memory" in active_groups and osn.get("mem_total"):
+        total = float(osn["mem_total"]); used = float(osn.get("mem_used") or 0)
+        stats["memory"] = {
+            "total_mb": int(total // 1048576),
+            "used_mb":  int(used // 1048576),
+            "free_mb":  int(max(total - used, 0) // 1048576),
+            "percent":  round(used / total * 100, 1),
+        }
+    if "gpu" not in active_groups or not osn.get("gpus"):
+        return
+    base = {g.get("index"): g for g in (stats.get("gpus") or [])}
+    for key, og in osn["gpus"].items():
+        if not str(key).isdigit():
+            continue
+        idx = int(key)
+        g = base.get(idx)
+        if g is None:
+            g = {"index": idx, "name": f"GPU {idx}", "vendor": (osn.get("gpu_vendor") or "NVIDIA").upper()}
+            base[idx] = g
+        g.update({k: v for k, v in og.items() if v is not None})
+        if not g.get("architecture") and g.get("name"):
+            try:
+                g["architecture"] = _gpu_architecture_from_name(g["name"])
+            except Exception:
+                pass
+        if osn.get("driver"):
+            g["driver_version"] = osn["driver"]
+    stats["gpus"] = [base[k] for k in sorted(base)]
+    stats["gpu_count"] = len(stats["gpus"])
+    stats["gpu_present"] = True
+    stats["gpu_stats_skipped"] = False
 def collect_full_stats(visible_groups=None):
     global gpu_present, gpu_type
     if visible_groups is None:
@@ -2747,8 +2928,17 @@ def collect_full_stats(visible_groups=None):
         "system_uptime_seconds": collect_system_uptime() if "uptime" in active_groups else None,
         "network":               collect_network() if "network" in active_groups else None,
     }
+    _osn = None
+    try:
+        if _osn_primary_enabled():
+            _osn = collect_osn()
+    except Exception as e:
+        print(f"[Telemetry] osn collection failed: {e}")
+    # osn primary: GPU metrics come ONLY from osn - never fall back to nvidia-smi/amd tools, even if
+    # osn is down or reports stale GPU data (assume the GPUs are busy; don't touch them locally).
+    _osn_primary = _osn_primary_enabled()
     if "gpu" in active_groups:
-        skip_gpu = docker_containers_running() and not _docker_known_miner_running()
+        skip_gpu = _osn_primary or (docker_containers_running() and not _docker_known_miner_running())
         stats["gpus"] = collect_gpu_stats(skip=skip_gpu)
         stats["gpu_present"] = gpu_present
         stats["gpu_stats_skipped"] = skip_gpu
@@ -2786,6 +2976,11 @@ def collect_full_stats(visible_groups=None):
     stats.update({
         "docker": collect_docker_containers() if "docker" in active_groups else [],
     })
+    try:
+        if _osn is not None:
+            _apply_osn_stats(stats, _osn, active_groups)
+    except Exception as e:
+        print(f"[Telemetry] osn apply failed: {e}")
     stats["cpu_service"] = collect_service_uptime(CPU_SERVICE_NAME) if "cpu_service" in active_groups else None
     stats["gpu_service"] = collect_service_uptime(GPU_SERVICE_NAME) if "gpu_service" in active_groups else None
     stats["aux_service"] = collect_service_uptime(AUX_SERVICE_NAME) if "aux_service" in active_groups else None
