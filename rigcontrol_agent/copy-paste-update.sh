@@ -3041,7 +3041,10 @@ def _osn_fill_without_smi(stats):
 def _stats_source_summary(osn_primary, osn, stats, fill_note=""):
     """One-line description of where this poll's stats came from (logged every collection)."""
     n_gpu = len(stats.get("gpus") or [])
-    if not osn_primary:
+    if osn and osn.get("gpu_passthrough"):
+        gpu = "GPU=NONE (osn reports GPU passthrough - no GPU stats collected at all)"
+        sysrc = "CPU/mem=osn" if osn_primary else "CPU/mem=local (/proc)"
+    elif not osn_primary:
         gpu = f"GPU=local (nvidia-smi/amd, OSN_PRIMARY=0) [{n_gpu} gpus]"
         sysrc = "CPU/mem=local (/proc)"
     elif osn is None:
@@ -3065,10 +3068,6 @@ def collect_full_stats(visible_groups=None):
         active_groups = set(visible_groups) & ALL_TELEMETRY_GROUPS
         requested_label = sorted(active_groups) if active_groups else "NONE"
     telemetry_filtered = active_groups != set(ALL_TELEMETRY_GROUPS)
-    try:
-        _ensure_gpu_static_cache()
-    except Exception as e:
-        print(f"[Telemetry] static GPU cache start-up read failed: {e}")
     stats = {
         "rig":                   RIG_NAME,
         "timestamp":             int(time.time()),
@@ -3081,17 +3080,26 @@ def collect_full_stats(visible_groups=None):
         "system_uptime_seconds": collect_system_uptime() if "uptime" in active_groups else None,
         "network":               collect_network() if "network" in active_groups else None,
     }
+    # osn is ALWAYS queried (even with OSN_PRIMARY=0): when it reports "GPU passthrough" active the GPUs
+    # belong to a VM, so NO GPU access of any kind happens - no start-up read, no nvidia-smi/amd tools,
+    # no gputemps, no cached-value fill. The start-up read is simply deferred until passthrough ends.
     _osn = None
     try:
-        if _osn_primary_enabled():
-            _osn = collect_osn()
+        _osn = collect_osn()
     except Exception as e:
         print(f"[Telemetry] osn collection failed: {e}")
+    _gpu_passthrough = bool(_osn and _osn.get("gpu_passthrough"))
+    _osn_primary = _osn_primary_enabled()
+    _osn_src = _osn if _osn_primary else None
+    if not _gpu_passthrough:
+        try:
+            _ensure_gpu_static_cache()
+        except Exception as e:
+            print(f"[Telemetry] static GPU cache start-up read failed: {e}")
     # osn primary: GPU metrics come ONLY from osn - never fall back to nvidia-smi/amd tools, even if
     # osn is down or reports stale GPU data (assume the GPUs are busy; don't touch them locally).
-    _osn_primary = _osn_primary_enabled()
     if "gpu" in active_groups:
-        skip_gpu = _osn_primary or (docker_containers_running() and not _docker_known_miner_running())
+        skip_gpu = _gpu_passthrough or _osn_primary or (docker_containers_running() and not _docker_known_miner_running())
         stats["gpus"] = collect_gpu_stats(skip=skip_gpu)
         stats["gpu_present"] = gpu_present
         stats["gpu_stats_skipped"] = skip_gpu
@@ -3130,8 +3138,8 @@ def collect_full_stats(visible_groups=None):
         "docker": collect_docker_containers() if "docker" in active_groups else [],
     })
     try:
-        if _osn is not None:
-            _apply_osn_stats(stats, _osn, active_groups)
+        if _osn_src is not None:
+            _apply_osn_stats(stats, _osn_src, active_groups)
     except Exception as e:
         print(f"[Telemetry] osn apply failed: {e}")
     stats["cpu_service"] = collect_service_uptime(CPU_SERVICE_NAME) if "cpu_service" in active_groups else None
@@ -3140,7 +3148,7 @@ def collect_full_stats(visible_groups=None):
     stats["watchdog_service"] = collect_service_uptime(WATCHDOG_SERVICE_NAME) if "watchdog_service" in active_groups else None
     _fill_note = ""
     try:
-        if _osn_primary and _osn and _osn.get("gpus") and "gpu" in active_groups:
+        if _osn_primary and _osn and not _gpu_passthrough and _osn.get("gpus") and "gpu" in active_groups:
             _n_static = _osn_fill_static_from_cache(stats)
             _fill_note = f" +{_n_static} static values from start-up cache"
             if _osn_allow_missing_gpu_stats():
