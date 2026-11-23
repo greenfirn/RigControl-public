@@ -2994,12 +2994,12 @@ def _osn_fill_without_smi(stats):
                 g["mem_temp"] = temps[g["index"]]
                 filled += 1
     return filled
-def _stats_source_summary(osn_primary, osn, stats, fill_note=""):
+def _stats_source_summary(osn_primary, osn, stats, fill_note="", gpu_skip_reason=""):
     """One-line description of where this poll's stats came from (logged every collection)."""
     n_gpu = len(stats.get("gpus") or [])
-    if osn and osn.get("gpu_passthrough"):
-        gpu = "GPU=NONE (osn reports GPU passthrough - no GPU stats collected at all)"
-        sysrc = "CPU/mem=osn" if osn_primary else "CPU/mem=local (/proc)"
+    if gpu_skip_reason:
+        gpu = f"GPU=NONE ({gpu_skip_reason})"
+        sysrc = "CPU/mem=osn" if (osn_primary and osn is not None) else "CPU/mem=local (/proc)"
     elif not osn_primary:
         gpu = f"GPU=local (nvidia-smi/amd, OSN_PRIMARY=0) [{n_gpu} gpus]"
         sysrc = "CPU/mem=local (/proc)"
@@ -3047,7 +3047,22 @@ def collect_full_stats(visible_groups=None):
     _gpu_passthrough = bool(_osn and _osn.get("gpu_passthrough"))
     _osn_primary = _osn_primary_enabled()
     _osn_src = _osn if _osn_primary else None
-    if not _gpu_passthrough:
+    # The existing docker rule still applies on top: a running container that isn't a known miner (or an
+    # OVERRIDE_LIST "gpu stats safe" image) means the GPUs are busy, so GPU stats are skipped entirely.
+    # osn GPU passthrough has absolute priority: checked first, and when active nothing else is evaluated.
+    _docker_gpu_skip = False
+    if "gpu" in active_groups and not _gpu_passthrough:
+        try:
+            _docker_gpu_skip = bool(docker_containers_running() and not _docker_known_miner_running())
+        except Exception:
+            _docker_gpu_skip = False
+    _gpu_skip_reason = ""
+    if _gpu_passthrough:
+        _gpu_skip_reason = "osn reports GPU passthrough - no GPU stats collected at all"
+    elif _docker_gpu_skip:
+        _gpu_skip_reason = "docker container running that isn't a known miner - GPU stats skipped"
+    _gpu_blocked = bool(_gpu_skip_reason)
+    if not _gpu_blocked:
         try:
             _ensure_gpu_static_cache()
         except Exception as e:
@@ -3055,7 +3070,7 @@ def collect_full_stats(visible_groups=None):
     # osn primary: GPU metrics come ONLY from osn - never fall back to nvidia-smi/amd tools, even if
     # osn is down or reports stale GPU data (assume the GPUs are busy; don't touch them locally).
     if "gpu" in active_groups:
-        skip_gpu = _gpu_passthrough or _osn_primary or (docker_containers_running() and not _docker_known_miner_running())
+        skip_gpu = _gpu_blocked or _osn_primary
         stats["gpus"] = collect_gpu_stats(skip=skip_gpu)
         stats["gpu_present"] = gpu_present
         stats["gpu_stats_skipped"] = skip_gpu
@@ -3095,7 +3110,7 @@ def collect_full_stats(visible_groups=None):
     })
     try:
         if _osn_src is not None:
-            _apply_osn_stats(stats, _osn_src, active_groups)
+            _apply_osn_stats(stats, _osn_src, (active_groups - {"gpu"}) if _gpu_blocked else active_groups)
     except Exception as e:
         print(f"[Telemetry] osn apply failed: {e}")
     stats["cpu_service"] = collect_service_uptime(CPU_SERVICE_NAME) if "cpu_service" in active_groups else None
@@ -3104,7 +3119,7 @@ def collect_full_stats(visible_groups=None):
     stats["watchdog_service"] = collect_service_uptime(WATCHDOG_SERVICE_NAME) if "watchdog_service" in active_groups else None
     _fill_note = ""
     try:
-        if _osn_primary and _osn and not _gpu_passthrough and _osn.get("gpus") and "gpu" in active_groups:
+        if _osn_primary and _osn and not _gpu_blocked and _osn.get("gpus") and "gpu" in active_groups:
             _n_static = _osn_fill_static_from_cache(stats)
             _fill_note = f" +{_n_static} static values from start-up cache"
             if _osn_allow_missing_gpu_stats():
@@ -3112,7 +3127,7 @@ def collect_full_stats(visible_groups=None):
                 _fill_note += f" +{_n} live/no-smi values (gputemps/lspci/proc)"
     except Exception as e:
         print(f"[Telemetry] osn missing-field fill failed: {e}")
-    print(_stats_source_summary(_osn_primary, _osn, stats, _fill_note))
+    print(_stats_source_summary(_osn_primary, _osn, stats, _fill_note, _gpu_skip_reason))
     print(f"[Telemetry] Requested groups: {requested_label} | Collected: {sorted(active_groups) if active_groups else 'NONE'}")
     return stats
 EOF
