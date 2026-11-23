@@ -15,7 +15,7 @@ STATS_DB_INTERVAL_SECONDS=90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # Use OctaSpace node (osn) metrics for GPU + CPU/memory stats - no local GPU fallback (0 = ignore osn)
 OSN_PRIMARY=1
-# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = collect the ones available without nvidia-smi (board partner, vbios, mem temp); 0 = do nothing
+# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = also fetch mem temp live (gputemps) + lspci/proc fallbacks; 0 = skip those. Static ones (power limits, vbios, partner) are always cached from one full read at agent start
 #OSN_ALLOW_MISSING_GPU_STATS=1
 #CPU_SERVICE_NAME=docker_events_cpu.service
 #GPU_SERVICE_NAME=docker_events_gpu.service

@@ -2866,10 +2866,12 @@ def _apply_osn_stats(stats, osn, active_groups):
     stats["gpu_present"] = True
     stats["gpu_stats_skipped"] = False
 def _osn_allow_missing_gpu_stats():
-    """Agent flag OSN_ALLOW_MISSING_GPU_STATS (default ON). 1 = while osn is active and working, collect
-    the GPU stats osn leaves out that are available WITHOUT nvidia-smi (board_partner via lspci,
-    vbios_version via /proc/driver/nvidia, mem_temp via the gputemps helper). 0 = do nothing extra.
-    nvidia-smi is never run by the agent while osn is primary."""
+    """Agent flag OSN_ALLOW_MISSING_GPU_STATS (default ON). Controls only the EXTRA per-poll collection of
+    GPU stats osn leaves out that need no nvidia-smi: live mem_temp via the gputemps helper, plus
+    lspci//proc fallbacks for board partner/vbios. It does NOT affect the start-up read: while osn is
+    primary the agent always does one full local read at start, caches the static stats (power limits,
+    vbios, board partner, ...) and applies them where osn is missing them. Beyond that single read the
+    agent never runs nvidia-smi."""
     v = (_read_agent_conf_val("OSN_ALLOW_MISSING_GPU_STATS") or os.environ.get("OSN_ALLOW_MISSING_GPU_STATS", "")).strip().strip("\"'").lower()
     return v not in ("0", "false", "no", "off")
 _OSN_STATIC_NO_SMI_CACHE = {}
@@ -2921,23 +2923,63 @@ def _vbios_no_smi(pci_slot):
         except OSError:
             continue
     return ""
+_GPU_STATIC_KEYS = ("name", "uuid", "vendor", "architecture", "board_partner", "vbios_version",
+                    "power_limit_min", "power_limit_default", "power_limit_max",
+                    "pci_bus_id", "pci_slot", "vram_total", "driver_version")
+_gpu_static_cache = {"by_index": {}, "by_uuid": {}, "done": False}
+def _ensure_gpu_static_cache():
+    """ONE full local GPU read on the first collection after agent start - ALWAYS, regardless of
+    OSN_PRIMARY / OSN_ALLOW_MISSING_GPU_STATS / osn availability / telemetry groups. Caches everything
+    that doesn't change at runtime (power limits, VBIOS, board partner, architecture, PCI address, VRAM
+    size, driver...). It never runs again until the agent restarts - dashboard refreshes and every later
+    poll just reuse the cache (even if the read failed or didn't return a GPU)."""
+    if _gpu_static_cache["done"]:
+        return
+    _gpu_static_cache["done"] = True
+    try:
+        local = collect_gpu_stats()
+    except Exception as e:
+        print(f"[Telemetry] static GPU cache start-up read failed: {e}")
+        return
+    for g in local:
+        static = {k: g[k] for k in _GPU_STATIC_KEYS if g.get(k) not in (None, "")}
+        if g.get("uuid"):
+            _gpu_static_cache["by_uuid"][g["uuid"]] = static
+        if g.get("index") is not None:
+            _gpu_static_cache["by_index"][g["index"]] = static
+    print(f"[Telemetry] Cached static GPU stats for {len(local)} gpu(s) from one full start-up read "
+          f"(power limits, vbios, board partner, ...) - reused on every poll/refresh")
+def _osn_fill_static_from_cache(stats):
+    """Always on while osn is primary (independent of OSN_ALLOW_MISSING_GPU_STATS): the start-up full
+    local read (see _ensure_gpu_static_cache) fills the values that never change at runtime - power
+    limits, vbios, board partner, architecture, ... - only where osn left them out. Returns the number of
+    values filled."""
+    gpus = stats.get("gpus") or []
+    filled = 0
+    for g in gpus:
+        cached = _gpu_static_cache["by_uuid"].get(g.get("uuid")) or _gpu_static_cache["by_index"].get(g.get("index")) or {}
+        for k, v in cached.items():
+            if g.get(k) is None:
+                g[k] = v
+                filled += 1
+    return filled
 def _osn_fill_without_smi(stats):
-    """OSN_ALLOW_MISSING_GPU_STATS=1: fill what osn leaves out using ONLY sources that don't run
-    nvidia-smi - board_partner (lspci) and vbios_version (/proc/driver/nvidia), both static so cached per
-    GPU, plus mem_temp via the gputemps helper (live, only if that binary exists). mem_util and
-    power_limit_min/max have no non-smi source and stay missing. Returns the number of values filled."""
+    """OSN_ALLOW_MISSING_GPU_STATS=1 only: extra collection that never runs nvidia-smi - board_partner /
+    vbios_version via lspci and /proc/driver/nvidia when the start-up cache didn't have them, plus
+    mem_temp read live via the gputemps helper (only if that binary exists). mem_util has no non-smi
+    source and stays missing. Returns the number of values filled."""
     gpus = stats.get("gpus") or []
     filled = 0
     for g in gpus:
         key = g.get("uuid") or g.get("index")
-        cached = _OSN_STATIC_NO_SMI_CACHE.get(key)
-        if cached is None:
-            cached = {
+        nosmi = _OSN_STATIC_NO_SMI_CACHE.get(key)
+        if nosmi is None and (g.get("board_partner") is None or g.get("vbios_version") is None):
+            nosmi = {
                 "board_partner": _board_partner_no_smi(g.get("pci_slot") or g.get("pci_bus_id"), g.get("name")),
                 "vbios_version": _vbios_no_smi(g.get("pci_slot") or g.get("pci_bus_id")),
             }
-            _OSN_STATIC_NO_SMI_CACHE[key] = cached
-        for k, v in cached.items():
+            _OSN_STATIC_NO_SMI_CACHE[key] = nosmi
+        for k, v in (nosmi or {}).items():
             if v and g.get(k) is None:
                 g[k] = v
                 filled += 1
@@ -2979,6 +3021,10 @@ def collect_full_stats(visible_groups=None):
         active_groups = set(visible_groups) & ALL_TELEMETRY_GROUPS
         requested_label = sorted(active_groups) if active_groups else "NONE"
     telemetry_filtered = active_groups != set(ALL_TELEMETRY_GROUPS)
+    try:
+        _ensure_gpu_static_cache()
+    except Exception as e:
+        print(f"[Telemetry] static GPU cache start-up read failed: {e}")
     stats = {
         "rig":                   RIG_NAME,
         "timestamp":             int(time.time()),
@@ -3051,9 +3097,11 @@ def collect_full_stats(visible_groups=None):
     _fill_note = ""
     try:
         if _osn_primary and _osn and _osn.get("gpus") and "gpu" in active_groups:
+            _n_static = _osn_fill_static_from_cache(stats)
+            _fill_note = f" +{_n_static} static values from start-up cache"
             if _osn_allow_missing_gpu_stats():
                 _n = _osn_fill_without_smi(stats)
-                _fill_note = f" +no-smi fill (lspci/proc/gputemps: board_partner, vbios, mem_temp; {_n} values)"
+                _fill_note += f" +{_n} live/no-smi values (gputemps/lspci/proc)"
     except Exception as e:
         print(f"[Telemetry] osn missing-field fill failed: {e}")
     print(_stats_source_summary(_osn_primary, _osn, stats, _fill_note))
