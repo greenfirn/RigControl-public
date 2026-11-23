@@ -1148,6 +1148,10 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "STATS_DB_INTERVAL_SECONDS=90\n" +
     "# Minimum seconds between telemetry pulls, prevents overlapping collection calls\n" +
     "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
+    "# Use OctaSpace node (osn) metrics for GPU + CPU/memory stats - no local GPU fallback (0 = ignore osn)\n" +
+    "OSN_PRIMARY=1\n" +
+    "# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = collect the ones available without nvidia-smi (board partner, vbios, mem temp); 0 = do nothing\n" +
+    "#OSN_ALLOW_MISSING_GPU_STATS=1\n" +
     "#CPU_SERVICE_NAME=docker_events_cpu.service\n" +
     "#GPU_SERVICE_NAME=docker_events_gpu.service\n" +
     "#AUX_SERVICE_NAME=keryxd.service\n" +

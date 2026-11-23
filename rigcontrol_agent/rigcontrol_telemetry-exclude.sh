@@ -2865,7 +2865,94 @@ def _apply_osn_stats(stats, osn, active_groups):
     stats["gpu_count"] = len(stats["gpus"])
     stats["gpu_present"] = True
     stats["gpu_stats_skipped"] = False
-def _stats_source_summary(osn_primary, osn, stats):
+def _osn_allow_missing_gpu_stats():
+    """Agent flag OSN_ALLOW_MISSING_GPU_STATS (default ON). 1 = while osn is active and working, collect
+    the GPU stats osn leaves out that are available WITHOUT nvidia-smi (board_partner via lspci,
+    vbios_version via /proc/driver/nvidia, mem_temp via the gputemps helper). 0 = do nothing extra.
+    nvidia-smi is never run by the agent while osn is primary."""
+    v = (_read_agent_conf_val("OSN_ALLOW_MISSING_GPU_STATS") or os.environ.get("OSN_ALLOW_MISSING_GPU_STATS", "")).strip().strip("\"'").lower()
+    return v not in ("0", "false", "no", "off")
+_OSN_STATIC_NO_SMI_CACHE = {}
+_BOARD_PARTNER_SUBSYS = {
+    "1043": "ASUS", "3842": "EVGA", "1462": "MSI", "1458": "Gigabyte", "19da": "Zotac",
+    "196e": "PNY", "10b0": "Palit", "19f1": "Gainward", "1b4c": "Galax", "196d": "Colorful",
+    "1c5c": "Inno3D", "10de": "NVIDIA Founders Edition",
+}
+_BOARD_PARTNER_NAME_HINTS = [
+    ("asus", "ASUS"), ("rog ", "ASUS ROG"), ("strix", "ASUS ROG Strix"), ("tuf", "ASUS TUF"),
+    ("evga", "EVGA"), ("msi", "MSI"), ("gigabyte", "Gigabyte"), ("aorus", "Gigabyte AORUS"),
+    ("zotac", "Zotac"), ("pny", "PNY"), ("galax", "Galax"), ("colorful", "Colorful"),
+    ("inno3d", "Inno3D"), ("palit", "Palit"), ("gainward", "Gainward"),
+    ("founder", "NVIDIA Founders Edition"),
+]
+def _board_partner_no_smi(pci_slot, name):
+    """Board partner from the card's PCI subsystem ID via lspci (no nvidia-smi), else a guess from the name."""
+    try:
+        if pci_slot:
+            slot = ":".join(str(pci_slot).split(":")[-2:]).lower()
+            r = subprocess.run(f"lspci -nnv -s {slot}", shell=True, capture_output=True, text=True, timeout=1.0)
+            if r.returncode == 0:
+                line = next((l.lower() for l in r.stdout.splitlines() if "subsystem:" in l.lower()), "")
+                m = re.search(r"\[([0-9a-f]{4}):([0-9a-f]{4})\]", line)
+                if m and m.group(1) in _BOARD_PARTNER_SUBSYS:
+                    return _BOARD_PARTNER_SUBSYS[m.group(1)]
+                for pattern, partner in _BOARD_PARTNER_NAME_HINTS:
+                    if pattern in line:
+                        return partner
+    except Exception:
+        pass
+    lname = (name or "").lower()
+    for pattern, partner in _BOARD_PARTNER_NAME_HINTS:
+        if pattern in lname:
+            return partner
+    return ""
+def _vbios_no_smi(pci_slot):
+    """Video BIOS version from /proc/driver/nvidia/gpus/<domain:bus:dev.fn>/information (no nvidia-smi)."""
+    if not pci_slot:
+        return ""
+    slot = str(pci_slot).lower()
+    candidates = [slot] if slot.count(":") >= 2 else [f"0000:{slot}"]
+    for cand in candidates:
+        try:
+            with open(f"/proc/driver/nvidia/gpus/{cand}/information") as f:
+                for line in f:
+                    if line.lower().startswith("video bios"):
+                        return line.split(":", 1)[1].strip()
+        except OSError:
+            continue
+    return ""
+def _osn_fill_without_smi(stats):
+    """OSN_ALLOW_MISSING_GPU_STATS=1: fill what osn leaves out using ONLY sources that don't run
+    nvidia-smi - board_partner (lspci) and vbios_version (/proc/driver/nvidia), both static so cached per
+    GPU, plus mem_temp via the gputemps helper (live, only if that binary exists). mem_util and
+    power_limit_min/max have no non-smi source and stay missing. Returns the number of values filled."""
+    gpus = stats.get("gpus") or []
+    filled = 0
+    for g in gpus:
+        key = g.get("uuid") or g.get("index")
+        cached = _OSN_STATIC_NO_SMI_CACHE.get(key)
+        if cached is None:
+            cached = {
+                "board_partner": _board_partner_no_smi(g.get("pci_slot") or g.get("pci_bus_id"), g.get("name")),
+                "vbios_version": _vbios_no_smi(g.get("pci_slot") or g.get("pci_bus_id")),
+            }
+            _OSN_STATIC_NO_SMI_CACHE[key] = cached
+        for k, v in cached.items():
+            if v and g.get(k) is None:
+                g[k] = v
+                filled += 1
+    need = [g["index"] for g in gpus if g.get("mem_temp") is None and isinstance(g.get("index"), int)]
+    if need:
+        try:
+            temps = _collect_gputemps_vram(need)
+        except Exception:
+            temps = {}
+        for g in gpus:
+            if g.get("mem_temp") is None and g.get("index") in temps:
+                g["mem_temp"] = temps[g["index"]]
+                filled += 1
+    return filled
+def _stats_source_summary(osn_primary, osn, stats, fill_note=""):
     """One-line description of where this poll's stats came from (logged every collection)."""
     n_gpu = len(stats.get("gpus") or [])
     if not osn_primary:
@@ -2880,7 +2967,7 @@ def _stats_source_summary(osn_primary, osn, stats):
         elif "gpus" in (osn.get("collect_failed") or []):
             gpu = "GPU=NONE (osn GPU read failed, no fallback)"
         else:
-            gpu = f"GPU=osn v{osn.get('version') or '?'} [{n_gpu} gpus]"
+            gpu = f"GPU=osn v{osn.get('version') or '?'} [{n_gpu} gpus]{fill_note}"
         sysrc = "CPU/mem=osn"
     return f"[Telemetry] Stats source: {gpu} | {sysrc} | miners=local API/logs | load/net/uptime/docker=local"
 def collect_full_stats(visible_groups=None):
@@ -2961,7 +3048,15 @@ def collect_full_stats(visible_groups=None):
     stats["gpu_service"] = collect_service_uptime(GPU_SERVICE_NAME) if "gpu_service" in active_groups else None
     stats["aux_service"] = collect_service_uptime(AUX_SERVICE_NAME) if "aux_service" in active_groups else None
     stats["watchdog_service"] = collect_service_uptime(WATCHDOG_SERVICE_NAME) if "watchdog_service" in active_groups else None
-    print(_stats_source_summary(_osn_primary, _osn, stats))
+    _fill_note = ""
+    try:
+        if _osn_primary and _osn and _osn.get("gpus") and "gpu" in active_groups:
+            if _osn_allow_missing_gpu_stats():
+                _n = _osn_fill_without_smi(stats)
+                _fill_note = f" +no-smi fill (lspci/proc/gputemps: board_partner, vbios, mem_temp; {_n} values)"
+    except Exception as e:
+        print(f"[Telemetry] osn missing-field fill failed: {e}")
+    print(_stats_source_summary(_osn_primary, _osn, stats, _fill_note))
     print(f"[Telemetry] Requested groups: {requested_label} | Collected: {sorted(active_groups) if active_groups else 'NONE'}")
     return stats
 EOF

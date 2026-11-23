@@ -1,6 +1,5 @@
 [Get started](../README.md#get-started)
 
-** update.. OSN_PRIMARY=1 use octaspace osn metrics for gpu stats **
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
 Ubuntu 24.04:
@@ -44,6 +43,8 @@ STATS_DB_INTERVAL_SECONDS=90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # Use OctaSpace node (osn) metrics for GPU + CPU/memory stats - no local GPU fallback (0 = ignore osn)
 OSN_PRIMARY=1
+# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = collect the ones available without nvidia-smi (board partner, vbios, mem temp); 0 = do nothing
+#OSN_ALLOW_MISSING_GPU_STATS=1
 #CPU_SERVICE_NAME=docker_events_cpu.service
 #GPU_SERVICE_NAME=docker_events_gpu.service
 AUX_SERVICE_NAME=keryxd.service
@@ -79,6 +80,8 @@ STATS_DB_INTERVAL_SECONDS=90
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # Use OctaSpace node (osn) metrics for GPU + CPU/memory stats - no local GPU fallback (0 = ignore osn)
 OSN_PRIMARY=1
+# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = collect the ones available without nvidia-smi (board partner, vbios, mem temp); 0 = do nothing
+#OSN_ALLOW_MISSING_GPU_STATS=1
 #CPU_SERVICE_NAME=docker_events_cpu.service
 #GPU_SERVICE_NAME=docker_events_gpu.service
 #AUX_SERVICE_NAME=keryxd.service
