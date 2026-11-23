@@ -2865,6 +2865,24 @@ def _apply_osn_stats(stats, osn, active_groups):
     stats["gpu_count"] = len(stats["gpus"])
     stats["gpu_present"] = True
     stats["gpu_stats_skipped"] = False
+def _stats_source_summary(osn_primary, osn, stats):
+    """One-line description of where this poll's stats came from (logged every collection)."""
+    n_gpu = len(stats.get("gpus") or [])
+    if not osn_primary:
+        gpu = f"GPU=local (nvidia-smi/amd, OSN_PRIMARY=0) [{n_gpu} gpus]"
+        sysrc = "CPU/mem=local (/proc)"
+    elif osn is None:
+        gpu = "GPU=NONE (osn unreachable, no local GPU fallback)"
+        sysrc = "CPU/mem=local (/proc, osn unreachable)"
+    else:
+        if osn.get("gpu_passthrough"):
+            gpu = "GPU=NONE (osn reports GPU passthrough - readings stale, no fallback)"
+        elif "gpus" in (osn.get("collect_failed") or []):
+            gpu = "GPU=NONE (osn GPU read failed, no fallback)"
+        else:
+            gpu = f"GPU=osn v{osn.get('version') or '?'} [{n_gpu} gpus]"
+        sysrc = "CPU/mem=osn"
+    return f"[Telemetry] Stats source: {gpu} | {sysrc} | miners=local API/logs | load/net/uptime/docker=local"
 def collect_full_stats(visible_groups=None):
     global gpu_present, gpu_type
     if visible_groups is None:
@@ -2943,6 +2961,7 @@ def collect_full_stats(visible_groups=None):
     stats["gpu_service"] = collect_service_uptime(GPU_SERVICE_NAME) if "gpu_service" in active_groups else None
     stats["aux_service"] = collect_service_uptime(AUX_SERVICE_NAME) if "aux_service" in active_groups else None
     stats["watchdog_service"] = collect_service_uptime(WATCHDOG_SERVICE_NAME) if "watchdog_service" in active_groups else None
+    print(_stats_source_summary(_osn_primary, _osn, stats))
     print(f"[Telemetry] Requested groups: {requested_label} | Collected: {sorted(active_groups) if active_groups else 'NONE'}")
     return stats
 EOF
