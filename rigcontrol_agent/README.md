@@ -1,5 +1,6 @@
 [Get started](../README.md#get-started)
 
+** update.. OSN_PRIMARY=1 use octaspace osn metrics for gpu stats **
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
 Ubuntu 24.04:
