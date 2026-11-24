@@ -1,17 +1,20 @@
 [Get started](../README.md#get-started)
 
 Alien...
+
 ![Screenshot-wp-alien.png](../images/Screenshot-wp-alien.png)
 
 Phantom Menace...
+
 ![phantom-menace](../images/Screenshot-wp-phantom-menace.png)
 
 X-Files...
+
 ![x-files](../images/Screenshot-wp-x-files.png)
 
 # RigControl Dashboard Theme Assets
 
-* recommend leaving out of themes extra icon in: send cmd, themes, settings, and logout
+- recommend leaving out of themes extra icon in: send cmd, themes, settings, and logout
 
 ## Asset sources (wallpapers & icons)
 

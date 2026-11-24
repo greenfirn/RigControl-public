@@ -4,8 +4,12 @@
 
 Ubuntu 24.04:
 
+```bash
 sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt --break-system-packages
+```
 
 Ubuntu 22.04:
 
+```bash
 sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
+```

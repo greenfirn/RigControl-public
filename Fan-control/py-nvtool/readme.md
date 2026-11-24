@@ -3,6 +3,7 @@
    wget https://github.com/Akisoft41/py-nvtool/releases/download/v0.2.0/py-nvtool.py
    chmod +x py-nvtool.py && sudo cp py-nvtool.py /usr/sbin/py-nvtool
    ```
+
 2. [install_fan-curve.sh](install_fan-curve.sh)
 
 added better error handling... watchdog for possible hangs

@@ -11,10 +11,13 @@
 - keryx-miner: version change overwrites any files in miner folder '/opt/miners/keryx-miner/current'
 
 save escrow file/models/etc outside of current:
+
 ```
 --models-dir /opt/miners/models --escrow-cert-file /opt/miners/escrow.cert --escrow-key-file /opt/miners/escrow.key --escrow-state-file /opt/miners/escrow_state.json
 ```
+
 copy/move models before updating
+
 ```
 sudo systemctl stop docker_events_gpu.service
 sudo mv -v /opt/miners/keryx-miner/current/models /opt/miners/
@@ -26,10 +29,13 @@ sudo systemctl start docker_events_gpu.service
 keryxd logs:
 
 Sums the "via submit block" numbers:
+
 ```
 grep -oP '\d+(?=\s+via\s+submit\s+blocks?)' /run/rigcontrol/aux_miner.log | awk '{s+=$1} END {print s+0}'
 ```
+
 all accepted blocks including relayed:
+
 ```
 grep -oP '(?<=Accepted\s)\d+(?=\s+blocks?)' /run/rigcontrol/aux_miner.log | awk '{s+=$1} END {print s+0}'
 ```
@@ -37,22 +43,20 @@ grep -oP '(?<=Accepted\s)\d+(?=\s+blocks?)' /run/rigcontrol/aux_miner.log | awk 
 best for keryx-miner with screen session and logs:
 
 - [no-docker_launcher.sh](no-docker_launcher.sh)
-- [no-container-docker_events_monitor--LATEST-log.sh](Docker-Events/no-container-docker_events_monitor--LATEST-log.sh) 
+- [no-container-docker_events_monitor--LATEST-log.sh](Docker-Events/no-container-docker_events_monitor--LATEST-log.sh)
 
 no screen versions: logs in service
 
 - [no-docker_launcher--no-screen-aux-FIXED.sh](no-docker_launcher--no-screen-aux-FIXED.sh)
 - [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](Docker-Events/no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh)
+- naming/layout may have changed for platform specific clore, nosana, etc
 
-* naming/layout may have changed for platform specific clore, nosana, etc
- 
 -- oc reset/apply using 'nvidia-smi' may not be reliable under all situations... see [py-nvtool-install-usage.txt](../py-nvtool/py-nvtool-install-usage.txt) for nvtool oc control --
 
 - run once 'sudo apt install -y unzip' for custom miner zip archives
-
 - Scripts use standard Linux (FHS) locations
-
 - configs live in /etc/rigcontrol/, miner installs in
+
   /opt/miners/, persistent state (stats DB, cmd log) in
   /var/lib/rigcontrol/, and PID/runtime miner logs in /run/rigcontrol/.
 
@@ -107,16 +111,3 @@ rocm-smi                    # AMD
 ## Development Notes
 
 Built with assistance from ChatGPT, DeepSeek, Claude ai
-
----
-
-## Support
-
-Donations are appreciated:
-
-MetaMask supported chains (ETH/Octaspace/Clore)
-<img src="https://assets.coingecko.com/coins/images/279/standard/ethereum.png?1696501628" width="20" height="20" /> <img src="https://raw.githubusercontent.com/octaspace/logos/main/logo.svg" width="16" height="16" /> <img src="https://assets.coingecko.com/coins/images/30959/standard/CLORE_Logo_200x200_PNG.png?1696529798" width="16" height="16" />
-
-```
-0xe65b5d7B7D43D77eF585CCF4a675832d0d23f806
-```

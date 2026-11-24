@@ -1,5 +1,9 @@
 [Get started](../README.md#get-started)
 
+** update.. use octaspace osn metrics for gpu stats 'OSN_PRIMARY=1' in agent config **
+
+** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
+
 ## Telemetry flow (each poll)
 
 - **Agent start:** one full local GPU read (unless the GPUs are in passthrough / blocked), cached: power limits (min/default/max), vbios, board partner, architecture, PCI slot, VRAM total. Reused on every poll; never repeated on refresh.
@@ -32,28 +36,27 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
 
-** update.. use octaspace osn metrics for gpu stats 'OSN_PRIMARY=1' in agent config **
-
-** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
-
 Ubuntu 24.04:
+
 ```
 sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt --break-system-packages
 ```
+
 Ubuntu 22.04:
+
 ```
 sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
 ```
+
 1. install python on a client rig...
+
 ```
 sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 ```
+
 2. download the needed files: [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh), [rigcontrol_agent.sh](rigcontrol_agent.sh), [rigcontrol_agent-service.sh](rigcontrol_agent-service.sh), [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh), [rigcontrol_cmd.sh](rigcontrol_cmd.sh), [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
-
 3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
-
 4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
-
 5. 'generate-copy-paste-update.bat -> copy-paste-update.sh' then copy/paste contents to write the files to a rig
 
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
@@ -61,6 +64,7 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 ![test-windows](../images/Screenshot-test-windows.png)
 
 [rigcontrol-agent-local-keryxd.sh](rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
+
 ```
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
@@ -106,7 +110,9 @@ KERYXD_LOG_STYLE=blocks
 #KERYX_MINER_SUPR_API_PORT=3338
 EOF
 ```
+
 [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)... KERYX_MINER_API
+
 ```
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====

@@ -11,10 +11,13 @@
 - keryx-miner: version change overwrites any files in miner folder '/opt/miners/keryx-miner/current'
 
 save escrow file/models/etc outside of current:
+
 ```
 --models-dir /opt/miners/models --escrow-cert-file /opt/miners/escrow.cert --escrow-key-file /opt/miners/escrow.key --escrow-state-file /opt/miners/escrow_state.json
 ```
+
 copy/move models before updating
+
 ```
 sudo systemctl stop docker_events_gpu.service
 sudo mv -v /opt/miners/keryx-miner/current/models /opt/miners/
@@ -29,19 +32,19 @@ sudo systemctl start docker_events_gpu.service
 
 -- [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh) --
 
-* most recent updated, others may not work as is
-* naming/layout may have changed for clore, nosana, etc
+- most recent updated, others may not work as is
+- naming/layout may have changed for clore, nosana, etc
 
 1. 'write - script files--LATEST...' (see [lib](../lib/) to explore original seperate files)
 2. 'write - api.conf' -- miner api settings
 3. 'write - miner_conf.sh' -- miner versions
 4. miner start/stop scripts:
-- [keryx-miner.service.sh](../keryx-miner.service.sh)
--  using flightsheets:
-- [no-docker_launcher.sh](../no-docker_launcher.sh) -- same miner conf,api,etc for systems without docker
-- [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh) -- no screen, logs in service
-- [no-container-docker_events_monitor--LATEST-log.sh](no-container-docker_events_monitor--LATEST-log.sh) -- with miner screen session
-- clore, etc
+   - [keryx-miner.service.sh](../keryx-miner.service.sh)
+   - using flightsheets:
+   - [no-docker_launcher.sh](../no-docker_launcher.sh) -- same miner conf,api,etc for systems without docker
+   - [no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh](no-container-docker_events_monitor--no-screen-log-aux-FIXED.sh) -- no screen, logs in service
+   - [no-container-docker_events_monitor--LATEST-log.sh](no-container-docker_events_monitor--LATEST-log.sh) -- with miner screen session
+   - clore, etc
 5. [rig-confs](../rig-confs/) -- "flightsheets"
 6. [py-nvtool-install-usage.txt](../../py-nvtool/py-nvtool-install-usage.txt) -- 'overclocks' Reset / Apply
 7. [update_miner_versions.sh](../update_miner_versions.sh) -- see warning in # Important above
