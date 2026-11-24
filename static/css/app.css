@@ -6960,6 +6960,8 @@ body.tabs-top .view-tab:hover {
 }
 body.tabs-top .view-tab.active {
     background: none;
+}
+body.tabs-top .view-tab.active .view-tab-text {
     text-decoration: underline;
     text-underline-offset: 6px;
 }
