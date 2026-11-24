@@ -24,7 +24,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `BLOCK_LIST=""` docker images that ALWAYS skip GPU stats while running (same keyword match as `OVERRIDE_LIST`).
 - `MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5` minimum gap between telemetry pulls.
 - `STATS_DB_ENABLED`, `STATS_DB_MAX_HISTORY_DAYS`, `STATS_DB_INTERVAL_SECONDS` local stats history.
-- `CPU_SERVICE_NAME`, `GPU_SERVICE_NAME`, `AUX_SERVICE_NAME`, `WATCHDOG_SERVICE_NAME` service names shown on the dashboard.
+- `CPU_SERVICE_NAME`, `GPU_SERVICE_NAME`, `AUX_SERVICE_NAME`, `WATCHDOG_SERVICE_NAME` custom agent service names for dashboard control.
 - `CUSTOM_MINER_BIN_GPU` / `_CPU` / `_AUX` custom miner binaries to detect.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
 
