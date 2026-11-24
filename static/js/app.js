@@ -1152,6 +1152,8 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "OSN_PRIMARY=1\n" +
     "# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = also fetch mem temp live (gputemps) + lspci/proc fallbacks; 0 = skip those. Static ones (power limits, vbios, partner) are always cached from one full read at agent start\n" +
     "#OSN_ALLOW_MISSING_GPU_STATS=1\n" +
+    "# Safety rule, off by default: 1 = skip GPU stats while a non-miner docker container is running (for diagnosis / new rigs). Passthrough always skips\n" +
+    "#DOCKER_SKIP_GPU_STATS=0\n" +
     "#CPU_SERVICE_NAME=docker_events_cpu.service\n" +
     "#GPU_SERVICE_NAME=docker_events_gpu.service\n" +
     "#AUX_SERVICE_NAME=keryxd.service\n" +

@@ -562,6 +562,75 @@ def _collect_nvidia_core_temps():
     except Exception as e:
         print(f"Error querying GPU core temp (-q): {e}")
     return temps
+_nvml_state = {"lib": None, "tried": False, "warned": set()}
+_NVML_ERR_NAMES = {1: "UNINITIALIZED", 2: "INVALID_ARGUMENT", 3: "NOT_SUPPORTED", 4: "NO_PERMISSION", 6: "NOT_FOUND", 13: "FUNCTION_NOT_FOUND", 999: "UNKNOWN"}
+def _nvml_warn_once(msg):
+    """Core-offset problems are logged once each (not every poll) so a missing value is explainable."""
+    if msg not in _nvml_state["warned"]:
+        _nvml_state["warned"].add(msg)
+        print(f"[Telemetry] core offset: {msg}")
+def _nvml_lib():
+    """Lazily loads nvml.dll (NVML) once via ctypes and initialises it. None if unavailable."""
+    if _nvml_state["tried"]:
+        return _nvml_state["lib"]
+    _nvml_state["tried"] = True
+    try:
+        import ctypes
+        import glob
+        # nvml.dll location varies by driver packaging: System32, the legacy NVSMI folder, or only in the
+        # driver store (DCH drivers) - newest driver-store copy first.
+        sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        progfiles = os.environ.get("ProgramFiles", r"C:\Program Files")
+        store = sorted(glob.glob(os.path.join(sysroot, "System32", "DriverStore", "FileRepository", "nv*", "nvml.dll")),
+                       key=lambda p: os.path.getmtime(p), reverse=True)
+        for path in (["nvml.dll",
+                      os.path.join(sysroot, "System32", "nvml.dll"),
+                      os.path.join(progfiles, "NVIDIA Corporation", "NVSMI", "nvml.dll")] + store):
+            try:
+                lib = ctypes.CDLL(path)
+            except OSError as e:
+                _nvml_warn_once(f"could not load {path}: {e}")
+                continue
+            rc = lib.nvmlInit_v2()
+            if rc == 0:
+                _nvml_state["lib"] = lib
+                _nvml_warn_once(f"NVML loaded from {path}")
+                break
+            _nvml_warn_once(f"nvmlInit_v2 failed in {path} (rc={rc})")
+    except Exception as e:
+        _nvml_state["lib"] = None
+        _nvml_warn_once(f"NVML load error: {e}")
+    if _nvml_state["lib"] is None:
+        _nvml_warn_once("nvml.dll not found/initialised - no core offsets")
+    return _nvml_state["lib"]
+def _nvml_core_offsets(indexes):
+    """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has
+    applied, however it was set). Indexes that can't be read (old driver / no support) are omitted."""
+    out = {}
+    lib = _nvml_lib()
+    if lib is None:
+        return out
+    if not hasattr(lib, "nvmlDeviceGetGpcClkVfOffset"):
+        _nvml_warn_once("this NVML/driver has no nvmlDeviceGetGpcClkVfOffset")
+        return out
+    import ctypes
+    for idx in indexes:
+        try:
+            handle = ctypes.c_void_p()
+            rc = lib.nvmlDeviceGetHandleByIndex_v2(ctypes.c_uint(int(idx)), ctypes.byref(handle))
+            if rc != 0:
+                _nvml_warn_once(f"GPU {idx}: nvmlDeviceGetHandleByIndex_v2 returned {rc} ({_NVML_ERR_NAMES.get(rc, '?')})")
+                continue
+            off = ctypes.c_int()
+            rc = lib.nvmlDeviceGetGpcClkVfOffset(handle, ctypes.byref(off))
+            if rc == 0:
+                out[idx] = off.value
+            else:
+                _nvml_warn_once(f"GPU {idx}: nvmlDeviceGetGpcClkVfOffset returned {rc} ({_NVML_ERR_NAMES.get(rc, '?')})")
+        except Exception as e:
+            _nvml_warn_once(f"GPU {idx}: read error {e}")
+            continue
+    return out
 def collect_gpu_stats():
     gpus = []
     if platform.system() != "Windows":
@@ -668,6 +737,13 @@ def collect_gpu_stats():
             g["power_limit_max"] = lim.get("power_limit_max")
             if lim.get("vbios_version"):
                 g["vbios_version"] = lim["vbios_version"]
+        try:
+            offsets = _nvml_core_offsets([g["index"] for g in gpus if isinstance(g.get("index"), int)])
+            for g in gpus:
+                if g.get("index") in offsets:
+                    g["coreoffset"] = offsets[g["index"]]
+        except Exception as e:
+            print(f"Error reading GPU core offsets: {e}")
     return gpus
 def has_nvidia_gpu():
     if platform.system() != "Windows":

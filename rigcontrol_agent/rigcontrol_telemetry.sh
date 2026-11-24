@@ -2817,6 +2817,40 @@ def collect_osn(timeout=2):
     res["gpu_vendor"] = info.get("gpu_vendor")
     res["net"] = _osn_group(samples, "osn_network_")
     return res
+def _gpu_passthrough_local(base="/sys/bus/pci/devices"):
+    """Universal GPU-passthrough check, independent of osn: returns the PCI addresses of every NVIDIA/AMD
+    display-class device currently bound to vfio-pci (i.e. handed to a VM), [] if none. Reads sysfs only -
+    it never opens or queries a GPU, so it is safe to run before anything else."""
+    try:
+        entries = os.listdir(base)
+    except OSError:
+        return []
+    bound = []
+    for e in sorted(entries):
+        d = os.path.join(base, e)
+        try:
+            with open(os.path.join(d, "class")) as f:
+                cls = f.read().strip()
+            if not cls.startswith("0x03"):
+                continue
+            with open(os.path.join(d, "vendor")) as f:
+                vendor = f.read().strip()
+            if vendor not in ("0x10de", "0x1002"):
+                continue
+            drv_link = os.path.join(d, "driver")
+            drv = os.path.basename(os.path.realpath(drv_link)) if os.path.exists(drv_link) else ""
+        except OSError:
+            continue
+        if drv == "vfio-pci":
+            bound.append(e)
+    return bound
+def _docker_skip_gpu_enabled():
+    """Safety flag DOCKER_SKIP_GPU_STATS (rigcontrol-agent.conf or env), OFF by default. When ON, GPU stats
+    are skipped while a docker container is running that isn't a known miner / OVERRIDE_LIST image (the old
+    "GPUs are probably busy" rule) - useful for diagnosis or brand-new rigs. GPU passthrough is separate
+    and always skips regardless of this flag."""
+    v = (_read_agent_conf_val("DOCKER_SKIP_GPU_STATS") or os.environ.get("DOCKER_SKIP_GPU_STATS", "")).strip().strip("\"'").lower()
+    return v in ("1", "true", "yes", "on")
 def _osn_primary_enabled():
     """OctaSpace node (osn) is the primary source of GPU and system stats (default ON). Set
     OSN_PRIMARY=0 (rigcontrol-agent.conf or env) to ignore osn and use local collection instead.
@@ -2994,7 +3028,13 @@ def _osn_fill_without_smi(stats):
                 g["mem_temp"] = temps[g["index"]]
                 filled += 1
     return filled
-_nvml_state = {"lib": None, "tried": False}
+_nvml_state = {"lib": None, "tried": False, "warned": set()}
+_NVML_ERR_NAMES = {1: "UNINITIALIZED", 2: "INVALID_ARGUMENT", 3: "NOT_SUPPORTED", 4: "NO_PERMISSION", 6: "NOT_FOUND", 13: "FUNCTION_NOT_FOUND", 999: "UNKNOWN"}
+def _nvml_warn_once(msg):
+    """Core-offset problems are logged once each (not every poll) so a missing value is explainable."""
+    if msg not in _nvml_state["warned"]:
+        _nvml_state["warned"].add(msg)
+        print(f"[Telemetry] core offset: {msg}")
 def _nvml_lib():
     """Lazily loads libnvidia-ml (NVML) once via ctypes and initialises it. None if unavailable
     (no NVIDIA driver / AMD rig)."""
@@ -3004,29 +3044,41 @@ def _nvml_lib():
     try:
         import ctypes
         lib = ctypes.CDLL("libnvidia-ml.so.1")
-        if lib.nvmlInit_v2() != 0:
+        rc = lib.nvmlInit_v2()
+        if rc != 0:
+            _nvml_warn_once(f"nvmlInit_v2 failed (rc={rc})")
             return None
         _nvml_state["lib"] = lib
-    except Exception:
+    except Exception as e:
         _nvml_state["lib"] = None
+        _nvml_warn_once(f"libnvidia-ml.so.1 load error: {e}")
     return _nvml_state["lib"]
 def _nvml_core_offsets(indexes):
     """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has
     applied, however it was set). Indexes that can't be read (old driver / no support) are omitted."""
     out = {}
     lib = _nvml_lib()
-    if lib is None or not hasattr(lib, "nvmlDeviceGetGpcClkVfOffset"):
+    if lib is None:
+        return out
+    if not hasattr(lib, "nvmlDeviceGetGpcClkVfOffset"):
+        _nvml_warn_once("this NVML/driver has no nvmlDeviceGetGpcClkVfOffset")
         return out
     import ctypes
     for idx in indexes:
         try:
             handle = ctypes.c_void_p()
-            if lib.nvmlDeviceGetHandleByIndex_v2(ctypes.c_uint(int(idx)), ctypes.byref(handle)) != 0:
+            rc = lib.nvmlDeviceGetHandleByIndex_v2(ctypes.c_uint(int(idx)), ctypes.byref(handle))
+            if rc != 0:
+                _nvml_warn_once(f"GPU {idx}: nvmlDeviceGetHandleByIndex_v2 returned {rc} ({_NVML_ERR_NAMES.get(rc, '?')})")
                 continue
             off = ctypes.c_int()
-            if lib.nvmlDeviceGetGpcClkVfOffset(handle, ctypes.byref(off)) == 0:
+            rc = lib.nvmlDeviceGetGpcClkVfOffset(handle, ctypes.byref(off))
+            if rc == 0:
                 out[idx] = off.value
-        except Exception:
+            else:
+                _nvml_warn_once(f"GPU {idx}: nvmlDeviceGetGpcClkVfOffset returned {rc} ({_NVML_ERR_NAMES.get(rc, '?')})")
+        except Exception as e:
+            _nvml_warn_once(f"GPU {idx}: read error {e}")
             continue
     return out
 def _apply_gpu_core_offsets(gpus):
@@ -3081,6 +3133,9 @@ def collect_full_stats(visible_groups=None):
         "system_uptime_seconds": collect_system_uptime() if "uptime" in active_groups else None,
         "network":               collect_network() if "network" in active_groups else None,
     }
+    # FIRST check, before anything else (even before osn is asked): GPUs bound to vfio-pci belong to a VM.
+    # Works with or without osn (OSN_PRIMARY=0, osn down/absent) and reads sysfs only.
+    _local_pt = _gpu_passthrough_local()
     # osn is ALWAYS queried (even with OSN_PRIMARY=0): when it reports "GPU passthrough" active the GPUs
     # belong to a VM, so NO GPU access of any kind happens - no start-up read, no nvidia-smi/amd tools,
     # no gputemps, no cached-value fill. The start-up read is simply deferred until passthrough ends.
@@ -3089,20 +3144,22 @@ def collect_full_stats(visible_groups=None):
         _osn = collect_osn()
     except Exception as e:
         print(f"[Telemetry] osn collection failed: {e}")
-    _gpu_passthrough = bool(_osn and _osn.get("gpu_passthrough"))
+    _gpu_passthrough = bool(_local_pt) or bool(_osn and _osn.get("gpu_passthrough"))
     _osn_primary = _osn_primary_enabled()
     _osn_src = _osn if _osn_primary else None
-    # The existing docker rule still applies on top: a running container that isn't a known miner (or an
-    # OVERRIDE_LIST "gpu stats safe" image) means the GPUs are busy, so GPU stats are skipped entirely.
+    # Optional docker rule (OFF by default, DOCKER_SKIP_GPU_STATS=1 to enable): a running container that isn't
+    # a known miner (or an OVERRIDE_LIST "gpu stats safe" image) means the GPUs are busy, so GPU stats are skipped.
     # osn GPU passthrough has absolute priority: checked first, and when active nothing else is evaluated.
     _docker_gpu_skip = False
-    if "gpu" in active_groups and not _gpu_passthrough:
+    if "gpu" in active_groups and not _gpu_passthrough and _docker_skip_gpu_enabled():
         try:
             _docker_gpu_skip = bool(docker_containers_running() and not _docker_known_miner_running())
         except Exception:
             _docker_gpu_skip = False
     _gpu_skip_reason = ""
-    if _gpu_passthrough:
+    if _local_pt:
+        _gpu_skip_reason = f"GPU passthrough: {', '.join(_local_pt)} bound to vfio-pci (local check) - no GPU stats collected at all"
+    elif _gpu_passthrough:
         _gpu_skip_reason = "osn reports GPU passthrough - no GPU stats collected at all"
     elif _docker_gpu_skip:
         _gpu_skip_reason = "docker container running that isn't a known miner - GPU stats skipped"
