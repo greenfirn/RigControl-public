@@ -35,8 +35,10 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=1883
 BROKER_USER=admin
 BROKER_PASS=********************
-# comma seperated list of gpu stats safe images
+# comma separated list of gpu stats safe images (keyword match anywhere in the image name)
 OVERRIDE_LIST="miner/miner:latest"
+# comma separated list of docker images (keyword match anywhere in the image name, same as OVERRIDE_LIST) that ALWAYS skip gpu stats while running
+BLOCK_LIST=""
 STATS_DB_ENABLED=true
 # How many days of local telemetry history to keep before old rows are pruned
 STATS_DB_MAX_HISTORY_DAYS=7
@@ -74,8 +76,10 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=1883
 BROKER_USER=admin
 BROKER_PASS=**************
-# comma seperated list of gpu stats safe images
+# comma separated list of gpu stats safe images (keyword match anywhere in the image name)
 OVERRIDE_LIST="miner/miner:latest"
+# comma separated list of docker images (keyword match anywhere in the image name, same as OVERRIDE_LIST) that ALWAYS skip gpu stats while running
+BLOCK_LIST=""
 STATS_DB_ENABLED=true
 # How many days of local telemetry history to keep before old rows are pruned
 STATS_DB_MAX_HISTORY_DAYS=7

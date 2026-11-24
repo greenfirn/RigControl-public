@@ -631,10 +631,62 @@ def _nvml_core_offsets(indexes):
             _nvml_warn_once(f"GPU {idx}: read error {e}")
             continue
     return out
+GPU_TOOL_PAUSE_SECONDS = 30
+GPU_TOOL_TIMEOUT_SECONDS = 5   # max time one local GPU tool call may run before it counts as failed
+_gpu_tool_state = {}
+def _gpu_tool_allowed(tool):
+    """Safety guard for local GPU tool calls (nvidia-smi). A call that TIMES OUT blocks the tool immediately
+    until the agent restarts (driver assumed stuck). Any other failed call pauses it for GPU_TOOL_PAUSE_SECONDS;
+    if the next call after that fails too, it is blocked until the agent restarts. A success resets the
+    count. Returns False while paused/blocked."""
+    st = _gpu_tool_state.get(tool)
+    if not st:
+        return True
+    if st["blocked"]:
+        return False
+    return time.time() >= st["paused_until"]
+def _gpu_tool_record(tool, ok, why="", timed_out=False):
+    st = _gpu_tool_state.setdefault(tool, {"fails": 0, "paused_until": 0.0, "blocked": False})
+    if ok:
+        st["fails"] = 0
+        return
+    if timed_out:
+        # A call that hit its timeout means the driver is most likely stuck: block at once, no retries.
+        st["fails"] += 1
+        st["blocked"] = True
+        print(f"[Telemetry] GPU tool guard: {tool} call TIMED OUT ({why or 'no detail'}) - driver assumed stuck, BLOCKED until the agent restarts")
+        return
+    st["fails"] += 1
+    if st["fails"] == 1:
+        st["paused_until"] = time.time() + GPU_TOOL_PAUSE_SECONDS
+        print(f"[Telemetry] GPU tool guard: {tool} call failed ({why or 'no detail'}) - paused for {GPU_TOOL_PAUSE_SECONDS}s")
+    else:
+        st["blocked"] = True
+        print(f"[Telemetry] GPU tool guard: {tool} failed again ({why or 'no detail'}) - BLOCKED until the agent restarts")
+_last_gpu_count = 0
+def _gpu_failure_placeholders(reason):
+    """When a GPU stats source FAILS (tool paused/blocked/failed/timed out, or osn unreachable) report every
+    known GPU with -1 in the numeric fields so it is obvious on the dashboard, instead of an empty list that
+    looks like "no GPUs". The GPU indexes come from the last known GPU count;
+    if neither is known yet, returns []. Not used for intentional skips (passthrough / docker rule)."""
+    idxs = list(range(_last_gpu_count or 0))
+    out = []
+    for i in idxs:
+        st = {}
+        out.append({
+            "index": i, "name": st.get("name") or f"GPU {i}", "vendor": st.get("vendor") or "NVIDIA",
+            "uuid": st.get("uuid"),
+            "temp": -1, "mem_temp": -1, "util": -1, "mem_util": -1, "power_watts": -1, "fan_percent": -1,
+            "sm_clock": -1, "mem_clock": -1, "vram_used": -1, "vram_total": -1,
+            "stats_failed": True, "stats_error": reason,
+        })
+    return out
 def collect_gpu_stats():
     gpus = []
     if platform.system() != "Windows":
         return []
+    if not _gpu_tool_allowed("nvidia-smi"):
+        return _gpu_failure_placeholders("nvidia-smi paused/blocked by the GPU tool guard")
     try:
         cmd = (
             'nvidia-smi --query-gpu='
@@ -643,9 +695,11 @@ def collect_gpu_stats():
             'memory.used,memory.total,driver_version,pci.bus_id '
             '--format=csv,noheader,nounits'
         )
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=3)
+        # no shell: a timeout can then kill nvidia-smi itself (with shell=True only cmd.exe dies)
+        result = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=GPU_TOOL_TIMEOUT_SECONDS)
+        _gpu_tool_record("nvidia-smi", result.returncode == 0, f"nvidia-smi query rc={result.returncode}")
         if result.returncode != 0:
-            return []
+            return _gpu_failure_placeholders(f"nvidia-smi query rc={result.returncode}")
         lines = result.stdout.strip().split("\n")
         for i, line in enumerate(lines):
             fields = [x.strip() for x in line.split(",")]
@@ -717,6 +771,7 @@ def collect_gpu_stats():
                 print(f"Error parsing GPU {i}: {e}")
                 continue
     except Exception as e:
+        _gpu_tool_record("nvidia-smi", False, f"{type(e).__name__}: {e}", timed_out=isinstance(e, subprocess.TimeoutExpired))
         print(f"Error collecting GPU stats: {e}")
     if gpus and any(g.get("temp", 0) <= 0 for g in gpus):
         fallback_temps = _collect_nvidia_core_temps()
@@ -744,17 +799,24 @@ def collect_gpu_stats():
                     g["coreoffset"] = offsets[g["index"]]
         except Exception as e:
             print(f"Error reading GPU core offsets: {e}")
+    global _last_gpu_count
+    if gpus:
+        _last_gpu_count = len(gpus)
+    elif _last_gpu_count:
+        return _gpu_failure_placeholders("nvidia-smi returned no GPU data")
     return gpus
 def has_nvidia_gpu():
     if platform.system() != "Windows":
         return False
     try:
         # Try nvidia-smi first (doesn't need COM)
-        result = subprocess.run("nvidia-smi -L", shell=True, capture_output=True, text=True)
-        if result.returncode == 0 and "GPU" in result.stdout:
-            return True
-    except:
-        pass
+        if _gpu_tool_allowed("nvidia-smi"):
+            result = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=GPU_TOOL_TIMEOUT_SECONDS)
+            _gpu_tool_record("nvidia-smi", result.returncode == 0, f"nvidia-smi -L rc={result.returncode}")
+            if result.returncode == 0 and "GPU" in result.stdout:
+                return True
+    except Exception as e:
+        _gpu_tool_record("nvidia-smi", False, f"nvidia-smi -L {type(e).__name__}", timed_out=isinstance(e, subprocess.TimeoutExpired))
     if WMI_AVAILABLE:
         try:
             import pythoncom

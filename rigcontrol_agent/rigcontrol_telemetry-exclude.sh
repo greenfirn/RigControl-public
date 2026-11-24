@@ -86,31 +86,100 @@ def normalize_to_hs(value, unit=None):
 def service_status(service):
     rc, out, _ = run(f"systemctl is-active {service}")
     return out.strip() if rc == 0 else "unknown"
+GPU_TOOL_PAUSE_SECONDS = 30
+GPU_TOOL_TIMEOUT_SECONDS = 5   # max time one local GPU tool call may run before it counts as failed
+_gpu_tool_state = {}
+def _gpu_tool_allowed(tool):
+    """Safety guard shared by every local GPU tool call (nvidia-smi, rocm-smi, gputemps). A call that TIMES
+    OUT blocks the tool immediately until the agent restarts (driver assumed stuck). Any other failed call
+    pauses it for GPU_TOOL_PAUSE_SECONDS; if the next call after that fails too, it is blocked until the
+    agent restarts. A success resets the count. Returns False while paused/blocked."""
+    st = _gpu_tool_state.get(tool)
+    if not st:
+        return True
+    if st["blocked"]:
+        return False
+    return time.time() >= st["paused_until"]
+def _gpu_tool_record(tool, ok, why="", timed_out=False):
+    st = _gpu_tool_state.setdefault(tool, {"fails": 0, "paused_until": 0.0, "blocked": False})
+    if ok:
+        st["fails"] = 0
+        return
+    if timed_out:
+        # A call that hit its timeout means the driver is most likely stuck: block at once, no retries.
+        st["fails"] += 1
+        st["blocked"] = True
+        print(f"[Telemetry] GPU tool guard: {tool} call TIMED OUT ({why or 'no detail'}) - driver assumed stuck, BLOCKED until the agent restarts")
+        return
+    st["fails"] += 1
+    if st["fails"] == 1:
+        st["paused_until"] = time.time() + GPU_TOOL_PAUSE_SECONDS
+        print(f"[Telemetry] GPU tool guard: {tool} call failed ({why or 'no detail'}) - paused for {GPU_TOOL_PAUSE_SECONDS}s")
+    else:
+        st["blocked"] = True
+        print(f"[Telemetry] GPU tool guard: {tool} failed again ({why or 'no detail'}) - BLOCKED until the agent restarts")
+def _gpu_failure_placeholders(reason):
+    """When a GPU stats source FAILS (tool paused/blocked/failed/timed out, or osn unreachable) report every
+    known GPU with -1 in the numeric fields so it is obvious on the dashboard, instead of an empty list that
+    looks like "no GPUs". The GPU indexes come from the start-up read cache (or the last known GPU count);
+    if neither is known yet, returns []. Not used for intentional skips (passthrough / docker rule)."""
+    idxs = sorted(_gpu_static_cache["by_index"]) or list(range(_last_gpu_count or 0))
+    out = []
+    for i in idxs:
+        st = _gpu_static_cache["by_index"].get(i, {})
+        out.append({
+            "index": i, "name": st.get("name") or f"GPU {i}", "vendor": st.get("vendor") or "NVIDIA",
+            "uuid": st.get("uuid"),
+            "temp": -1, "mem_temp": -1, "util": -1, "mem_util": -1, "power_watts": -1, "fan_percent": -1,
+            "sm_clock": -1, "mem_clock": -1, "vram_used": -1, "vram_total": -1,
+            "stats_failed": True, "stats_error": reason,
+        })
+    return out
+def _gpu_passthrough_zeros(reason, pci_list=()):
+    """GPU passthrough (GPUs belong to a VM): nothing is read, every known GPU reports 0 in all numeric fields
+    (not -1: this is expected, not a failure). Count comes from the vfio PCI list, else the start-up cache /
+    last known count; if none is known, returns []."""
+    idxs = sorted(_gpu_static_cache["by_index"]) or list(range(_last_gpu_count or 0)) or list(range(len(pci_list)))
+    out = []
+    for i in idxs:
+        st = _gpu_static_cache["by_index"].get(i, {})
+        out.append({
+            "index": i, "name": st.get("name") or f"GPU {i}", "vendor": st.get("vendor") or "NVIDIA",
+            "uuid": st.get("uuid"),
+            "temp": 0, "mem_temp": 0, "util": 0, "mem_util": 0, "power_watts": 0, "fan_percent": 0,
+            "sm_clock": 0, "mem_clock": 0, "vram_used": 0, "vram_total": 0,
+            "passthrough": True, "stats_skipped": reason,  # zeros = GPU intentionally not read (passthrough / BLOCK_LIST)
+        })
+    return out
 def detect_gpu_once():
     """Detect GPU vendor once; cache result in module globals."""
     global gpu_present, gpu_type, _gpu_detected
     if _gpu_detected:
         return gpu_present, gpu_type
     try:
-        rc = subprocess.run(
-            ["nvidia-smi", "-L"],
-            capture_output=True, text=True, timeout=1.0
-        )
-        if rc.returncode == 0 and "GPU" in rc.stdout:
-            gpu_present, gpu_type, _gpu_detected = True, "NVIDIA", True
-            return gpu_present, gpu_type
-    except Exception:
-        pass
+        if _gpu_tool_allowed("nvidia-smi"):
+            rc = subprocess.run(
+                ["nvidia-smi", "-L"],
+                capture_output=True, text=True, timeout=1.0
+            )
+            _gpu_tool_record("nvidia-smi", rc.returncode == 0, f"nvidia-smi -L rc={rc.returncode}")
+            if rc.returncode == 0 and "GPU" in rc.stdout:
+                gpu_present, gpu_type, _gpu_detected = True, "NVIDIA", True
+                return gpu_present, gpu_type
+    except Exception as e:
+        _gpu_tool_record("nvidia-smi", False, f"nvidia-smi -L {type(e).__name__}", timed_out=isinstance(e, subprocess.TimeoutExpired))
     try:
-        rc = subprocess.run(
-            ["rocm-smi", "--showuniqueid"],
-            capture_output=True, text=True, timeout=1.0
-        )
-        if rc.returncode == 0:
-            gpu_present, gpu_type, _gpu_detected = True, "AMD", True
-            return gpu_present, gpu_type
-    except Exception:
-        pass
+        if _gpu_tool_allowed("rocm-smi"):
+            rc = subprocess.run(
+                ["rocm-smi", "--showuniqueid"],
+                capture_output=True, text=True, timeout=1.0
+            )
+            _gpu_tool_record("rocm-smi", rc.returncode == 0, f"rocm-smi --showuniqueid rc={rc.returncode}")
+            if rc.returncode == 0:
+                gpu_present, gpu_type, _gpu_detected = True, "AMD", True
+                return gpu_present, gpu_type
+    except Exception as e:
+        _gpu_tool_record("rocm-smi", False, f"rocm-smi --showuniqueid {type(e).__name__}", timed_out=isinstance(e, subprocess.TimeoutExpired))
     try:
         rc = subprocess.run(
             "lspci | grep -iE 'VGA.*(NVIDIA|AMD|Radeon)'",
@@ -135,12 +204,27 @@ def collect_gpu_stats(skip=False):
     if not gpu_present:
         _last_gpu_count = 0
         return []
+    tool = "nvidia-smi" if gpu_type == "NVIDIA" else ("rocm-smi" if gpu_type == "AMD" else "")
+    if tool and not _gpu_tool_allowed(tool):
+        return _gpu_failure_placeholders(f"{tool} paused/blocked by the GPU tool guard")
     if gpu_type == "NVIDIA":
-        gpus = collect_nvidia_gpu_stats()
+        try:
+            gpus = collect_nvidia_gpu_stats()
+        except Exception as e:
+            _gpu_tool_record(tool, False, f"{type(e).__name__}: {e}", timed_out=isinstance(e, subprocess.TimeoutExpired))
+            return _gpu_failure_placeholders(f"{tool} {type(e).__name__}")
     elif gpu_type == "AMD":
-        gpus = collect_amd_gpu_stats()
+        try:
+            gpus = collect_amd_gpu_stats()
+        except Exception as e:
+            _gpu_tool_record(tool, False, f"{type(e).__name__}: {e}", timed_out=isinstance(e, subprocess.TimeoutExpired))
+            return _gpu_failure_placeholders(f"{tool} {type(e).__name__}")
     else:
         gpus = collect_basic_gpu_info()
+    if tool:
+        _gpu_tool_record(tool, bool(gpus), "no GPU data returned")
+        if not gpus:
+            return _gpu_failure_placeholders(f"{tool} returned no GPU data")
     _last_gpu_count = len(gpus)
     return gpus
 def collect_basic_gpu_info():
@@ -232,15 +316,17 @@ def _collect_gputemps_vram(indexes):
     {index: celsius} for whichever devices it could read - missing entries mean N/A (binary
     absent, no root, or the sensor unsupported for that GPU/driver)."""
     binpath = _find_gputemps_binary()
-    if not binpath or not indexes:
+    if not binpath or not indexes or not _gpu_tool_allowed("gputemps"):
         return {}
     try:
         proc = subprocess.run(
             [binpath, "--once", "--json", "--device", ",".join(str(i) for i in indexes)],
             capture_output=True, text=True, timeout=5,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _gpu_tool_record("gputemps", False, type(e).__name__, timed_out=isinstance(e, subprocess.TimeoutExpired))
         return {}
+    _gpu_tool_record("gputemps", proc.returncode == 0, f"gputemps rc={proc.returncode}")
     if proc.returncode != 0:
         return {}
     results = {}
@@ -268,7 +354,7 @@ def collect_nvidia_gpu_stats():
         "power.min_limit,power.default_limit,power.max_limit"
         " --format=csv,noheader,nounits"
     )
-    rc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    rc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=GPU_TOOL_TIMEOUT_SECONDS)
     if rc.returncode != 0:
         return []
     gpus = []
@@ -911,7 +997,7 @@ def _is_ignored_docker_image(image):
         if image_lower.startswith(prefix.lower()):
             return True
     for prefix in OVERRIDE_LIST:
-        if prefix and image_lower.startswith(prefix.strip().lower()):
+        if prefix and prefix.strip().lower() in image_lower:  # keyword anywhere in the image (covers starts-with)
             return True
     return False
 def docker_containers_running():
@@ -2851,6 +2937,26 @@ def _docker_skip_gpu_enabled():
     and always skips regardless of this flag."""
     v = (_read_agent_conf_val("DOCKER_SKIP_GPU_STATS") or os.environ.get("DOCKER_SKIP_GPU_STATS", "")).strip().strip("\"'").lower()
     return v in ("1", "true", "yes", "on")
+def _block_list_match():
+    """BLOCK_LIST (rigcontrol-agent.conf or env, comma separated, default empty): if any running docker container's
+    image starts with one of these entries (same case-insensitive keyword match as OVERRIDE_LIST), GPU stats are
+    ALWAYS skipped - independent of DOCKER_SKIP_GPU_STATS. Returns the matching "image (entry)" or ""."""
+    raw = (_read_agent_conf_val("BLOCK_LIST") or os.environ.get("BLOCK_LIST", "")).strip().strip("\"'")
+    entries = [e.strip().strip("\"'").lower() for e in raw.split(",") if e.strip().strip("\"'")]
+    if not entries:
+        return ""
+    try:
+        rc, out, _ = run('docker ps --format "{{.Image}}"')
+    except Exception:
+        return ""
+    if rc != 0 or not out.strip():
+        return ""
+    for image in out.strip().splitlines():
+        il = image.strip().lower()
+        for e in entries:
+            if e in il:  # keyword anywhere in the image (covers starts-with)
+                return f"{image.strip()} (BLOCK_LIST '{e}')"
+    return ""
 def _osn_primary_enabled():
     """OctaSpace node (osn) is the primary source of GPU and system stats (default ON). Set
     OSN_PRIMARY=0 (rigcontrol-agent.conf or env) to ignore osn and use local collection instead.
@@ -3084,7 +3190,7 @@ def _nvml_core_offsets(indexes):
 def _apply_gpu_core_offsets(gpus):
     """Adds "coreoffset" (MHz, from NVML nvmlDeviceGetGpcClkVfOffset) to each NVIDIA GPU entry in the
     reply. Read-only; only called when GPU access is allowed (never during passthrough/docker skip)."""
-    idxs = [g["index"] for g in gpus if isinstance(g.get("index"), int) and str(g.get("vendor", "NVIDIA")).upper() == "NVIDIA"]
+    idxs = [g["index"] for g in gpus if isinstance(g.get("index"), int) and not g.get("stats_failed") and str(g.get("vendor", "NVIDIA")).upper() == "NVIDIA"]
     if not idxs:
         return
     offsets = _nvml_core_offsets(idxs)
@@ -3101,13 +3207,13 @@ def _stats_source_summary(osn_primary, osn, stats, fill_note="", gpu_skip_reason
         gpu = f"GPU=local (nvidia-smi/amd, OSN_PRIMARY=0) [{n_gpu} gpus]"
         sysrc = "CPU/mem=local (/proc)"
     elif osn is None:
-        gpu = "GPU=NONE (osn unreachable, no local GPU fallback)"
+        gpu = "GPU=-1 values (osn unreachable, no local GPU fallback)"
         sysrc = "CPU/mem=local (/proc, osn unreachable)"
     else:
         if osn.get("gpu_passthrough"):
             gpu = "GPU=NONE (osn reports GPU passthrough - readings stale, no fallback)"
         elif "gpus" in (osn.get("collect_failed") or []):
-            gpu = "GPU=NONE (osn GPU read failed, no fallback)"
+            gpu = "GPU=-1 values (osn GPU read failed, no fallback)"
         else:
             gpu = f"GPU=osn v{osn.get('version') or '?'} [{n_gpu} gpus]{fill_note}"
         sysrc = "CPU/mem=osn"
@@ -3156,11 +3262,19 @@ def collect_full_stats(visible_groups=None):
             _docker_gpu_skip = bool(docker_containers_running() and not _docker_known_miner_running())
         except Exception:
             _docker_gpu_skip = False
+    _block_hit = ""
+    if "gpu" in active_groups and not _gpu_passthrough:
+        try:
+            _block_hit = _block_list_match()
+        except Exception:
+            _block_hit = ""
     _gpu_skip_reason = ""
     if _local_pt:
         _gpu_skip_reason = f"GPU passthrough: {', '.join(_local_pt)} bound to vfio-pci (local check) - no GPU stats collected at all"
     elif _gpu_passthrough:
         _gpu_skip_reason = "osn reports GPU passthrough - no GPU stats collected at all"
+    elif _block_hit:
+        _gpu_skip_reason = f"docker container {_block_hit} - GPU stats always skipped"
     elif _docker_gpu_skip:
         _gpu_skip_reason = "docker container running that isn't a known miner - GPU stats skipped"
     _gpu_blocked = bool(_gpu_skip_reason)
@@ -3174,6 +3288,8 @@ def collect_full_stats(visible_groups=None):
     if "gpu" in active_groups:
         skip_gpu = _gpu_blocked or _osn_primary
         stats["gpus"] = collect_gpu_stats(skip=skip_gpu)
+        if _gpu_passthrough or _block_hit:
+            stats["gpus"] = _gpu_passthrough_zeros(_gpu_skip_reason, _local_pt)
         stats["gpu_present"] = gpu_present
         stats["gpu_stats_skipped"] = skip_gpu
         stats["gpu_count"] = len(stats["gpus"]) if stats["gpus"] else _last_gpu_count
@@ -3229,6 +3345,12 @@ def collect_full_stats(visible_groups=None):
                 _fill_note += f" +{_n} live/no-smi values (gputemps/lspci/proc)"
     except Exception as e:
         print(f"[Telemetry] osn missing-field fill failed: {e}")
+    if "gpu" in active_groups and not _gpu_blocked and _osn_primary and not stats.get("gpus"):
+        _ph = _gpu_failure_placeholders("osn unreachable" if _osn is None else "osn GPU read failed")
+        if _ph:
+            stats["gpus"] = _ph
+            stats["gpu_count"] = len(_ph)
+            stats["gpu_stats_skipped"] = False
     if "gpu" in active_groups and not _gpu_blocked and stats.get("gpus"):
         try:
             _apply_gpu_core_offsets(stats["gpus"])

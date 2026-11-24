@@ -1140,8 +1140,10 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_PORT=1883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
-    "# comma separated list of gpu stats safe images\n" +
+    "# comma separated list of gpu stats safe images (keyword match anywhere in the image name)\n" +
     "OVERRIDE_LIST=\"miner/miner:latest\"\n" +
+    "# comma separated list of docker images (keyword match anywhere in the image name, same as OVERRIDE_LIST) that ALWAYS skip gpu stats while running\n" +
+    "BLOCK_LIST=\"\"\n" +
     "STATS_DB_ENABLED=true\n" +
     "# How many days of local telemetry history to keep before old rows are pruned\n" +
     "STATS_DB_MAX_HISTORY_DAYS=7\n" +
@@ -1488,6 +1490,10 @@ const DataHelper = {
         return gpu.mem_clock ?? gpu.memory_clock ?? "--";
     },
     getGpuVram: (gpu) => {
+        // -1 = the agent could not read this GPU (tool failure/timeout): show it plainly instead of "-0.0 / -0.0"
+        if (gpu.vram_used === -1 || gpu.vram_total === -1) {
+            return { used_gb: -1, total_gb: -1, percent: 0, string: "-1" };
+        }
         if (gpu.vram_used !== undefined && gpu.vram_total !== undefined) {
             return {
                 used_gb: (gpu.vram_used / 1024).toFixed(1),
