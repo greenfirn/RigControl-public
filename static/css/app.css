@@ -6183,7 +6183,7 @@ body {
     flex-direction: column;
     gap: 14px;
     padding: 14px 8px;
-    background: var(--surface-tabs);
+    background: color-mix(in srgb, var(--surface-tabs) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
     border-right: 1px solid var(--border-header);
     box-shadow: 2px 0 14px rgba(0, 0, 0, 0.25);
     overflow-x: hidden;
@@ -6942,7 +6942,7 @@ body.tabs-top .view-tabs {
     gap: 22px;
     padding: 8px 14px;
     flex-wrap: wrap;
-    background: var(--surface-tabs);
+    background: color-mix(in srgb, var(--surface-tabs) calc((1 - var(--wallpaper-row-fade)) * 100%), transparent);
 }
 body.layout-left.tabs-top .view-tabs {
     justify-content: flex-start;

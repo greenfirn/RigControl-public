@@ -2757,13 +2757,13 @@ function initColorSchemeControls() {
         toggleColorSchemeListDropdown();
     });
     document.getElementById("btn-clear-color-surface-header")?.addEventListener("click", () => {
-        clearColorSchemeOverride("color-surface-header");
+        setColorSchemeOverrideTransparent("color-surface-header");
     });
     document.getElementById("btn-clear-color-surface-row-alt")?.addEventListener("click", () => {
         clearColorSchemeOverride("color-surface-row-alt");
     });
     document.getElementById("btn-clear-color-surface-tabs")?.addEventListener("click", () => {
-        clearColorSchemeOverride("color-surface-tabs");
+        setColorSchemeOverrideTransparent("color-surface-tabs");
     });
     document.getElementById("btn-clear-color-surface-app")?.addEventListener("click", () => {
         setColorSchemeOverrideTransparent("color-surface-app");
