@@ -14,17 +14,36 @@ try:
     WMI_AVAILABLE = True
 except ImportError:
     WMI_AVAILABLE = False
-# ===== USER FLAGS (defaults; env vars / agent conf override where noted) =====
-EXCLUDE_FROM_TOTALS = False  # True: leave this rig out of the dashboard totals
-KERYX_MINER_BIN_DEFAULT      = r"C:\miners\keryx-miner\keryx-miner.exe"  # default keryx-miner path (env KERYX_MINER_BIN overrides)
-KERYX_MINER_SUPR_BIN_DEFAULT = r"C:\miners\keryx-miner-supr-windows-nvidia-pom\keryx-miner-supr.exe"  # default keryx-miner-supr path (env KERYX_MINER_SUPR_BIN overrides)
-KERYX_API_HOST_DEFAULT = "127.0.0.1"  # keryx miner stats API host (env KERYX_*_API_HOST overrides)
-KERYX_API_PORT_DEFAULT = "3338"  # keryx miner stats API port; must match the miner's --api-bind
-CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"  # log file scraped for a custom miner without an API (env CUSTOM_MINER_LOG_PATH)
-CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"  # dashboard name for the custom-log miner
-CUSTOM_LOG_MINER_NAMES = ("quanpool-miner", "suprminer-neptune")  # miner names handled by the custom-log collector
-GPU_TOOL_PAUSE_SECONDS = 30  # pause after a failed GPU tool call
-GPU_TOOL_TIMEOUT_SECONDS = 5  # max seconds per GPU tool call; a timeout blocks the tool until restart
+# ===== USER FLAG DESCRIPTION (defaults; env vars / agent conf override where noted) =====
+# EXCLUDE_FROM_TOTALS: True: leave this rig out of the dashboard totals
+# KERYX_MINER_BIN_DEFAULT: default keryx-miner path (env KERYX_MINER_BIN overrides)
+# KERYX_MINER_SUPR_BIN_DEFAULT: default keryx-miner-supr path (env KERYX_MINER_SUPR_BIN overrides)
+# KERYX_API_HOST_DEFAULT: keryx miner stats API host (env KERYX_*_API_HOST overrides)
+# KERYX_API_PORT_DEFAULT: keryx miner stats API port; must match the miner's --api-bind
+# CUSTOM_MINER_LOG_PATH_DEFAULT: log file scraped for a custom miner without an API (env CUSTOM_MINER_LOG_PATH)
+# CUSTOM_LOG_MINER_DISPLAY_NAME: dashboard name for the custom-log miner
+# CUSTOM_LOG_MINER_NAMES: miner names handled by the custom-log collector
+# GPU_TOOL_PAUSE_SECONDS: pause after a failed GPU tool call
+# GPU_TOOL_TIMEOUT_SECONDS: max seconds per GPU tool call; a timeout blocks the tool until restart
+# Env vars (set from the agent conf by rigcontrol_agent_win.py):
+# KERYX_BIN_PATH: generic keryx binary path override; KERYX_MINER_BIN / KERYX_MINER_SUPR_BIN: per-binary path
+# KERYX_MINER_API_HOST / _PORT, KERYX_MINER_SUPR_API_HOST / _PORT, KERYX_API_HOST / _PORT: keryx miner stats API
+# KERYXD_LOG_PATH / KERYXD_LOG_STYLE: keryxd log scraping (blocks = count "Accepted N blocks")
+# CUSTOM_MINER_PROCESS_NAME: dashboard name for the custom-log miner; CUSTOM_MINER_LOG_PATH: its log file; CUSTOM_LOG_TAIL_BYTES: bytes read from its end
+# <MINER>_API_HOST / _PORT: stats API for RIGEL, SRB, WILDRIG, LOLMINER, ONEZEROMINER, GMINER, TREX, NBMINER, XMRIG_HTTP
+# RIGCONTROL_CPU_TEMP_DEBUG: 1 = verbose CPU temperature logging
+# ===== END USER FLAG DESCRIPTION =====
+# ===== USER FLAGS =====
+EXCLUDE_FROM_TOTALS = False
+KERYX_MINER_BIN_DEFAULT      = r"C:\miners\keryx-miner\keryx-miner.exe"
+KERYX_MINER_SUPR_BIN_DEFAULT = r"C:\miners\keryx-miner-supr-windows-nvidia-pom\keryx-miner-supr.exe"
+KERYX_API_HOST_DEFAULT = "127.0.0.1"
+KERYX_API_PORT_DEFAULT = "3338"
+CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"
+CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"
+CUSTOM_LOG_MINER_NAMES = ("quanpool-miner", "suprminer-neptune")
+GPU_TOOL_PAUSE_SECONDS = 30
+GPU_TOOL_TIMEOUT_SECONDS = 5
 # ===== END USER FLAGS =====
 RIG_NAME = socket.gethostname().lower()
 def _keryx_bin_path_override():

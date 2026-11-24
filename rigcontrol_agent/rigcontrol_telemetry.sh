@@ -11,21 +11,44 @@ import shlex
 import requests
 import threading
 import shutil
-# ===== USER FLAGS (defaults; most are overridden live from /etc/rigcontrol/rigcontrol-agent.conf) =====
-# Conf keys read live: OSN_PRIMARY, OSN_ALLOW_MISSING_GPU_STATS, DOCKER_SKIP_GPU_STATS, BLOCK_LIST,
-# <NAME>_BIN / _API_HOST / _API_PORT / _LOG_PATH / _LOG_STYLE (custom miners), CUSTOM_MINER_BIN_<CPU|GPU|AUX>
-EXCLUDE_FROM_TOTALS = False  # True: leave this rig out of the dashboard totals
-OVERRIDE_LIST = []  # docker images that are GPU-stats safe (conf OVERRIDE_LIST, keyword match)
-CUSTOM_MINER_BASE_DIR = "/opt/miners"  # where custom miners are installed (miner_paths.env lives here)
-CPU_SERVICE_NAME = os.environ.get("CPU_SERVICE_NAME", "docker_events_cpu.service")  # CPU service name for dashboard control (conf/env)
-GPU_SERVICE_NAME = os.environ.get("GPU_SERVICE_NAME", "docker_events_gpu.service")  # GPU service name for dashboard control (conf/env)
-WATCHDOG_SERVICE_NAME = os.environ.get("WATCHDOG_SERVICE_NAME", "rigcontrol_watchdog.service")  # watchdog service name for dashboard control (conf/env)
-AUX_SERVICE_NAME = os.environ.get("AUX_SERVICE_NAME", "docker_events_aux.service")  # AUX service name for dashboard control (conf/env)
-GPU_TOOL_PAUSE_SECONDS = 30  # pause after a failed GPU tool call
-GPU_TOOL_TIMEOUT_SECONDS = 5  # max seconds per GPU tool call; a timeout blocks the tool until restart
-AGENT_CONF_PATH = "/etc/rigcontrol/rigcontrol-agent.conf"  # agent config file, read live
-OSN_URL = os.environ.get("OSN_METRICS_URL", "http://127.0.0.1:18888/metrics")  # OctaSpace osn metrics endpoint (env OSN_METRICS_URL)
-OSN_UNIT = os.environ.get("OSN_SERVICE_NAME", "osn")  # OctaSpace osn service name (env OSN_SERVICE_NAME)
+# ===== USER FLAG DESCRIPTION (defaults; most are overridden live from /etc/rigcontrol/rigcontrol-agent.conf) =====
+# EXCLUDE_FROM_TOTALS: True: leave this rig out of the dashboard totals
+# OVERRIDE_LIST: docker image keywords that are GPU-stats safe (keyword match anywhere in the image name)
+# CUSTOM_MINER_BASE_DIR: where custom miners are installed (miner_paths.env lives here)
+# CPU_SERVICE_NAME: CPU service name the dashboard controls
+# GPU_SERVICE_NAME: GPU service name the dashboard controls
+# WATCHDOG_SERVICE_NAME: watchdog service name the dashboard controls
+# AUX_SERVICE_NAME: AUX service name the dashboard controls
+# GPU_TOOL_PAUSE_SECONDS: pause after a failed GPU tool call
+# GPU_TOOL_TIMEOUT_SECONDS: max seconds per GPU tool call; a timeout blocks the tool until restart
+# AGENT_CONF_PATH: agent config file, read live
+# OSN_URL: OctaSpace osn metrics endpoint (env OSN_METRICS_URL)
+# OSN_UNIT: OctaSpace osn service name (env OSN_SERVICE_NAME)
+# Conf keys (rigcontrol-agent.conf, read live):
+# BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker the agent connects to
+# MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
+# OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
+# OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
+# DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running
+# BLOCK_LIST: docker image keywords that ALWAYS skip GPU stats while running (same match, values report 0)
+# STATS_DB_ENABLED / STATS_DB_MAX_HISTORY_DAYS / STATS_DB_INTERVAL_SECONDS: local stats history on/off, days kept, seconds between samples
+# CUSTOM_MINER_BIN_GPU / _CPU / _AUX: custom miner binary per slot
+# <NAME>_BIN / _API_HOST / _API_PORT / _LOG_PATH / _LOG_STYLE: per custom miner, NAME = miner name as A-Z0-9_ (LOG_STYLE=blocks counts "Accepted N blocks")
+# Env: OSN_METRICS_URL / OSN_SERVICE_NAME override the osn endpoint and unit
+# ===== END USER FLAG DESCRIPTION =====
+# ===== USER FLAGS =====
+EXCLUDE_FROM_TOTALS = False
+OVERRIDE_LIST = []
+CUSTOM_MINER_BASE_DIR = "/opt/miners"
+CPU_SERVICE_NAME = os.environ.get("CPU_SERVICE_NAME", "docker_events_cpu.service")
+GPU_SERVICE_NAME = os.environ.get("GPU_SERVICE_NAME", "docker_events_gpu.service")
+WATCHDOG_SERVICE_NAME = os.environ.get("WATCHDOG_SERVICE_NAME", "rigcontrol_watchdog.service")
+AUX_SERVICE_NAME = os.environ.get("AUX_SERVICE_NAME", "docker_events_aux.service")
+GPU_TOOL_PAUSE_SECONDS = 30
+GPU_TOOL_TIMEOUT_SECONDS = 5
+AGENT_CONF_PATH = "/etc/rigcontrol/rigcontrol-agent.conf"
+OSN_URL = os.environ.get("OSN_METRICS_URL", "http://127.0.0.1:18888/metrics")
+OSN_UNIT = os.environ.get("OSN_SERVICE_NAME", "osn")
 # ===== END USER FLAGS =====
 gpu_present  = False
 gpu_type     = "None"

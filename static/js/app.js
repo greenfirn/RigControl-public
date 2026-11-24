@@ -1126,26 +1126,34 @@ let pendingAgentConfApplyRigs = new Set();
 let pendingAgentConfApplyLabel = "";
 let selectedConfEditType = "agent.conf";
 const AGENT_CONF_DEFAULT_TEMPLATE =
+    "# ===== SERVER SETTINGS (dashboard server MQTT broker) =====\n" +
     "BROKER_HOST=10.10.0.10\n" +
     "BROKER_PORT=1883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
-    "# comma separated list of gpu stats safe images (keyword match anywhere in the image name)\n" +
+    "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
+    "# ===== END SERVER SETTINGS =====\n" +
+    "# ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====\n" +
+    "# BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to\n" +
+    "# MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls\n" +
+    "# OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally\n" +
+    "# OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless\n" +
+    "# DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running\n" +
+    "# OVERRIDE_LIST: docker image keywords that are GPU-stats safe (keyword match anywhere in the image name)\n" +
+    "# BLOCK_LIST: docker image keywords that ALWAYS skip GPU stats while running (same match, values report 0)\n" +
+    "# STATS_DB_ENABLED / STATS_DB_MAX_HISTORY_DAYS / STATS_DB_INTERVAL_SECONDS: local stats history on/off, days kept, seconds between samples\n" +
+    "# CPU_SERVICE_NAME / GPU_SERVICE_NAME / AUX_SERVICE_NAME / WATCHDOG_SERVICE_NAME: service names the dashboard controls\n" +
+    "# CUSTOM_MINER_BIN_GPU / _CPU / _AUX: custom miner binary per slot\n" +
+    "# <NAME>_BIN / _API_HOST / _API_PORT / _LOG_PATH / _LOG_STYLE: per custom miner, NAME = miner name as A-Z0-9_ (LOG_STYLE=blocks counts \"Accepted N blocks\")\n" +
+    "# ===== END USER FLAG DESCRIPTION =====\n" +
+    "OSN_PRIMARY=1\n" +
+    "#OSN_ALLOW_MISSING_GPU_STATS=1\n" +
+    "#DOCKER_SKIP_GPU_STATS=0\n" +
     "OVERRIDE_LIST=\"miner/miner:latest\"\n" +
-    "# comma separated list of docker images (keyword match anywhere in the image name, same as OVERRIDE_LIST) that ALWAYS skip gpu stats while running\n" +
     "BLOCK_LIST=\"\"\n" +
     "STATS_DB_ENABLED=true\n" +
-    "# How many days of local telemetry history to keep before old rows are pruned\n" +
     "STATS_DB_MAX_HISTORY_DAYS=7\n" +
     "STATS_DB_INTERVAL_SECONDS=90\n" +
-    "# Minimum seconds between telemetry pulls, prevents overlapping collection calls\n" +
-    "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
-    "# Use OctaSpace node (osn) metrics for GPU + CPU/memory stats - no local GPU fallback (0 = ignore osn)\n" +
-    "OSN_PRIMARY=1\n" +
-    "# osn leaves some GPU fields out (mem temp/util, vbios, power min/max, partner). 1 = also fetch mem temp live (gputemps) + lspci/proc fallbacks; 0 = skip those. Static ones (power limits, vbios, partner) are always cached from one full read at agent start\n" +
-    "#OSN_ALLOW_MISSING_GPU_STATS=1\n" +
-    "# Safety rule, off by default: 1 = skip GPU stats while a non-miner docker container is running (for diagnosis / new rigs). Passthrough always skips\n" +
-    "#DOCKER_SKIP_GPU_STATS=0\n" +
     "#CPU_SERVICE_NAME=docker_events_cpu.service\n" +
     "#GPU_SERVICE_NAME=docker_events_gpu.service\n" +
     "#AUX_SERVICE_NAME=keryxd.service\n" +
@@ -1153,11 +1161,6 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "#CUSTOM_MINER_BIN_GPU=/opt/miners/my-custom-miner/current/my-custom-miner\n" +
     "#CUSTOM_MINER_BIN_CPU=/opt/miners/my-custom-miner/current/my-custom-miner\n" +
     "#CUSTOM_MINER_BIN_AUX=/opt/miners/my-custom-miner/current/my-custom-miner\n" +
-    "# Per-custom-miner overrides, keyed by the miner's own name (from CUSTOM_MINER\n" +
-    "# in rig-gpu/cpu/aux.conf or .json, sanitized to A-Z0-9_) - <NAME>_BIN for the\n" +
-    "# binary, <NAME>_API_HOST/<NAME>_API_PORT for a keryx-style JSON stats API,\n" +
-    "# or <NAME>_LOG_PATH for log scraping (<NAME>_LOG_STYLE=blocks for\n" +
-    "# keryxd-style \"Accepted N blocks\" counting instead of generic hashrate scraping)\n" +
     "#KERYX_MINER_BIN=/opt/miners/keryx-miner/current/keryx-miner\n" +
     "KERYX_MINER_API_HOST=127.0.0.1\n" +
     "KERYX_MINER_API_PORT=3338\n" +
