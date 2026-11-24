@@ -6181,6 +6181,7 @@ function initViewTabs() {
             } else if (tab.dataset.tabPanel === "overclocking") {
                 openOverclocksModal();
             } else if (tab.dataset.tabPanel === "watchdog") {
+                alert("Warning ! still in development, still very un-tested");
                 openWdConfigModal();
             } else {
                 switchViewTab(tab.dataset.tabPanel);
