@@ -13009,6 +13009,28 @@ function autoLoadConfForSelectedRig() {
         alert(`Failed to load current ${confLabel} from ${rig}`);
     });
 }
+function restartAgentOnTargetRigs() {
+    // Manual agent restart (also clears the in-memory GPU tool guard: a paused/blocked nvidia-smi etc.).
+    // Same target rule as Reload/Apply: the Workers picker if used, otherwise the main worker list selection.
+    const statusEl = document.getElementById("agentconf-status");
+    const targetRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : Array.from(selectedRigs);
+    if (targetRigs.length === 0) {
+        alert("No workers selected");
+        return;
+    }
+    if (!confirm(`Restart the agent on ${targetRigs.join(", ")}?`)) return;
+    const cmd = TEMPLATES_CONFIG.agentconf.restart_command;
+    cmdModalRigOverride = targetRigs;
+    if (statusEl) statusEl.textContent = `Restarting agent on ${targetRigs.join(", ")}…`;
+    sendCommandToSelectedRigs(cmd).then((res) => {
+        if (res === null) { if (statusEl) statusEl.textContent = ""; return; }
+        if (statusEl) statusEl.textContent = `Agent restart sent to ${targetRigs.join(", ")} (the worker reconnects in a few seconds)`;
+    }).catch(err => {
+        console.error("Agent restart failed", err);
+        if (statusEl) statusEl.textContent = "";
+        alert(`Failed to send agent restart to ${targetRigs.join(", ")}`);
+    });
+}
 function buildConfEditCommand() {
     return document.getElementById("agentconf-raw")?.value ?? "";
 }
@@ -15415,6 +15437,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     initWdconfigMainTabs();
     initSettingsMainTabs();
     document.getElementById("btn-agentconf-reload")?.addEventListener("click", autoLoadConfForSelectedRig);
+    document.getElementById("btn-agentconf-agent-restart")?.addEventListener("click", restartAgentOnTargetRigs);
     document.getElementById("btn-agentconf-clear")?.addEventListener("click", loadDefaultConfEditTemplate);
     document.getElementById("btn-agentconf-apply")?.addEventListener("click", sendItConfEdit);
     document.getElementById("btn-agentconf-apply-to-toggle")?.addEventListener("click", (evt) => {

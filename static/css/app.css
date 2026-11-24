@@ -7026,3 +7026,13 @@ body.tabs-top .view-tabs .view-tab {
     width: 0.55em;
     height: 0.15em;
 }
+
+/* Settings -> Configs: manual agent restart button - normal .cmd-btn look, yellow outline + text */
+#btn-agentconf-agent-restart {
+    border-color: #d4a72c;
+    color: #d4a72c;
+}
+#btn-agentconf-agent-restart:hover {
+    border-color: #f0c040;
+    color: #f0c040;
+}
