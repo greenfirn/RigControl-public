@@ -4471,16 +4471,21 @@ h1 {
 }
 .rig-header-grid > div:nth-child(14),
 .rig-main > div:nth-child(14) {
-    min-width: 85px;
-    flex: 0 1 85px;
+    min-width: 40px;
+    flex: 0 1 40px;
 }
 .rig-header-grid > div:nth-child(15),
 .rig-main > div:nth-child(15) {
-    width: 20px;
-    flex: 0 0 20px;
+    min-width: 85px;
+    flex: 0 1 85px;
 }
 .rig-header-grid > div:nth-child(16),
 .rig-main > div:nth-child(16) {
+    width: 20px;
+    flex: 0 0 20px;
+}
+.rig-header-grid > div:nth-child(17),
+.rig-main > div:nth-child(17) {
     min-width: 60px;
     flex: 0 1 220px;
 }
@@ -4497,11 +4502,11 @@ h1 {
     overflow: hidden !important;
     opacity: 0 !important;
 }
-.rig-header-grid > div:not(:first-child):not(:last-child):not(:nth-child(14)) {
+.rig-header-grid > div:not(:first-child):not(:last-child):not(:nth-child(15)) {
     cursor: pointer;
     user-select: none;
 }
-.rig-header-grid > div:not(:first-child):not(:last-child):not(:nth-child(14)):hover {
+.rig-header-grid > div:not(:first-child):not(:last-child):not(:nth-child(15)):hover {
     color: var(--text-muted);
 }
 .metric {

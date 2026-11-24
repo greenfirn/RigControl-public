@@ -2994,6 +2994,51 @@ def _osn_fill_without_smi(stats):
                 g["mem_temp"] = temps[g["index"]]
                 filled += 1
     return filled
+_nvml_state = {"lib": None, "tried": False}
+def _nvml_lib():
+    """Lazily loads libnvidia-ml (NVML) once via ctypes and initialises it. None if unavailable
+    (no NVIDIA driver / AMD rig)."""
+    if _nvml_state["tried"]:
+        return _nvml_state["lib"]
+    _nvml_state["tried"] = True
+    try:
+        import ctypes
+        lib = ctypes.CDLL("libnvidia-ml.so.1")
+        if lib.nvmlInit_v2() != 0:
+            return None
+        _nvml_state["lib"] = lib
+    except Exception:
+        _nvml_state["lib"] = None
+    return _nvml_state["lib"]
+def _nvml_core_offsets(indexes):
+    """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has
+    applied, however it was set). Indexes that can't be read (old driver / no support) are omitted."""
+    out = {}
+    lib = _nvml_lib()
+    if lib is None or not hasattr(lib, "nvmlDeviceGetGpcClkVfOffset"):
+        return out
+    import ctypes
+    for idx in indexes:
+        try:
+            handle = ctypes.c_void_p()
+            if lib.nvmlDeviceGetHandleByIndex_v2(ctypes.c_uint(int(idx)), ctypes.byref(handle)) != 0:
+                continue
+            off = ctypes.c_int()
+            if lib.nvmlDeviceGetGpcClkVfOffset(handle, ctypes.byref(off)) == 0:
+                out[idx] = off.value
+        except Exception:
+            continue
+    return out
+def _apply_gpu_core_offsets(gpus):
+    """Adds "coreoffset" (MHz, from NVML nvmlDeviceGetGpcClkVfOffset) to each NVIDIA GPU entry in the
+    reply. Read-only; only called when GPU access is allowed (never during passthrough/docker skip)."""
+    idxs = [g["index"] for g in gpus if isinstance(g.get("index"), int) and str(g.get("vendor", "NVIDIA")).upper() == "NVIDIA"]
+    if not idxs:
+        return
+    offsets = _nvml_core_offsets(idxs)
+    for g in gpus:
+        if g.get("index") in offsets:
+            g["coreoffset"] = offsets[g["index"]]
 def _stats_source_summary(osn_primary, osn, stats, fill_note="", gpu_skip_reason=""):
     """One-line description of where this poll's stats came from (logged every collection)."""
     n_gpu = len(stats.get("gpus") or [])
@@ -3127,6 +3172,11 @@ def collect_full_stats(visible_groups=None):
                 _fill_note += f" +{_n} live/no-smi values (gputemps/lspci/proc)"
     except Exception as e:
         print(f"[Telemetry] osn missing-field fill failed: {e}")
+    if "gpu" in active_groups and not _gpu_blocked and stats.get("gpus"):
+        try:
+            _apply_gpu_core_offsets(stats["gpus"])
+        except Exception as e:
+            print(f"[Telemetry] core offset read failed: {e}")
     print(_stats_source_summary(_osn_primary, _osn, stats, _fill_note, _gpu_skip_reason))
     print(f"[Telemetry] Requested groups: {requested_label} | Collected: {sorted(active_groups) if active_groups else 'NONE'}")
     return stats

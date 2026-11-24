@@ -1477,6 +1477,11 @@ const DataHelper = {
     getGpuCoreClock: (gpu) => {
         return gpu.sm_clock ?? gpu.core_clock ?? "--";
     },
+    getGpuCoreOffset: (gpu) => {
+        const v = gpu.coreoffset;
+        return (v === undefined || v === null || !Number.isFinite(Number(v))) ? null : Number(v);
+    },
+    formatCoreOffset: (v) => (v === null || v === undefined) ? "--" : (v > 0 ? `+${v}` : String(v)),
     getGpuMemClock: (gpu) => {
         return gpu.mem_clock ?? gpu.memory_clock ?? "--";
     },
@@ -1573,7 +1578,7 @@ const DataHelper = {
         if (gpus.length === 0) {
             return {
                 count: 0, temp: null, memTemp: null, util: "--", power: totalPower, fan: "--",
-                coreClock: "--", memClock: "--",
+                coreClock: "--", coreOffset: "--", memClock: "--",
                 vram: { used_gb: "--", total_gb: "--", percent: 0, string: "--" }
             };
         }
@@ -1592,6 +1597,9 @@ const DataHelper = {
         const fan = maxOf(gpus.map(gpu => DataHelper.getGpuFan(gpu)));
         const coreClock = maxOf(gpus.map(gpu => DataHelper.getGpuCoreClock(gpu)));
         const memClock = maxOf(gpus.map(gpu => DataHelper.getGpuMemClock(gpu)));
+        // Core offset: one value when every GPU matches, otherwise the distinct values joined with "/".
+        const coreOffsets = [...new Set(gpus.map(gpu => DataHelper.getGpuCoreOffset(gpu)).filter(v => v !== null))];
+        const coreOffset = coreOffsets.length ? coreOffsets.map(v => DataHelper.formatCoreOffset(v)).join("/") : "--";
         let vram = DataHelper.getGpuVram(gpus[0]);
         let bestUsed = numOrNull(vram.used_gb);
         for (let i = 1; i < gpus.length; i++) {
@@ -1610,6 +1618,7 @@ const DataHelper = {
             power: totalPower,
             fan: fan !== null ? fan : "--",
             coreClock: coreClock !== null ? coreClock : "--",
+            coreOffset,
             memClock: memClock !== null ? memClock : "--",
             vram
         };
@@ -4137,8 +4146,9 @@ const COLUMN_TELEMETRY_GROUPS = {
     11: "gpu",
     12: "gpu",
     13: "gpu",
-    14: "miner",
-    15: "docker",
+    14: "gpu",
+    15: "miner",
+    16: "docker",
 };
 const ALWAYS_VISIBLE_TELEMETRY_GROUPS = ["cpu_service", "gpu_service", "aux_service", "watchdog_service"];
 function getVisibleTelemetryGroups() {
@@ -4245,12 +4255,19 @@ function saveColumnState() {
 }
 function loadColumnState() {
     const saved = localStorage.getItem('hiddenColumns');
+    if (!saved) localStorage.setItem('hiddenColumnsLayout', '2');
     if (saved) {
         try {
-            const state = JSON.parse(saved);
+            let state = JSON.parse(saved);
+            // Columns layout v2 inserted "Coff" at index 13: saved indexes >= 13 move up by one (once).
+            if (localStorage.getItem('hiddenColumnsLayout') !== '2') {
+                state = state.map(col => (col >= 13 ? col + 1 : col));
+                localStorage.setItem('hiddenColumns', JSON.stringify(state));
+            }
+            localStorage.setItem('hiddenColumnsLayout', '2');
             hiddenColumns.clear();
             state.forEach(col => {
-                if (col >= 1 && col <= 16) {
+                if (col >= 1 && col <= 17) {
                     hiddenColumns.add(col);
                 }
             });
@@ -4373,6 +4390,7 @@ function render() {
         const fanFormatted = DataHelper.getFormattedFan(gpuFan);
         const fanClass = fanFormatted.class;
         const coreMHz = gpuAgg.coreClock;
+        const coreOff = gpuAgg.coreOffset;
         const memMHz = gpuAgg.memClock;
         const vram = gpuAgg.vram;
         const vramGB = vram.string;
@@ -4739,13 +4757,14 @@ function render() {
             `<div class="metric"><span class="${fanClass}">${gpuFan}</span></div>`,
             `<div class="metric">${vramGB}</div>`,
             `<div class="metric">${coreMHz}</div>`,
+            `<div class="metric">${coreOff}</div>`,
             `<div class="metric">${memMHz}</div>`,
             `<div class="metric">${cpuColumn.html}<span class="cpu-gpu-col-sep">|</span>${gpuColumn.html}<span class="cpu-gpu-col-sep">|</span>${auxColumn.html}</div>`,
             `<div class="metric">${dockerList.length}</div>`,
             `<div class="metric metric-left">${finalMinerSummary}</div>`
         ];
         main.insertAdjacentHTML("beforeend", columnHTMLs.join(''));
-        for (let colIndex = 1; colIndex <= 16; colIndex++) {
+        for (let colIndex = 1; colIndex <= 17; colIndex++) {
             const cell = main.children[colIndex];
             if (cell && hiddenColumns.has(colIndex)) {
                 cell.classList.add('column-hidden');
@@ -4761,7 +4780,7 @@ function render() {
             const gpuAcceptedMap = DataHelper.getGpuAcceptedSharesMap(d);
             const gpuRejectedMap = DataHelper.getGpuRejectedSharesMap(d);
             gpuPaneHtml += `<table class="gpu-table"><thead><tr>
-                <th>#</th><th>Name</th><th>Vendor</th><th>Hashrate</th><th>Temp</th><th>Mem°</th><th>Util</th><th>Power</th><th>Fan</th><th>VRAM</th><th>Core</th><th>Mem</th><th>Shares</th>
+                <th>#</th><th>Name</th><th>Vendor</th><th>Hashrate</th><th>Temp</th><th>Mem°</th><th>Util</th><th>Power</th><th>Fan</th><th>VRAM</th><th>Core</th><th>Coff</th><th>Mem</th><th>Shares</th>
             </tr></thead><tbody>`;
             gpus.forEach((gpu, idx) => {
                 const gpuIndex = gpu.index ?? idx;
@@ -4792,6 +4811,7 @@ function render() {
                         <td class="${gpuFanFmt.class}">${gpuFanFmt.value}</td>
                         <td>${gpuVram.string || "--"}</td>
                         <td>${DataHelper.getGpuCoreClock(gpu)}</td>
+                        <td>${DataHelper.formatCoreOffset(DataHelper.getGpuCoreOffset(gpu))}</td>
                         <td>${DataHelper.getGpuMemClock(gpu)}</td>
                         <td class="${gpuSharesClass}">${gpuSharesStr}</td>
                     </tr>`;
@@ -4846,7 +4866,7 @@ function render() {
     syncOpenModulesToSelection();
 }
 const RIG_AUTOSIZE_COL_START = 1;
-const RIG_AUTOSIZE_COL_END = 16;
+const RIG_AUTOSIZE_COL_END = 17;
 const RIG_AUTOSIZE_PADDING_PX = 6;
 function autoSizeRigColumns() {
     const headerGrid = document.querySelector('.rig-header-grid');
