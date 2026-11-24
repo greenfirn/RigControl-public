@@ -1079,7 +1079,6 @@ h1 {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .fs-apply-to-list.open-upward {
-    /* top/bottom set inline by positionApplyToDropdown() (fixed positioning) */
 }
 .fs-apply-to-list.hidden {
     display: none;
@@ -3343,7 +3342,7 @@ h1 {
 #fs-miner-config-modal .fs-wallet-suggestions,
 #wallet-modal .fs-wallet-suggestions {
     position: fixed;
-    margin-top: 0; /* left/top/width/max-height set inline by positionFloatingList() */
+    margin-top: 0;
     background: var(--surface-suggestions);
     border: 1px solid var(--border-suggestions);
     border-radius: 3px;
@@ -3439,7 +3438,7 @@ h1 {
 #fs-miner-config-modal .fs-pass-suggestions,
 #fs-miner-config-modal .fs-pool-suggestions {
     position: fixed;
-    margin-top: 0; /* left/top/width/max-height set inline by positionFloatingList() */
+    margin-top: 0;
     background: var(--surface-suggestions);
     border: 1px solid var(--border-suggestions);
     border-radius: 3px;
@@ -6930,7 +6929,6 @@ body.layout-left .rig-header {
 #fs-fields-panel .fs-mc-portal-hidden {
     display: none;
 }
-
 body.tabs-top {
     padding-left: 20px;
 }
@@ -6989,7 +6987,6 @@ body.tabs-top .view-tabs .view-tab {
     justify-content: flex-start;
     gap: 0;
 }
-
 .rig-settings-btn,
 .rig-settings-btn-spacer {
     flex: 0 0 1.4em;
@@ -7009,7 +7006,6 @@ body.tabs-top .view-tabs .view-tab {
 .rig-settings-btn:hover {
     opacity: 1;
 }
-
 .rig-main-wrap .rig-select-checkbox {
     width: 1.25em;
     height: 1.25em;
@@ -7026,8 +7022,6 @@ body.tabs-top .view-tabs .view-tab {
     width: 0.55em;
     height: 0.15em;
 }
-
-/* Settings -> Configs: manual agent restart button - normal .cmd-btn look, yellow outline + text */
 #btn-agentconf-agent-restart {
     border-color: #d4a72c;
     color: #d4a72c;

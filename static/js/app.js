@@ -1122,16 +1122,6 @@ const WD_ACTION_RAW_KEYS = [
 ];
 let pendingWdConfigFetchRig = null;
 let pendingAgentConfFetchRig = null;
-// Rigs we just sent a Send-it write to from the Configs tab (sendItConfEdit(), when
-// Confirm is unchecked so it skips the Send Cmd modal entirely) - tracked so the
-// reply can be routed to agentconf-status below (and, since we deliberately don't
-// early-return, also still logged to the main dashboard's action-output feed) -
-// see the matching branch in handleCommandResponse(). Without this, the reply
-// silently fell through to the action-output feed alone, which sits BEHIND the
-// open Settings modal, so a write would succeed (or fail) with no visible
-// confirmation anywhere the user was actually looking. This covers every conf
-// type in CONF_EDIT_TYPES (agent.conf, cpu.conf, gpu.conf, aux.conf,
-// watchdog.conf, fancurve.conf) since they all funnel through this one function.
 let pendingAgentConfApplyRigs = new Set();
 let pendingAgentConfApplyLabel = "";
 let selectedConfEditType = "agent.conf";
@@ -1490,7 +1480,6 @@ const DataHelper = {
         return gpu.mem_clock ?? gpu.memory_clock ?? "--";
     },
     getGpuVram: (gpu) => {
-        // -1 = the agent could not read this GPU (tool failure/timeout): show it plainly instead of "-0.0 / -0.0"
         if (gpu.vram_used === -1 || gpu.vram_total === -1) {
             return { used_gb: -1, total_gb: -1, percent: 0, string: "-1" };
         }
@@ -1546,9 +1535,8 @@ const DataHelper = {
             gpu.Power !== undefined ? gpu.Power :
             (gpu.power_consumption && gpu.power_consumption.watt !== undefined) ? gpu.power_consumption.watt :
             null;
-        if (power === -1) return "-1"; // agent could not read this GPU
+        if (power === -1) return "-1";
         if (power !== null && typeof power === 'number' && !isNaN(power)) {
-            // current draw / currently SET power limit, e.g. "205/360" (limit omitted when the agent didn't report it)
             const lim = gpu.power_limit;
             if (typeof lim === 'number' && !isNaN(lim) && lim > 0) {
                 return `${Math.round(power)}/${Math.round(lim)}`;
@@ -1611,7 +1599,6 @@ const DataHelper = {
         const fan = maxOf(gpus.map(gpu => DataHelper.getGpuFan(gpu)));
         const coreClock = maxOf(gpus.map(gpu => DataHelper.getGpuCoreClock(gpu)));
         const memClock = maxOf(gpus.map(gpu => DataHelper.getGpuMemClock(gpu)));
-        // Core offset: one value when every GPU matches, otherwise the distinct values joined with "/".
         const coreOffsets = [...new Set(gpus.map(gpu => DataHelper.getGpuCoreOffset(gpu)).filter(v => v !== null))];
         const coreOffset = coreOffsets.length ? coreOffsets.map(v => DataHelper.formatCoreOffset(v)).join("/") : "--";
         let vram = DataHelper.getGpuVram(gpus[0]);
@@ -1630,7 +1617,6 @@ const DataHelper = {
             memTemp,
             util: util !== null ? util : "--",
             power: totalPower,
-            // sum of the currently SET power limits (W) across GPUs; 0 when the agent doesn't report them
             powerLimit: gpus.reduce((a, gpu) => a + ((typeof gpu.power_limit === "number" && gpu.power_limit > 0) ? gpu.power_limit : 0), 0),
             fan: fan !== null ? fan : "--",
             coreClock: coreClock !== null ? coreClock : "--",
@@ -2335,8 +2321,6 @@ function syncWorkerListWidthVar() {
         setWorkerListWidthVar(width);
         return;
     }
-    // Workers tab hidden (display:none) or not laid out yet: every rect reads 0, so keep the last
-    // measured width instead of collapsing the action output / anything else sized from it.
     if (!lastWorkerListWidth) {
         let saved = 0;
         try { saved = Number(localStorage.getItem(WORKER_LIST_WIDTH_KEY)) || 0; } catch (e) {}
@@ -4110,9 +4094,6 @@ function handleCommandResponse(response) {
                 ? `${ok ? "Applied" : "Failed"} on ${r.rig}${suffix}, waiting on ${pendingAgentConfApplyRigs.size} more…`
                 : `${ok ? "Applied" : "Failed to apply"} ${pendingAgentConfApplyLabel} on ${r.rig}${suffix}`;
         }
-        // Deliberately no `return` here - falls through to the generic reply
-        // handling below so this reply also gets logged to the main dashboard's
-        // action-output feed, not just shown in agentconf-status.
     }
     let responseText = `\n[${r.rig}] returncode=${r.returncode}\n`;
     if (r.stdout) responseText += stripAnsi(r.stdout) + "\n";
@@ -4275,7 +4256,6 @@ function loadColumnState() {
     if (saved) {
         try {
             let state = JSON.parse(saved);
-            // Columns layout v2 inserted "Coff" at index 13: saved indexes >= 13 move up by one (once).
             if (localStorage.getItem('hiddenColumnsLayout') !== '2') {
                 state = state.map(col => (col >= 13 ? col + 1 : col));
                 localStorage.setItem('hiddenColumns', JSON.stringify(state));
@@ -5469,13 +5449,9 @@ function openCmdModal() {
 }
 function closeCmdModal() {
     document.getElementById("cmd-modal").classList.add("hidden");
-    // Silent sends (Confirm unchecked) feed submitCmd() through cmd-input without
-    // opening the modal, so never leave the History tab marked active once closed.
     cmdActiveTab = "send";
     closeCmdApplyToDropdown();
     cmdModalRigOverride = null;
-    // Drop the dialog's own worker pick too, so a later silent send (Confirm
-    // unchecked) falls back to the main list's selection instead of a stale pick.
     cmdApplyToRigs = new Set();
 }
 function initCmdMainTabs() {
@@ -6349,9 +6325,7 @@ function openRefreshModal() {
     switchViewTab("settings");
     switchSettingsMainTab("agentconf");
 }
-// Shared placement for every floating dropdown/suggestion list: fixed positioning (never clipped by
-// a modal), above all page chrome (z-index 2000 via CSS), opens on whichever side of the anchor has
-// more room, and its height can grow all the way to the edge of the page (scrolls beyond that).
+// Fixed-position placement for floating dropdown lists (flips up when there is no room below)
 function positionFloatingList(list, anchor, opts) {
     if (!list || !anchor) return;
     const o = Object.assign({ minWidth: 0, matchWidth: false }, opts || {});
@@ -6391,7 +6365,6 @@ function positionSuggestionBox(box) {
     positionFloatingList(box, anchor, { minWidth: 80, matchWidth: true });
 }
 function initFloatingSuggestionPlacement() {
-    // Re-place a suggestion box whenever it is shown or its items change (renders add children).
     const observer = new MutationObserver((mutations) => {
         const seen = new Set();
         for (const m of mutations) {
@@ -7003,10 +6976,6 @@ function handleOfflinePingIntervalChangeNotification(msg) {
     }
 }
 async function sendCommandToSelectedRigs(command) {
-    // cmdModalRigOverride is a one-shot override used by callers that send a
-    // command directly without going through the Send Cmd modal at all (e.g.
-    // silent-send when its own "confirm" checkbox is unchecked); when the
-    // modal IS opened, openCmdModal() already consumes it into cmdApplyToRigs.
     let targets;
     if (cmdModalRigOverride && cmdModalRigOverride.length) {
         targets = cmdModalRigOverride;
@@ -7059,9 +7028,6 @@ function withCurrentCmdApplyTo(text) {
 function submitCmd() {
     const raw = getActiveCmdText();
     if (!raw) return Promise.resolve(null);
-    // Rebuild with the CURRENT Apply To selection regardless of which tab
-    // (send vs. history) supplied the text, so the recorded history entry
-    // always reflects the workers actually targeted by this send.
     const cmd = withCurrentCmdApplyTo(raw);
     return sendCommandToSelectedRigs(cmd).then((result) => {
         if (result !== null) {
@@ -7231,8 +7197,6 @@ function actionStop() {
     }
 }
 function sendToolbarCommandWithHistory(command) {
-    // Goes through submitCmd() so it lands in Send Cmd history like every other
-    // worker-targeted command (targets = the main list's selection).
     const input = document.getElementById("cmd-input");
     if (input) input.value = command;
     cmdModalRigOverride = null;
@@ -8251,12 +8215,7 @@ function fsCustomUrlTargetIds() {
     if (selectedFlightsheetIds.size > 0) return [...selectedFlightsheetIds];
     return selectedFlightsheetId ? [selectedFlightsheetId] : [];
 }
-// A flightsheet's raw content can hold up to 3 separate "tee ... rig-<gpu|cpu|aux>.json <<'EOF'
-// ... EOF" heredoc blocks (dual/triple-mode), each an independent miner config - the GPU miner and
-// CPU miner in the same flightsheet are almost always different binaries entirely, so bulk-editing
-// name/URL has to target one service's blocks at a time rather than every block in the raw text.
-// This walks each such block (across every selected flightsheet's raw content) and only lets
-// `transform` touch the ones whose filename matches the given service.
+// Matches a flightsheet's tee ... rig-gpu/cpu/aux.json heredoc block
 const FS_SERVICE_BLOCK_RE = () => /(tee\s+\S*rig-(gpu|cpu|aux)\.json[^\n]*<<'EOF'\n)([\s\S]*?)(\n[ \t]*EOF[ \t]*)(?=\n|$)/g;
 function mapFsServiceBlocks(rawText, service, transform) {
     return (rawText || "").replace(FS_SERVICE_BLOCK_RE(), (whole, pre, svc, jsonBody, post) => {
@@ -8298,12 +8257,6 @@ function customMinerNamesInRaw(rawText, service) {
     });
 }
 function replaceCustomMinerNamesInRaw(rawText, service, newName) {
-    // miner_config.miner and item.miner_alt hold the custom binary name and are safe to match by
-    // key alone - "miner_alt" is unique to custom entries, never used any other way. But the bare
-    // "miner" key is NOT unique: for a non-custom entry it holds the known-miner name instead
-    // (e.g. "bzminer") - already excluded here by only touching blocks for the target service, but
-    // even within a single custom block "miner" only ever means the binary name when its own value
-    // isn't the literal "custom" marker, so that's checked too before replacing.
     return mapFsServiceBlocks(rawText, service, (body) => {
         if (!/"miner"\s*:\s*"custom"/.test(body)) return body;
         let out = body.replace(/("miner_alt"\s*:\s*")[^"]*(")/g, (_m, p1, p2) => `${p1}${newName}${p2}`);
@@ -8311,18 +8264,13 @@ function replaceCustomMinerNamesInRaw(rawText, service, newName) {
         return out;
     });
 }
-// Which service's blocks Apply targets - switched via the GPU/CPU/AUX tabs, same tab pattern as
-// the Miner Configuration modal. Always resets to "gpu" on open so reopening the dialog doesn't
-// silently carry over whatever tab was last active.
 let fsCustomUrlActiveService = "gpu";
 function fsCustomUrlSetActiveTabUI(service) {
     document.querySelectorAll("#fs-custom-url-tabs .fs-miner-config-tab").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.service === service);
     });
 }
-// Re-scans just the currently-targeted flightsheets' <service> blocks and refreshes the summary
-// text + prefilled inputs - shared by both the initial open and every tab switch, since which
-// flightsheets have a custom miner (and what its current name/url is) can differ per service.
+// Refreshes the custom-url/name summary for the targeted flightsheets' service blocks
 function refreshFsCustomUrlDialogForService(ids, service) {
     const byId = new Map(flightsheets.map((fs) => [fs.FlightsheetId, fs]));
     let withEitherCount = 0;
@@ -12855,9 +12803,7 @@ function saveAgentConfRawHeight() {
     const el = document.getElementById("agentconf-raw");
     if (el && el.style.height) localStorage.setItem(AGENTCONF_RAW_HEIGHT_KEY, el.style.height);
 }
-// Auto-grow a textarea without the page jumping: setting height "auto" briefly collapses it, which
-// shrinks the page and makes the browser clamp scroll positions back to the top. Save and restore
-// the scroll position of every scrollable ancestor (and the window) around the resize.
+// Grows a textarea to fit its text without jumping the page scroll
 function autoGrowTextareaKeepScroll(el) {
     if (!el) return;
     const saved = [];
@@ -13010,8 +12956,6 @@ function autoLoadConfForSelectedRig() {
     });
 }
 function restartAgentOnTargetRigs() {
-    // Manual agent restart (also clears the in-memory GPU tool guard: a paused/blocked nvidia-smi etc.).
-    // Same target rule as Reload/Apply: the Workers picker if used, otherwise the main worker list selection.
     const statusEl = document.getElementById("agentconf-status");
     const targetRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : Array.from(selectedRigs);
     if (targetRigs.length === 0) {
@@ -13042,15 +12986,6 @@ function sendItConfEdit() {
         alert(`${confLabel} content is empty`);
         return;
     }
-    // Same "Apply to" fallback pattern as sendItFs/sendItOc/sendItWd: an explicit
-    // pick from the Workers picker below overrides; otherwise this defers to
-    // whatever's selected in the main worker list (which may be more than one -
-    // writing the same conf to several workers at once is a normal bulk action,
-    // same as Flightsheets/Overclock). This used to hard-require exactly one
-    // worker selected in the main list whenever the Workers picker was left on
-    // its default, which made the button silently refuse to do anything (no
-    // visible alert reason tied to worker count vs. content) for the common case
-    // of multiple workers selected there.
     const overrideRigs = agentconfApplyToRigs.size > 0 ? Array.from(agentconfApplyToRigs) : null;
     const targetLabel = overrideRigs ? overrideRigs.join(", ") : Array.from(selectedRigs).join(", ");
     const input = document.getElementById("cmd-input");
@@ -13060,17 +12995,10 @@ function sendItConfEdit() {
         if (input) input.value = command;
         openCmdModal();
     } else {
-        // Track which rig(s) this write went to so the reply (returncode/stdout/stderr,
-        // arriving later over the websocket) gets shown here in agentconf-status instead
-        // of only landing in the main dashboard's action-output feed, which is hidden
-        // behind this Settings modal - see the pendingAgentConfApplyRigs branch in
-        // handleCommandResponse() (which also still logs it to that feed).
         const targetRigsForReply = overrideRigs || Array.from(selectedRigs);
         pendingAgentConfApplyRigs = new Set(targetRigsForReply);
         pendingAgentConfApplyLabel = confLabel;
         if (statusEl) statusEl.textContent = `Sending ${confLabel} to ${targetLabel}…`;
-        // Goes through submitCmd() (same path as Send Cmd) so it is recorded in
-        // Send Cmd history for later review.
         if (input) input.value = command;
         submitCmd().then((result) => {
             if (result === null) {

@@ -14,53 +14,27 @@ try:
     WMI_AVAILABLE = True
 except ImportError:
     WMI_AVAILABLE = False
+# ===== USER FLAGS (defaults; env vars / agent conf override where noted) =====
+EXCLUDE_FROM_TOTALS = False  # True: leave this rig out of the dashboard totals
+KERYX_MINER_BIN_DEFAULT      = r"C:\miners\keryx-miner\keryx-miner.exe"  # default keryx-miner path (env KERYX_MINER_BIN overrides)
+KERYX_MINER_SUPR_BIN_DEFAULT = r"C:\miners\keryx-miner-supr-windows-nvidia-pom\keryx-miner-supr.exe"  # default keryx-miner-supr path (env KERYX_MINER_SUPR_BIN overrides)
+KERYX_API_HOST_DEFAULT = "127.0.0.1"  # keryx miner stats API host (env KERYX_*_API_HOST overrides)
+KERYX_API_PORT_DEFAULT = "3338"  # keryx miner stats API port; must match the miner's --api-bind
+CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"  # log file scraped for a custom miner without an API (env CUSTOM_MINER_LOG_PATH)
+CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"  # dashboard name for the custom-log miner
+CUSTOM_LOG_MINER_NAMES = ("quanpool-miner", "suprminer-neptune")  # miner names handled by the custom-log collector
+GPU_TOOL_PAUSE_SECONDS = 30  # pause after a failed GPU tool call
+GPU_TOOL_TIMEOUT_SECONDS = 5  # max seconds per GPU tool call; a timeout blocks the tool until restart
+# ===== END USER FLAGS =====
 RIG_NAME = socket.gethostname().lower()
-# Set True per-rig to exclude it from dashboard totals/status bar numbers (rig still shows its own card/row)
-EXCLUDE_FROM_TOTALS = False
-# Default install paths for the two keryx binaries this fleet runs (never both at once on the same
-# rig, but which one is active can change over time on a given rig - e.g. testing keryx-miner-supr
-# vs falling back to plain keryx-miner). Rather than trust one static path that would need manual
-# updating every time the active binary changes, collect_keryx_stats() below detects which one is
-# actually running (via psutil) and picks the matching path/display name automatically.
-# KERYX_MINER_BIN / KERYX_MINER_SUPR_BIN (matching the Linux agent's <NAME>_BIN convention, e.g.
-# rigcontrol-agent.conf's "KERYX_MINER_SUPR_BIN=/opt/miners/custom/keryx-miner-supr/current/
-# keryx-miner-supr") override the two _DEFAULT paths below per-binary when a rig's install location
-# isn't the fleet-standard one - checked inside _detect_keryx_variant(), not here, since which one
-# applies depends on which binary auto-detection finds running. KERYX_BIN_PATH (a single generic
-# override, no per-binary distinction) and CUSTOM_MINER_PROCESS_NAME still work too and take
-# priority over both the per-binary vars and auto-detection when set - useful for a genuinely
-# non-standard setup where even the display name needs to be something other than either binary's
-# real name.
-KERYX_MINER_BIN_DEFAULT      = r"C:\miners\keryx-miner\keryx-miner.exe"
-KERYX_MINER_SUPR_BIN_DEFAULT = r"C:\miners\keryx-miner-supr-windows-nvidia-pom\keryx-miner-supr.exe"
 def _keryx_bin_path_override():
-    """Live read of KERYX_BIN_PATH - see _custom_miner_display_name() below for why this can't be
-    a frozen module-level constant."""
+    """Live read of KERYX_BIN_PATH - see _custom_miner_display_name() below for why this can't be a frozen"""
     return os.environ.get("KERYX_BIN_PATH", "").strip()
-# Per-binary API host/port, matching the Linux agent's <NAME>_API_HOST/<NAME>_API_PORT convention
-# (KERYX_MINER_API_HOST/PORT for plain keryx-miner, KERYX_MINER_SUPR_API_HOST/PORT for
-# keryx-miner-supr) so each binary can have its own independent setting instead of assuming they
-# always share one port. Generic KERYX_API_HOST/KERYX_API_PORT (checked second) still works as a
-# fallback for whichever variant doesn't have its own specific override set. Must match whatever
-# --api-bind was actually passed to the running miner - its stats API is disabled unless explicitly
-# bound (see start-log-output-us.bat / start-logs.bat).
-KERYX_API_HOST_DEFAULT = "127.0.0.1"
-KERYX_API_PORT_DEFAULT = "3338"
-# Log file for a custom miner with no stats API, matches start.bat's LOGDIR default (literal C:\Temp, not %TEMP%)
-CUSTOM_MINER_LOG_PATH_DEFAULT = r"C:\Temp\gpu-miner.log"
 def _custom_miner_log_path():
-    """Live read of CUSTOM_MINER_LOG_PATH - see _custom_miner_display_name() below for why this
-    can't be a frozen module-level constant."""
+    """Live read of CUSTOM_MINER_LOG_PATH - see _custom_miner_display_name() below for why this can't be a"""
     return os.environ.get("CUSTOM_MINER_LOG_PATH", CUSTOM_MINER_LOG_PATH_DEFAULT)
 def _custom_miner_display_name():
-    """Live read of CUSTOM_MINER_PROCESS_NAME (dashboard display name for the custom-log collector,
-    e.g. "quanpool-miner"), rather than a module-level constant frozen at import time. This module
-    is imported by rigcontrol_agent_win.py BEFORE that script finishes loading rigcontrol_agent.conf
-    and exporting its keys into os.environ (see the comment on that export loop there) - a
-    module-level `os.environ.get("CUSTOM_MINER_PROCESS_NAME", ...)` would only ever see the
-    pre-conf-load default ("keryx-miner-supr"), never a real value set in the conf file. Reading it
-    fresh here, at collect-time (long after that export loop has run), gets the real configured
-    value instead."""
+    """Live read of CUSTOM_MINER_PROCESS_NAME (dashboard display name for the custom-log collector, e.g"""
     return os.environ.get("CUSTOM_MINER_PROCESS_NAME", "keryx-miner-supr")
 MINER_PROCESSES = {
     "xmrig.exe": "xmrig",
@@ -87,36 +61,17 @@ MINER_PROCESSES = {
     "onezerominer": "onezerominer",
     "wildrig.exe": "wildrig",
     "wildrig": "wildrig",
-    # keryx-miner-supr DOES have a JSON stats API (collect_keryx_stats(), same shape as plain
-    # keryx-miner) as long as --api-bind is passed on its own command line - it's disabled unless
-    # explicitly bound, unlike plain keryx-miner. Routed to the same "keryx" collector as plain
-    # keryx-miner rather than "custom_log" (log-scraping) now that this is confirmed. These entries
-    # must still precede "keryx-miner" below - first-match-wins substring scan would otherwise match
-    # "keryx-miner-supr.exe" against the "keryx-miner.exe" entry first (both map to "keryx" now
-    # anyway, but the explicit entries stay in case that ever needs to diverge again).
     "keryx-miner-supr.exe": "keryx",
     "keryx-miner-supr": "keryx",
     "keryx-miner.exe": "keryx",
     "keryx-miner": "keryx",
     "keryxd.exe": "keryxd",
     "keryxd": "keryxd",
-    # quanpool-miner (custom miner, no known stats API - see collect_custom_log_miner_stats())
-    # routed straight to "custom_log" like every other named entry above, rather than through the
-    # CUSTOM_MINER_PROCESS_NAME env var indirection: that path was live-tested and turned out
-    # broken, since rigcontrol_agent_win.py imports this module BEFORE it finishes loading
-    # rigcontrol_agent.conf and exporting its keys into os.environ, so a module-level env read (or
-    # even one done once at import time) never sees the real configured value. A plain dict entry
-    # sidesteps that entirely - substring match, so "quanpool-miner" matches a running
-    # "quanpool-miner-6.2.0-windows-x86_64.exe".
     "quanpool-miner.exe": "custom_log",
     "quanpool-miner": "custom_log",
-    # suprminer-neptune (NEB) - same log-scrape path; start-neb-log-output.bat tees its output
-    # into C:\\Temp\\gpu-miner.log. Matches "suprminer-neptune.exe" and versioned filenames.
     "suprminer-neptune.exe": "custom_log",
     "suprminer-neptune": "custom_log",
 }
-# Processes checked by exact name (not substring) BEFORE the MINER_PROCESSES scan, so they're
-# never misclassified as the miner they share a name substring with (e.g. lolMinerGUI.exe vs lolMiner)
 NON_MINER_PROCESS_EXCLUSIONS = {
     "lolminergui.exe",
     "lolminergui",
@@ -333,7 +288,6 @@ def collect_system_uptime():
             timeout=3
         )
         if result.returncode == 0 and result.stdout.strip():
-            # Output format: "Statistics since 3/10/2025 9:45:32 AM"
             line = result.stdout.strip()
             import re
             match = re.search(r'Statistics since\s+(.+)', line)
@@ -452,18 +406,13 @@ def detect_board_partner(gpu_name, pnp_device_id=None, power_watts=0):
         return "NVIDIA"
     return board_partner
 def _parse_float_or_none(raw):
-    """nvidia-smi prints '[N/A]' / '[Not Supported]' for fields a GPU/driver can't report; treat
-    that as unknown (None) instead of a misleading 0."""
+    """nvidia-smi prints '[N/A]' / '[Not Supported]' for fields a GPU/driver can't report; treat that as"""
     try:
         return float(str(raw).strip())
     except (TypeError, ValueError):
         return None
 def _collect_nvidia_power_limits():
-    """Returns {gpu_index: {"power_limit_min","power_limit_default","power_limit_max","vbios_version"}}.
-    Queried in its OWN nvidia-smi call, separate from collect_gpu_stats()'s main query, so a driver
-    that rejects or blanks one of these fields can never drop the rest of the GPU stats. Newer
-    Windows drivers can report power.*_limit as [N/A] in --query-gpu CSV output; anything still
-    missing after the CSV pass is filled from the "nvidia-smi -q -d POWER" text report."""
+    """Returns {gpu_index: {"power_limit_min","power_limit_default","power_limit_max","vbios_version"}}"""
     limits = {}
     try:
         result = subprocess.run(
@@ -507,11 +456,7 @@ def _collect_nvidia_power_limits():
         print(f"Error querying GPU power limits (-q): {e}")
     return limits
 def _collect_nvidia_power_draw():
-    """Returns {gpu_index: watts} for GPUs whose plain "power.draw" came back [N/A]/0. Newer NVIDIA
-    drivers split the reading into power.draw.instant / power.draw.average and can report the old
-    power.draw as [N/A] on some cards, so the main query's power value ends up 0. Queried in its
-    own nvidia-smi call (an unknown field name on an older driver fails only this call, never the
-    main stats), then falls back to the "nvidia-smi -q -d POWER" text report."""
+    """Returns {gpu_index: watts} for GPUs whose plain "power.draw" came back [N/A]/0"""
     draw = {}
     try:
         result = subprocess.run(
@@ -546,10 +491,7 @@ def _collect_nvidia_power_draw():
         print(f"Error querying GPU power draw (-q): {e}")
     return draw
 def _collect_nvidia_core_temps():
-    """Returns {gpu_index: core_temp_c} read from the "nvidia-smi -q -d TEMPERATURE" text report
-    ("GPU Current Temp : 47 C"). Used only for GPUs whose main-query temperature.gpu value came
-    back unparseable/0 (e.g. [N/A] or a decorated value on a newer driver), in its own nvidia-smi
-    call so it can't affect the rest of the GPU stats."""
+    """Returns {gpu_index: core_temp_c} read from the "nvidia-smi -q -d TEMPERATURE" text report ("GPU"""
     temps = {}
     try:
         result = subprocess.run("nvidia-smi -q -d TEMPERATURE", shell=True, capture_output=True, text=True, timeout=8)
@@ -565,20 +507,18 @@ def _collect_nvidia_core_temps():
 _nvml_state = {"lib": None, "tried": False, "warned": set()}
 _NVML_ERR_NAMES = {1: "UNINITIALIZED", 2: "INVALID_ARGUMENT", 3: "NOT_SUPPORTED", 4: "NO_PERMISSION", 6: "NOT_FOUND", 13: "FUNCTION_NOT_FOUND", 999: "UNKNOWN"}
 def _nvml_warn_once(msg):
-    """Core-offset problems are logged once each (not every poll) so a missing value is explainable."""
+    """Core-offset problems are logged once each (not every poll) so a missing value is explainable"""
     if msg not in _nvml_state["warned"]:
         _nvml_state["warned"].add(msg)
         print(f"[Telemetry] core offset: {msg}")
 def _nvml_lib():
-    """Lazily loads nvml.dll (NVML) once via ctypes and initialises it. None if unavailable."""
+    """Lazily loads nvml.dll (NVML) once via ctypes and initialises it"""
     if _nvml_state["tried"]:
         return _nvml_state["lib"]
     _nvml_state["tried"] = True
     try:
         import ctypes
         import glob
-        # nvml.dll location varies by driver packaging: System32, the legacy NVSMI folder, or only in the
-        # driver store (DCH drivers) - newest driver-store copy first.
         sysroot = os.environ.get("SystemRoot", r"C:\Windows")
         progfiles = os.environ.get("ProgramFiles", r"C:\Program Files")
         store = sorted(glob.glob(os.path.join(sysroot, "System32", "DriverStore", "FileRepository", "nv*", "nvml.dll")),
@@ -604,8 +544,7 @@ def _nvml_lib():
         _nvml_warn_once("nvml.dll not found/initialised - no core offsets")
     return _nvml_state["lib"]
 def _nvml_core_offsets(indexes):
-    """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has
-    applied, however it was set). Indexes that can't be read (old driver / no support) are omitted."""
+    """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has"""
     out = {}
     lib = _nvml_lib()
     if lib is None:
@@ -631,14 +570,9 @@ def _nvml_core_offsets(indexes):
             _nvml_warn_once(f"GPU {idx}: read error {e}")
             continue
     return out
-GPU_TOOL_PAUSE_SECONDS = 30
-GPU_TOOL_TIMEOUT_SECONDS = 5   # max time one local GPU tool call may run before it counts as failed
 _gpu_tool_state = {}
 def _gpu_tool_allowed(tool):
-    """Safety guard for local GPU tool calls (nvidia-smi). A call that TIMES OUT blocks the tool immediately
-    until the agent restarts (driver assumed stuck). Any other failed call pauses it for GPU_TOOL_PAUSE_SECONDS;
-    if the next call after that fails too, it is blocked until the agent restarts. A success resets the
-    count. Returns False while paused/blocked."""
+    """Safety guard for local GPU tool calls (nvidia-smi)"""
     st = _gpu_tool_state.get(tool)
     if not st:
         return True
@@ -651,7 +585,6 @@ def _gpu_tool_record(tool, ok, why="", timed_out=False):
         st["fails"] = 0
         return
     if timed_out:
-        # A call that hit its timeout means the driver is most likely stuck: block at once, no retries.
         st["fails"] += 1
         st["blocked"] = True
         print(f"[Telemetry] GPU tool guard: {tool} call TIMED OUT ({why or 'no detail'}) - driver assumed stuck, BLOCKED until the agent restarts")
@@ -665,10 +598,7 @@ def _gpu_tool_record(tool, ok, why="", timed_out=False):
         print(f"[Telemetry] GPU tool guard: {tool} failed again ({why or 'no detail'}) - BLOCKED until the agent restarts")
 _last_gpu_count = 0
 def _gpu_failure_placeholders(reason):
-    """When a GPU stats source FAILS (tool paused/blocked/failed/timed out, or osn unreachable) report every
-    known GPU with -1 in the numeric fields so it is obvious on the dashboard, instead of an empty list that
-    looks like "no GPUs". The GPU indexes come from the last known GPU count;
-    if neither is known yet, returns []. Not used for intentional skips (passthrough / docker rule)."""
+    """When a GPU stats source FAILS (tool paused/blocked/failed/timed out, or osn unreachable) report"""
     idxs = list(range(_last_gpu_count or 0))
     out = []
     for i in idxs:
@@ -695,7 +625,6 @@ def collect_gpu_stats():
             'memory.used,memory.total,driver_version,pci.bus_id,power.limit '
             '--format=csv,noheader,nounits'
         )
-        # no shell: a timeout can then kill nvidia-smi itself (with shell=True only cmd.exe dies)
         result = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=GPU_TOOL_TIMEOUT_SECONDS)
         _gpu_tool_record("nvidia-smi", result.returncode == 0, f"nvidia-smi query rc={result.returncode}")
         if result.returncode != 0:
@@ -759,7 +688,7 @@ def collect_gpu_stats():
                     "util": util_val,
                     "mem_util": memutil_val,
                     "power_watts": watts_val,
-                    "power_limit": power_limit_cur,  # currently SET power limit (W); may be None
+                    "power_limit": power_limit_cur,
                     "fan_percent": fan_val,
                     "sm_clock": smclk_val,
                     "mem_clock": memclk_val,
@@ -811,7 +740,6 @@ def has_nvidia_gpu():
     if platform.system() != "Windows":
         return False
     try:
-        # Try nvidia-smi first (doesn't need COM)
         if _gpu_tool_allowed("nvidia-smi"):
             result = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=GPU_TOOL_TIMEOUT_SECONDS)
             _gpu_tool_record("nvidia-smi", result.returncode == 0, f"nvidia-smi -L rc={result.returncode}")
@@ -835,36 +763,13 @@ def has_nvidia_gpu():
             pass
     return False
 def _cpu_temp_debug(msg):
-    """Diagnostic trace for collect_cpu_temp(), off by default. Set
-    RIGCONTROL_CPU_TEMP_DEBUG=1 in the environment (or rigcontrol_agent.conf,
-    if the agent exports conf values into the process env) to print which
-    of the 6 detection methods ran, and why each one failed, to stdout -
-    useful for figuring out why cpu_temp is coming back as null/'--' on a
-    given rig without guessing blind."""
+    """Diagnostic trace for collect_cpu_temp(), off by default"""
     if os.environ.get("RIGCONTROL_CPU_TEMP_DEBUG", "").strip().lower() in ("1", "true", "yes", "on"):
         print(f"[cpu_temp] {msg}", flush=True)
 def collect_cpu_temp():
-    """Get CPU temperature for Windows - similar structure to Ubuntu version.
-    None of these sources are guaranteed to exist on a given board:
-      - Methods 1/4/6 read the ACPI MSAcpi_ThermalZoneTemperature WMI class,
-        which only a subset of desktop/server motherboards actually expose
-        (it's most reliable on laptops) - many mining-rig boards report
-        nothing here at all, which is the most common reason this whole
-        function ends up returning None.
-      - Methods 2/3 require OpenHardwareMonitor / LibreHardwareMonitor to
-        already be installed AND running (with WMI exposed) at the moment
-        this is called - if neither is running, both are silently skipped.
-      - Method 5 (psutil.sensors_temperatures) is Linux-only; psutil does
-        not implement it on Windows, so this basically never contributes
-        here, it's kept only for parity with the Ubuntu collector.
-    In practice, if method 1 doesn't work on a board, installing and
-    running LibreHardwareMonitor (actively maintained, unlike
-    OpenHardwareMonitor - needed for modern Ryzen chips) is the most
-    reliable fix.
-    """
+    """Get CPU temperature for Windows - similar structure to Ubuntu version"""
     if platform.system() != "Windows":
         return None
-    # 1) Try WMI ThermalZone (MSAcpi_ThermalZoneTemperature) - works on many Intel/AMD systems
     try:
         import pythoncom
         pythoncom.CoInitialize()
@@ -885,7 +790,6 @@ def collect_cpu_temp():
             pythoncom.CoUninitialize()
     except Exception as e:
         _cpu_temp_debug(f"1) MSAcpi_ThermalZoneTemperature raised: {e}")
-    # 2) Try OpenHardwareMonitor if running - similar to reading hwmon files
     try:
         result = subprocess.run(
             'tasklist /fi "imagename eq OpenHardwareMonitor.exe"',
@@ -895,7 +799,6 @@ def collect_cpu_temp():
             timeout=2
         )
         if "OpenHardwareMonitor.exe" in result.stdout:
-            # NOTE: argv list, not shell=True - cmd.exe mangles the PS one-liner's escaped quotes
             ps_script = (
                 "try { "
                 "$temp = Get-WmiObject -Namespace root/OpenHardwareMonitor -Class Sensor | "
@@ -922,9 +825,7 @@ def collect_cpu_temp():
             _cpu_temp_debug("2) OpenHardwareMonitor.exe is not running - skipped")
     except Exception as e:
         _cpu_temp_debug(f"2) OpenHardwareMonitor check raised: {e}")
-    # 3) Try LibreHardwareMonitor if available - similar to alternative hwmon
     try:
-        # Same argv-list fix as method 2 above
         ps_script = (
             "try { "
             "$temps = Get-WmiObject -Namespace root/LibreHardwareMonitor -Class Sensor | "
@@ -949,7 +850,6 @@ def collect_cpu_temp():
             _cpu_temp_debug(f"3) LibreHardwareMonitor WMI query returned nothing - likely not installed/running, or its 'Expose WMI' option is off (rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r})")
     except Exception as e:
         _cpu_temp_debug(f"3) LibreHardwareMonitor query raised: {e}")
-    # 4) Try wmic command-line - fallback method
     try:
         result = subprocess.run(
             'wmic /namespace:\\\\root\\wmi PATH MSAcpi_ThermalZoneTemperature get CurrentTemperature /format:value',
@@ -976,8 +876,6 @@ def collect_cpu_temp():
             _cpu_temp_debug(f"4) wmic exited non-zero (rc={result.returncode}, stderr={result.stderr!r}) - wmic may have been removed (Windows 11 23H2+ drops it by default)")
     except Exception as e:
         _cpu_temp_debug(f"4) wmic raised: {e}")
-    # 5) Try psutil sensors if available - similar to reading /sys files
-    # NOTE: not implemented on Windows by psutil; kept for parity with the Ubuntu collector
     try:
         if hasattr(psutil, "sensors_temperatures"):
             temps = psutil.sensors_temperatures()
@@ -989,7 +887,6 @@ def collect_cpu_temp():
                             if entry.current:
                                 _cpu_temp_debug(f"5) psutil succeeded via '{name}': {entry.current}C")
                                 return round(entry.current, 1)
-                # If no CPU specifically found, take the highest temperature
                 all_temps = []
                 for name, entries in temps.items():
                     for entry in entries:
@@ -1003,7 +900,6 @@ def collect_cpu_temp():
             _cpu_temp_debug("5) psutil.sensors_temperatures not available on this platform (expected on Windows) - skipped")
     except Exception as e:
         _cpu_temp_debug(f"5) psutil.sensors_temperatures raised: {e}")
-    # 6) Try PowerShell direct WMI query - final fallback
     try:
         result = subprocess.run(
             'powershell "try { '
@@ -1034,10 +930,7 @@ def collect_load():
     """Get load averages in Linux format (load1, load5, load15)"""
     cpu_count = psutil.cpu_count()
     current_load = psutil.cpu_percent(interval=0.1) / 100.0 * cpu_count
-    # Round to 2 decimal places like Linux does
     load_rounded = round(current_load, 2)
-    # Return all three as the same (Windows limitation)
-    # Linux format: [1min, 5min, 15min]
     return {
         "1m": load_rounded,
         "5m": load_rounded,
@@ -1052,12 +945,7 @@ def collect_memory():
         "percent": mem.percent
     }
 def collect_network():
-    """rx_bytes/tx_bytes are raw cumulative counters via psutil.net_io_counters() (reset on reboot) -
-    used for the Stats page's per-sample MB bar chart and running totals. rx_mbps/tx_mbps are a live
-    throughput figure measured over a short window right now (read, sleep briefly, read again) rather
-    than averaged across the gap since the previous stored history sample - same technique as the
-    Linux agent's collect_network(), so the Mbps line chart reflects the actual rate at the moment
-    each sample was taken regardless of which agent reported it."""
+    """rx_bytes/tx_bytes are raw cumulative counters via psutil.net_io_counters() (reset on reboot) - used"""
     try:
         c1 = psutil.net_io_counters()
         sample_window_s = 0.5
@@ -1071,28 +959,12 @@ def collect_network():
         }
     except Exception:
         return {"rx_bytes": 0, "tx_bytes": 0, "rx_mbps": 0, "tx_mbps": 0}
-# ===== Shared result-shape helpers =====
-# Every collect_*_stats() function below returns through these three builders instead of hand-rolling
-# its own dict, so every miner - regardless of how different its own raw API/log format is - reports
-# back through the SAME top-level keys, the SAME per-algorithm key set, and the SAME per-GPU key set.
-# Before this, each collector had grown its own slightly different subset of keys (some had "pool",
-# some didn't; some had "gpus", most didn't; "stale_shares" vs "invalid_shares" named differently or
-# missing entirely) since they were written one at a time against each miner's own API shape. That's
-# fine for parsing (every collector still reads whatever fields its OWN miner's API actually has - the
-# raw parsing logic per miner is unchanged here), but it left the OUTPUT shape inconsistent, which
-# pushes complexity onto every downstream consumer (frontend, watchdog, anything else keyed by
-# stats["miner_<x>"]) to special-case each miner instead of relying on one shape.
 def _build_algo_entry(algorithm, hashrate_hs=None, accepted_shares=None, rejected_shares=None,
                        stale_shares=None, invalid_shares=None, cpu_hashrate_hs=None,
                        gpu_hashrate_hs=None, mining_type=None, pool=None, pool_url=None,
                        pool_latency_ms=None, difficulty=None, workers=None, thread_hashrates=None,
                        **extra):
-    """Canonical per-algorithm entry - every key below is present on every miner's algorithms[]
-    entries now, left as None/default when that particular miner's API doesn't report it, instead of
-    the key being absent entirely (which previously made "does this miner report a pool?" a
-    per-miner question the caller had to already know the answer to). **extra still allows a
-    genuinely miner-specific per-algorithm field (e.g. rigel's pool_hashrate_hs) to be attached
-    without adding a None-filled version of it to every other miner's entries too."""
+    """Canonical per-algorithm entry - every key below is present on every miner's algorithms[] entries"""
     entry = {
         "algorithm":        algorithm,
         "hashrate_hs":      hashrate_hs,
@@ -1113,11 +985,7 @@ def _build_algo_entry(algorithm, hashrate_hs=None, accepted_shares=None, rejecte
     entry.update(extra)
     return entry
 def _build_gpu_entry(index, name=None, hashrate_hs=None, accepted_shares=None, rejected_shares=None):
-    """Canonical per-GPU entry, matching keryx's/T-Rex's shape. Miners whose API only reports
-    thread/worker-indexed hashrate (no real per-device identity - wildrig, srbminer's GPU threads,
-    xmrig) still get one entry per known device index here with a generic "GPU N" name rather than
-    being left out of "gpus" entirely, so every miner's result has the SAME "gpus" list shape even
-    though the underlying data richness genuinely differs per miner."""
+    """Canonical per-GPU entry, matching keryx's/T-Rex's shape"""
     return {
         "gpu_id":          index,
         "index":           index,
@@ -1128,13 +996,7 @@ def _build_gpu_entry(index, name=None, hashrate_hs=None, accepted_shares=None, r
     }
 def _build_miner_result(status, miner, miner_version=None, uptime_s=None, algorithms=None, gpus=None,
                          error=None, **extra):
-    """Canonical top-level shape for every collect_*_stats() return value. total_hashrate_hs/
-    total_accepted_shares/total_rejected_shares are always derived here by summing algorithms[]
-    rather than being computed separately by each collector, so they can never drift out of sync with
-    the per-algorithm numbers actually being returned alongside them. **extra lets a specific miner
-    still attach genuinely miner-specific fields (e.g. bzminer's cuda_driver_version, T-Rex's
-    watchdog block) without forcing every OTHER miner to also carry a None-filled version of it -
-    only the common, meaningful-for-most-miners fields are mandatory above."""
+    """Canonical top-level shape for every collect_*_stats() return value"""
     algorithms = algorithms or []
     result = {
         "status":                status,
@@ -1165,10 +1027,6 @@ def collect_bzminer_stats():
     pools = data.get("pools") or []
     devices = data.get("devices") or []
     algorithms = []
-    # Per-device hashrate for the "gpus" list, summed per device across whichever pool it's currently
-    # mining on - bzminer's own device objects don't include a device name in the fields this
-    # collector reads, so gpu entries below use the generic "GPU N" label rather than guessing at an
-    # unverified key name for it.
     device_hashrates = [0] * len(devices)
     for pool in pools:
         pool_id = pool.get("id", -1)
@@ -1495,8 +1353,6 @@ def collect_gminer_stats():
                 if isinstance(speed, (int, float)):
                     total_hs += speed
                     thread_hashrates[f"gpu_{i}"] = speed
-                # gminer's own device object may include a real name field, but this collector has
-                # never read one (only "speed") - GPU N here rather than guessing an unverified key.
                 gpus.append(_build_gpu_entry(i, hashrate_hs=speed))
         hashrate_hs = total_hs if total_hs > 0 else None
         algorithms.append(_build_algo_entry(
@@ -1545,9 +1401,7 @@ def collect_xmrig_stats():
             accepted_shares=shares_good,
             rejected_shares=rejected_shares,
             pool=pool_url,
-            # Real pool ping - not results.avg_time_ms (avg time between shares, not a latency)
             pool_latency_ms=connection.get("ping", 0) if connection else 0,
-            # Explicit CPU/GPU tag, same field SRBMiner/BZMiner set
             mining_type="CPU" if threads > 0 else "GPU",
             cpu_threads=threads,
         ))
@@ -1571,7 +1425,6 @@ def collect_trex_stats():
     gpu_entries = []
     if algo:
         hashrate = data.get("hashrate", 0)
-        # T-Rex reports in H/s
         hashrate_hs = float(hashrate)
         raw_gpus = data.get("gpus", [])
         thread_hashrates = {}
@@ -1580,9 +1433,6 @@ def collect_trex_stats():
                 gpu_hashrate = gpu.get("hashrate", 0)
                 if gpu_hashrate:
                     thread_hashrates[f"gpu_{i}"] = gpu_hashrate
-                # T-Rex's own /summary gpus[] carries a real per-device name/id (name/gpu_id) that
-                # this collector didn't previously surface into a "gpus" list at all - matches the
-                # richer shape the Linux agent's collect_trex_stats() already builds.
                 gpu_entries.append(_build_gpu_entry(
                     gpu.get("gpu_id", i),
                     name=gpu.get("name"),
@@ -1617,7 +1467,6 @@ def collect_nbminer_stats():
     gpu_entries = []
     if algo:
         hashrate = data.get("miner", {}).get("total_hashrate_raw", 0)
-        # NBminer reports in H/s
         hashrate_hs = float(hashrate)
         devices = data.get("miner", {}).get("devices", [])
         thread_hashrates = {}
@@ -1626,8 +1475,6 @@ def collect_nbminer_stats():
                 device_hashrate = device.get("hashrate_raw", 0)
                 if device_hashrate:
                     thread_hashrates[f"gpu_{i}"] = device_hashrate
-                # NBminer's own devices[] carries a real per-device "id"/"name" that this collector
-                # didn't previously surface into a "gpus" list at all.
                 gpu_entries.append(_build_gpu_entry(
                     device.get("id", i),
                     name=device.get("name"),
@@ -1649,47 +1496,12 @@ def collect_nbminer_stats():
         gpus=gpu_entries,
     )
 def _decode_log_bytes(data):
-    """
-    Decode miner log bytes to text, tolerating both UTF-8/ASCII and
-    UTF-16 - including a single chunk that mixes BOTH.
-    PowerShell's Tee-Object defaults to UTF-16 ("Unicode") when no
-    -Encoding is given, which silently corrupts naive UTF-8 decoding by
-    leaving a null byte between every character. But start.bat's OWN
-    restart-banner lines ("==========", "Starting keryx-miner-supr at
-    ...") are written via plain `echo ... >> logfile` - single-byte
-    ASCII, NOT UTF-16 - while everything piped through Tee-Object is
-    UTF-16. Both land in the same file, and once the log grows past
-    CUSTOM_LOG_TAIL_BYTES, a restart banner and the UTF-16 miner output
-    that follows it can both fall inside the SAME tail window read by
-    _tail_file().
-    An earlier version of this function sampled the first 4096 bytes
-    once, decided "this whole chunk is UTF-16" (or UTF-8) from null-byte
-    parity, and decoded the ENTIRE chunk that one way. That's correct
-    only when a chunk really is one encoding throughout - confirmed on a
-    real ~1MB rig log where it wasn't: the heuristic sample (just the
-    first 4096 bytes) correctly detected UTF-16, but a plain-ASCII
-    restart banner ~20KB into that same tail window byte-shifted the
-    2-byte UTF-16LE pairing for everything after it, turning perfectly
-    good "Current hashrate is 22.65 Mhash/s" lines into unmatched
-    CJK-looking garbage - hashrate silently stopped being detected with
-    no error anywhere.
-    Fix: every character this fleet's miners actually log is plain ASCII
-    (0-127). UTF-16LE encodes those as [ascii_byte, 0x00] - so simply
-    stripping every 0x00 byte out of the raw data BEFORE decoding
-    reconstructs the correct ASCII text regardless of whether a given
-    stretch was UTF-16LE-ASCII (nulls removed) or already plain ASCII (no
-    nulls present - a no-op) - and does so correctly even when both
-    appear back-to-back in the same chunk, since it's a straight
-    byte-level transform rather than one whole-chunk decoding decision.
-    A real UTF-16 BOM at the very start of a read (only possible when the
-    tail window happens to start at byte 0 of a small file) is stripped
-    first, same as before.
-    """
+    """Decode miner log bytes to text, tolerating both UTF-8/ASCII and UTF-16 - including a single chunk"""
     if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
         data = data[2:]
     return data.replace(b"\x00", b"").decode("utf-8", errors="ignore")
 def _tail_file(path, max_bytes=131072):
-    """Read the last max_bytes of a file as text (cheap tail, no deps)."""
+    """Read the last max_bytes of a file as text (cheap tail, no deps)"""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -1699,41 +1511,9 @@ def _tail_file(path, max_bytes=131072):
         return _decode_log_bytes(data)
     except Exception:
         return None
-# Per-log-path offset + running counters for events counted exactly once, keyed by log path
 _log_event_state = {}
 def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
-    """Read only what's been appended to `path` since the last call for
-    this state dict (tracked via state['offset']).
-    Log files here can shrink two different ways, and they need different
-    handling:
-      - A real process restart truncates/recreates the log from scratch -
-        the file becomes tiny (just a couple of startup lines). That's a
-        genuine reset: start counting from 0 again.
-      - A periodic size-based trim (keeping only the last several MB)
-        happens without the process actually restarting. The file
-        shrinks but stays large. Treating that as a full reset would
-        under-count real events, and re-reading the kept tail as "new"
-        would double-count lines already seen in earlier polls. So
-        instead we just fast-forward our offset to the new size without
-        reading any of that already-seen tail, and leave the running
-        counters alone.
-    We used to tell the two apart purely by how small the file ends up
-    (`restart_threshold_bytes` as the cutoff), but that's a guess - it can
-    misfire on a stalled/rotated log and re-read the retained tail as "new",
-    double-counting/re-matching lines already seen in earlier polls. We also
-    tried the file's inode/NTFS file index, but that's not reliable either -
-    a freed file ID can be reused immediately by the fresh log after a real
-    restart, so a genuine restart can land on the very same ID as before.
-    Instead we keep a small fingerprint of the last bytes we actually read
-    (state['tail_fp']). On a shrink, we check whether that fingerprint still
-    appears in the file: if it does, it's an in-place trim (e.g. tail -c N >
-    file, same fd the writer still holds) - resume right after the
-    fingerprint so nothing already seen gets re-read, while any genuinely
-    new bytes appended in that same window still come through. If the
-    fingerprint is gone, it's a real restart - start over from byte 0.
-    `restart_threshold_bytes` only remains as a fallback guess for the very
-    first call, before we have any fingerprint yet.
-    """
+    """Read only what's been appended to `path` since the last call for this state dict (tracked via"""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -1744,8 +1524,6 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
                 whole = f.read()
                 idx = whole.find(fp) if fp else -1
                 if idx != -1:
-                    # Fingerprint still present - trimmed in place, not a restart. Resume
-                    # right after it so nothing already seen gets re-read.
                     resume_at = idx + len(fp)
                     state["offset"] = size
                     state["reset"] = False
@@ -1754,11 +1532,9 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
                         state["tail_fp"] = new_tail[-256:]
                     return _decode_log_bytes(new_tail)
                 elif size < restart_threshold_bytes:
-                    # No fingerprint to check yet - fall back to the size guess
                     state["offset"] = 0
                     state["reset"] = True
                 else:
-                    # Can't confirm either way - just resync without re-reading
                     state["offset"] = size
                     state["reset"] = False
                     return ""
@@ -1773,24 +1549,11 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
     except Exception:
         return None
 def _keryx_bin_for(display_name, default_bin):
-    """Resolves a keryx binary's path via <NAME>_BIN (KERYX_MINER_BIN / KERYX_MINER_SUPR_BIN,
-    sanitized the same way as the API host/port prefix - see collect_keryx_stats()), falling back
-    to that variant's hardcoded _DEFAULT constant. Mirrors the Linux agent's _named_miner_bin(),
-    which reads <NAME>_BIN out of rigcontrol-agent.conf the same way - lets a rig whose install
-    path isn't the fleet-standard C:\\miners\\... location override just that one binary's path
-    without needing the single generic KERYX_BIN_PATH (which also overrides display_name/
-    auto-detection entirely - see collect_keryx_stats())."""
+    """Resolves a keryx binary's path via <NAME>_BIN (KERYX_MINER_BIN / KERYX_MINER_SUPR_BIN, sanitized"""
     prefix = re.sub(r"[^A-Za-z0-9]+", "_", display_name).strip("_").upper()
     return os.environ.get(f"{prefix}_BIN", "").strip() or default_bin
 def _detect_keryx_variant():
-    """Checks the actually-running process list for keryx-miner-supr.exe vs plain keryx-miner.exe
-    (checked in that order - "keryx-miner-supr.exe" contains "keryx-miner" as a substring, so supr
-    must be checked first) and returns ("keryx-miner-supr", <resolved supr bin path>) or
-    ("keryx-miner", <resolved plain bin path>), where the bin path comes from _keryx_bin_for()
-    (KERYX_MINER_SUPR_BIN / KERYX_MINER_BIN env var override, or that variant's _DEFAULT constant).
-    Falls back to the supr variant if neither is actually found running (e.g. this is called right
-    as the miner is restarting) - matches this fleet's more common configuration, and either
-    default is only ever used when KERYX_BIN_PATH isn't set anyway."""
+    """Checks the actually-running process list for keryx-miner-supr.exe vs plain keryx-miner.exe (checked"""
     try:
         for proc in psutil.process_iter(['name']):
             try:
@@ -1809,13 +1572,9 @@ def _detect_keryx_variant():
     except Exception:
         pass
     return "keryx-miner-supr", _keryx_bin_for("keryx-miner-supr", KERYX_MINER_SUPR_BIN_DEFAULT)
-# Cached keryx-miner --version output; only re-queried when uptime_s drops (miner restarted)
 _keryx_version_cache = {"version": "", "last_uptime_s": None}
 def _query_keryx_version(bin_path):
-    """Runs `<bin_path> --version` and returns its first line, or "" on
-    any failure (binary missing, doesn't support --version, times out,
-    etc). Only called from collect_keryx_stats() when the uptime check
-    above decides a re-check is actually warranted."""
+    """Runs `<bin_path> --version` and returns its first line, or "" on any failure (binary missing"""
     try:
         out = subprocess.run(
             [bin_path, "--version"], capture_output=True, text=True, timeout=2.0
@@ -1825,55 +1584,15 @@ def _query_keryx_version(bin_path):
     except Exception:
         return ""
 def collect_keryx_stats():
-    """
-    keryx-miner 0.3.7+ exposes a small JSON stats API on 127.0.0.1:3338
-    (KERYX_API_HOST/KERYX_API_PORT below) - same API as the Linux agent,
-    confirmed via:
-      $ curl 127.0.0.1:3338/stats
-      {"started_epoch_s":..., "uptime_s":64862, "synced":true,
-       "opoi_challenge_active":false, "mining_address":"keryx:...",
-       "api_port":3338, "total_hashrate_hs":22439332,
-       "accepted_blocks":181, "rejected_blocks":0,
-       "last_update_epoch_s":..., "devices":[
-         {"id":"#0 (NVIDIA GeForce RTX 4070 Ti SUPER)","hashrate_hs":22439332,
-          "temp_c":41,"memory_temp_c":null,"fan_percent":47,"power_draw_w":129.95}
-       ]}
-    (Root path "/" 404s with {"error":"not found"} - real data is /stats.
-    The miner's own startup banner also lists this route under its
-    versioned form, /v1/miner/stats.)
-    accepted_blocks/rejected_blocks come straight from the miner instead
-    of being inferred by counting "OPoI: uploading response" log lines,
-    and total/per-device hashrate is exact instead of regex-parsed off a
-    log line. Deliberately NOT used for temp/fan/power though - those keep
-    coming from whatever this agent's usual GPU stats collector is
-    (nvidia-smi/NVML), so there's a single source of truth for GPU sensor
-    readings instead of the miner's own numbers disagreeing with it.
-    No log-tail fallback - every keryx-miner build in this fleet has the
-    API now, so a failed request here is a real error, not "an older
-    build without it."
-    """
-    # Resolve which binary is actually running BEFORE the API call, not after - the per-name
-    # API_HOST/API_PORT lookup right below needs display_name to build its env var prefix.
-    # KERYX_BIN_PATH env var wins if explicitly set (e.g. non-standard install location),
-    # otherwise auto-detect from the actually-running process so switching between keryx-miner
-    # and keryx-miner-supr on this rig doesn't require remembering to update a static path.
+    """keryx-miner 0.3.7+ exposes a small JSON stats API on 127.0.0.1:3338 (KERYX_API_HOST/KERYX_API_PORT"""
     _keryx_bin_path = _keryx_bin_path_override()
     if _keryx_bin_path:
         display_name, bin_path = _custom_miner_display_name(), _keryx_bin_path
     else:
         display_name, bin_path = _detect_keryx_variant()
-    # Per-binary API host/port, matching the Linux agent's <NAME>_API_HOST/<NAME>_API_PORT
-    # convention exactly (same sanitize rule: non-alphanumerics -> "_", uppercased), e.g.
-    # "keryx-miner" -> KERYX_MINER_API_HOST/PORT, "keryx-miner-supr" -> KERYX_MINER_SUPR_API_HOST/PORT.
-    # Falls back to the generic KERYX_API_HOST/KERYX_API_PORT (which themselves fall back to the
-    # _DEFAULT constants) if the per-name vars aren't set - lets one binary have an explicit override
-    # while the other still uses the shared default. Both rigcontrol_agent.conf (loaded and exported
-    # into this process's environment by rigcontrol_agent_win.py) and a directly-set OS environment
-    # variable work here, since this is just os.environ.get() either way.
     _name_prefix = re.sub(r"[^A-Za-z0-9]+", "_", display_name).strip("_").upper()
     api_host = os.environ.get(f"{_name_prefix}_API_HOST", os.environ.get("KERYX_API_HOST", KERYX_API_HOST_DEFAULT))
     api_port = int(os.environ.get(f"{_name_prefix}_API_PORT", os.environ.get("KERYX_API_PORT", KERYX_API_PORT_DEFAULT)))
-    # Try the plain path first, fall back to the versioned one if a future build drops the alias
     data = None
     last_err = None
     for path in ("/stats", "/v1/miner/stats"):
@@ -1886,12 +1605,6 @@ def collect_keryx_stats():
     if data is None:
         return _build_miner_result("error", display_name,
                                     error=f"keryx-miner API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}")
-    # keryx-miner-supr 0.11.10 changed its device key from "id" to "name" (still holding the same
-    # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
-    # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
-    # /stats response pasted from a live 0.11.10 rig. dev.get("id", dev.get("name", "")) and the
-    # accepted_blocks/rejected_blocks fallback below handle both the old and new shape, so this
-    # keeps working across the schema change either direction without needing to pin a version.
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
     raw_devices = data.get("devices", []) or []
     parsed_devices = []
@@ -1911,13 +1624,6 @@ def collect_keryx_stats():
         accepted_blocks = shares.get("accepted", 0)
         rejected_blocks = shares.get("rejected", 0)
     uptime_s = data.get("uptime_s", 0)
-    # display_name/bin_path were already resolved above (needed earlier for the per-name
-    # API_HOST/API_PORT lookup) - reused here only as a fallback path. Newer keryx-miner-supr builds
-    # (confirmed on 0.11.10) report their own "version" field directly in the /stats response, which
-    # is always fresh (no caching needed - it's already the live poll result) and sidesteps the whole
-    # class of "stale cached --version subprocess result" bugs this fleet hit earlier with the
-    # bin-path-based approach. Only fall back to shelling out to --version when an older build's
-    # response doesn't include "version" at all.
     if data.get("version"):
         _keryx_version_cache["version"] = f"{display_name} {data['version']}"
     else:
@@ -1925,12 +1631,6 @@ def collect_keryx_stats():
         if last_uptime is None or uptime_s < last_uptime:
             _keryx_version_cache["version"] = _query_keryx_version(bin_path)
     _keryx_version_cache["last_uptime_s"] = uptime_s
-    # keryx-miner-supr's API only ever reports accepted/rejected in AGGREGATE (either the old
-    # top-level accepted_blocks/rejected_blocks or the new nested "shares" object) - never broken
-    # down per device - so there's no way to honestly attribute them to a specific GPU on a
-    # multi-GPU rig. On a single-GPU rig there's no ambiguity though: the one GPU IS the whole
-    # aggregate, so attribute the totals to it directly rather than leaving accepted_shares/
-    # rejected_shares blank on that GPU's entry just because the API itself doesn't break it out.
     single_gpu = len(parsed_devices) == 1
     gpus = [
         _build_gpu_entry(
@@ -1954,29 +1654,10 @@ def collect_keryx_stats():
         synced=data.get("synced"),
         mining_address=data.get("mining_address", ""),
     )
-# Real "Accepted N blocks"/"N via submit block" batches seen in practice
-# top out in the low tens - never anywhere close to thousands. A captured
-# digit group this large almost certainly isn't a real batch count; it's
-# a corrupted/torn line. Discarding rather than trusting it stops a
-# single bad line from permanently poisoning the cumulative counter (on
-# top of, not instead of, the line-anchoring and PID-restart fixes below).
 _KERYXD_MAX_PLAUSIBLE_BATCH = 1000
-
-# A real keryxd restart used to be inferred purely from the log file
-# getting smaller (see _read_new_log_bytes). That heuristic silently
-# misses a restart when keryxd's service wrapper appends to the *same*
-# log file across restarts instead of truncating/replacing it - the file
-# never shrinks, so share_state["reset"] never fires, and any bad
-# accepted_shares total already accumulated (e.g. from a single corrupted
-# regex capture on a torn/interleaved log write) survives the restart
-# forever. PID is a much more direct signal: if keryxd's PID changed
-# since the last poll, it restarted, full stop, independent of what its
-# log file looks like.
 _keryxd_pid_cache = {"pid": None}
-
-
 def _get_keryxd_pid():
-    """Return keryxd's current PID (int), or None if it's not running."""
+    """Return keryxd's current PID (int), or None if it's not running"""
     try:
         for proc in psutil.process_iter(['pid', 'name']):
             try:
@@ -1987,43 +1668,8 @@ def _get_keryxd_pid():
     except Exception:
         pass
     return None
-
-
 def collect_keryxd_stats():
-    """
-    keryxd (the Keryx node itself, not the miner) logs to stdout. On
-    Windows its wrapper/service redirects that into a log file
-    (KERYXD_LOG_PATH below, defaulting to a file in %TEMP%) - same
-    tee-to-file pattern as keryx-miner's log. Lines look like:
-      2026-07-21 14:46:40.023-04:00 [INFO ] Accepted 14 blocks ...c949c254e6e351086c8c7aa9916f06ecaa645c8cea1cfaf020ee0e44f506a153 via relay
-    Newer keryxd builds (KERYXD_LOG_STYLE=blocks) instead break the count
-    down by how each block was accepted, e.g.:
-      2026-08-22 00:41:02.115-04:00 [INFO ] Accepted 4 blocks ...591275976f18aeb3d5d9c3ddce13dc85908597b578c9855caa84b21cee5ccfeb, 2 via relay and 2 via submit block
-    "via relay" blocks are just other nodes' finds propagating through -
-    they say nothing about this rig's own mining. "via submit block" is
-    this node actually submitting a block itself, the real accepted-share
-    signal. So with KERYXD_LOG_STYLE=blocks set, only the "via submit
-    block" sub-count is extracted/summed instead of the "Accepted N
-    blocks" total; with it unset (or any other value), behavior is
-    unchanged from before (sum the total).
-    Each line reports a COUNT of blocks accepted in that batch (not
-    always 1), so unlike keryx-miner's OPoI lines (one line = one
-    accepted share), here we extract the number and sum it across all
-    new lines seen since the last poll. The line regex is anchored to the
-    real line shape - timestamp + "[LEVEL]" + "Accepted N blocks" -
-    rather than just "digits near the right words" anywhere in the tail
-    window, so a corrupted/torn line can only match if it also happens to
-    start with a well-formed timestamp.
-    The cumulative block count is piggybacked onto hashrate_hs/
-    total_hashrate_hs (no separate accepted_shares field) so the
-    dashboard's existing fmtRateHs() display path - which already
-    auto-scales through kH/s, MH/s, GH/s, TH/s, PH/s for arbitrarily
-    large numbers - picks this up for free. Resets to 0 whenever keryxd
-    itself restarts - detected two ways: the log file going small (a real
-    replace/truncate) OR keryxd's PID changing (catches restarts where
-    the service wrapper just keeps appending to the same log file, which
-    the file-size check alone would miss forever).
-    """
+    """keryxd (the Keryx node itself, not the miner) logs to stdout"""
     default_log_path = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "keryxd.log")
     log_path = os.environ.get("KERYXD_LOG_PATH", default_log_path)
     log_style = os.environ.get("KERYXD_LOG_STYLE", "").strip().lower()
@@ -2034,7 +1680,6 @@ def collect_keryxd_stats():
         re.MULTILINE,
     )
     use_submit_only = (log_style == "blocks")
-
     current_pid = _get_keryxd_pid()
     keryxd_restarted = (
         current_pid is not None
@@ -2042,7 +1687,6 @@ def collect_keryxd_stats():
         and current_pid != _keryxd_pid_cache["pid"]
     )
     _keryxd_pid_cache["pid"] = current_pid
-
     share_state = _log_event_state.setdefault(
         log_path, {"offset": 0, "accepted_shares": 0}
     )
@@ -2050,8 +1694,6 @@ def collect_keryxd_stats():
     if new_text is None:
         return _build_miner_result("error", "keryxd", error=f"could not read log file '{log_path}'")
     if share_state.get("reset") or keryxd_restarted:
-        # A real restart - detected either way above - starts a genuinely
-        # new session; zero the count instead of carrying it forward.
         share_state["accepted_shares"] = 0
     for match in line_re.finditer(new_text):
         if use_submit_only:
@@ -2066,36 +1708,16 @@ def collect_keryxd_stats():
         "ok", "keryxd",
         algorithms=[_build_algo_entry("keryxd-node", hashrate_hs=accepted_shares)],
     )
-# Generic hashrate pattern: number + optional SI prefix (k/M/G/T/P) + some spelling of "h/s",
-# e.g. "45.6 MH/s", "45.6MH/s", "15.10 Mhash/s". Case-insensitive.
 _CUSTOM_HASHRATE_RE = re.compile(
     r"([\d]+(?:\.\d+)?)\s*([kKmMgGtTpP]?)h(?:ash(?:es)?)?\s*/\s*s", re.IGNORECASE
 )
-# Generic accepted/rejected pattern: a number shortly after "accepted"/"rejected".
-# Uses [^\d\n] (not [^\d]) so the match can't cross a line break onto an unrelated number.
 _CUSTOM_ACCEPTED_RE = re.compile(r"accepted[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_REJECTED_RE = re.compile(r"rejected[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12, "p": 1e15}
-CUSTOM_LOG_MINER_DISPLAY_NAME = "quanpool-miner"
-# Confirmed working: `quanpool-miner-6.2.0-windows-x86_64.exe --version` ->
-# "quanpool-miner 6.2.0 (unknown, 2026-09-10)" - richer than just the version number embedded in
-# the filename (includes build date), so shell out to the real binary and use its own output
-# directly, same as _query_keryx_version() does for keryx. Resolves the actually-running process's
-# own exe path via psutil rather than a hardcoded install path, since the filename (and therefore
-# any static path) changes every release. Cached per-PID so a steady-state miner doesn't
-# re-shell-out on every ~10s poll - only a PID change (miner restarted, e.g. after an update)
-# triggers a fresh query.
-# Process-name substrings handled by the custom_log collector. First running match wins.
-CUSTOM_LOG_MINER_NAMES = ("quanpool-miner", "suprminer-neptune")
-# Version fallback scraped from the log when `--version` isn't supported (suprminer-neptune exits
-# non-zero on it): matches e.g. "suprminer-neptune v1.2.3" / "suprminer-neptune 1.2.3".
 _CUSTOM_LOG_VERSION_RE = re.compile(r"(suprminer[-\w]*|quanpool-miner)[\s_:]+v?(\d+(?:\.\d+)+\S*)", re.IGNORECASE)
 _custom_log_version_cache = {"pid": None, "name": "", "version": ""}
 def _detect_custom_log_miner(log_text=""):
-    """Finds the running custom_log miner process and returns (display_name, version).
-    Version comes from `<exe> --version` (cached per PID); if that yields nothing, falls back to
-    scanning the log text for a "<name> <x.y.z>" string. Returns (default display name, "") if
-    no matching process is running."""
+    """Finds the running custom_log miner process and returns (display_name, version)"""
     try:
         for proc in psutil.process_iter(['name', 'exe']):
             try:
@@ -2132,47 +1754,7 @@ def _detect_custom_log_miner(log_text=""):
         pass
     return CUSTOM_LOG_MINER_DISPLAY_NAME, ""
 def collect_custom_log_miner_stats():
-    """
-    Best-effort telemetry for a custom miner with no known stats API,
-    scraped from its own log file instead. Originally built for
-    keryx-miner-supr on the assumption it had no documented HTTP/RPC
-    endpoint - that assumption turned out to be wrong (it has one,
-    gated behind an explicit --api-bind flag on its own command line;
-    see collect_keryx_stats()), so keryx-miner-supr no longer routes
-    here by default. Kept as the fallback path for quanpool-miner (the
-    only entry currently routed to "custom_log" in MINER_PROCESSES) or
-    any future custom miner that genuinely has no stats API - display
-    name is hardcoded to CUSTOM_LOG_MINER_DISPLAY_NAME above rather than
-    pulled from CUSTOM_MINER_PROCESS_NAME, since that env var previously
-    defaulted to the stale "keryx-miner-supr" value left over from this
-    collector's original single-purpose use and showed that wrong,
-    confusing label on the dashboard for any other custom miner unless
-    the env var was set. start.bat tees that stdout into
-    CUSTOM_MINER_LOG_PATH via PowerShell's Tee-Object, same as keryxd's
-    log on this fleet - _decode_log_bytes() above already handles that
-    encoding.
-    Unlike collect_keryxd_stats(), this does NOT track an incremental
-    read offset across polls. It re-reads the last CUSTOM_LOG_TAIL_BYTES
-    of the file every poll and takes the LAST matching hashrate/
-    accepted/rejected line in that window - on the assumption that a
-    miner's periodic status lines are CUMULATIVE snapshots (XMRig-style
-    "accepted (42/0)" totals-so-far), not one-line-per-event log
-    entries. Summing every match the way collect_keryxd_stats() does
-    would badly overcount against a cumulative-style log, which is the
-    more common convention - but there's no way to know for certain
-    without seeing the actual miner's log format, since "unknown API"
-    means exactly that: unknown. Treat the accepted/rejected numbers
-    here as best-effort and cross-check against the pool's own
-    dashboard if they matter; hashrate is the more reliably-parsed of
-    the three since almost every miner's log includes an "H/s" line
-    somewhere in a recognizable form.
-    Env vars:
-      CUSTOM_MINER_LOG_PATH - defaults to C:\\Temp\\gpu-miner.log,
-        matching start.bat's default log location.
-      CUSTOM_LOG_TAIL_BYTES - how much of the file's tail to scan each
-        poll (default 65536 = 64KB - enough for several status lines
-        without re-parsing the whole file every ~10s poll).
-    """
+    """Best-effort telemetry for a custom miner with no known stats API, scraped from its own log file"""
     log_path = _custom_miner_log_path()
     tail_bytes = int(os.environ.get("CUSTOM_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
@@ -2208,8 +1790,6 @@ def collect_full_stats():
     stats = {
         "rig": RIG_NAME,
         "timestamp": int(time.time()),
-        # cpu_temp disabled by default - needs ACPI WMI thermal zone support or LibreHardwareMonitor
-        # running as Administrator; once available, swap to: "cpu_temp": collect_cpu_temp(),
         "cpu_temp": 0,
         "cpu_usage": collect_cpu_usage(),
         "load": collect_load(),

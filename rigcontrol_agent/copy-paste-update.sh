@@ -1,5 +1,3 @@
-#sudo systemctl stop rigcloud-agent.service
-
 sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10
@@ -45,7 +43,6 @@ KERYX_MINER_SUPR_API_PORT=3338
 #KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
 #KERYXD_LOG_STYLE=blocks
 EOF
-
 sudo tee /usr/local/bin/rigcontrol_telemetry.py > /dev/null <<'EOF'
 import os
 import subprocess
@@ -59,19 +56,28 @@ import shlex
 import requests
 import threading
 import shutil
+# ===== USER FLAGS (defaults; most are overridden live from /etc/rigcontrol/rigcontrol-agent.conf) =====
+# Conf keys read live: OSN_PRIMARY, OSN_ALLOW_MISSING_GPU_STATS, DOCKER_SKIP_GPU_STATS, BLOCK_LIST,
+# <NAME>_BIN / _API_HOST / _API_PORT / _LOG_PATH / _LOG_STYLE (custom miners), CUSTOM_MINER_BIN_<CPU|GPU|AUX>
+EXCLUDE_FROM_TOTALS = False  # True: leave this rig out of the dashboard totals
+OVERRIDE_LIST = []  # docker images that are GPU-stats safe (conf OVERRIDE_LIST, keyword match)
+CUSTOM_MINER_BASE_DIR = "/opt/miners"  # where custom miners are installed (miner_paths.env lives here)
+CPU_SERVICE_NAME = os.environ.get("CPU_SERVICE_NAME", "docker_events_cpu.service")  # CPU service name for dashboard control (conf/env)
+GPU_SERVICE_NAME = os.environ.get("GPU_SERVICE_NAME", "docker_events_gpu.service")  # GPU service name for dashboard control (conf/env)
+WATCHDOG_SERVICE_NAME = os.environ.get("WATCHDOG_SERVICE_NAME", "rigcontrol_watchdog.service")  # watchdog service name for dashboard control (conf/env)
+AUX_SERVICE_NAME = os.environ.get("AUX_SERVICE_NAME", "docker_events_aux.service")  # AUX service name for dashboard control (conf/env)
+GPU_TOOL_PAUSE_SECONDS = 30  # pause after a failed GPU tool call
+GPU_TOOL_TIMEOUT_SECONDS = 5  # max seconds per GPU tool call; a timeout blocks the tool until restart
+AGENT_CONF_PATH = "/etc/rigcontrol/rigcontrol-agent.conf"  # agent config file, read live
+OSN_URL = os.environ.get("OSN_METRICS_URL", "http://127.0.0.1:18888/metrics")  # OctaSpace osn metrics endpoint (env OSN_METRICS_URL)
+OSN_UNIT = os.environ.get("OSN_SERVICE_NAME", "osn")  # OctaSpace osn service name (env OSN_SERVICE_NAME)
+# ===== END USER FLAGS =====
 gpu_present  = False
 gpu_type     = "None"
 _gpu_detected = False
 _last_gpu_count = 0
-EXCLUDE_FROM_TOTALS = False
-# Comma-separated "gpu stats safe" image list from rigcontrol-agent.conf's OVERRIDE_LIST -
-# rigcontrol_agent.sh overwrites this module global directly (telemetry.OVERRIDE_LIST = [...])
-# after loading the conf file; the default here just keeps docker_containers_running() below
-# working if this module is ever imported/run standalone before that assignment happens.
-OVERRIDE_LIST = []
-CUSTOM_MINER_BASE_DIR = "/opt/miners"
 def _read_miner_paths_env(key):
-    """Reads <key>="..." from CUSTOM_MINER_BASE_DIR/miner_paths.env (written by 01-miner_install.sh for each confirmed-installed miner), substituting $BASE_DIR back into the literal path; returns "" if the file or key doesn't exist."""
+    """Reads <key>='...' from CUSTOM_MINER_BASE_DIR/miner_paths.env (written by 01-miner_install.sh for"""
     path = f"{CUSTOM_MINER_BASE_DIR}/miner_paths.env"
     try:
         with open(path) as f:
@@ -82,10 +88,6 @@ def _read_miner_paths_env(key):
     except Exception:
         pass
     return ""
-CPU_SERVICE_NAME = os.environ.get("CPU_SERVICE_NAME", "docker_events_cpu.service")
-GPU_SERVICE_NAME = os.environ.get("GPU_SERVICE_NAME", "docker_events_gpu.service")
-WATCHDOG_SERVICE_NAME = os.environ.get("WATCHDOG_SERVICE_NAME", "rigcontrol_watchdog.service")
-AUX_SERVICE_NAME = os.environ.get("AUX_SERVICE_NAME", "docker_events_aux.service")
 RIG_NAME = socket.gethostname()
 def run(cmd: str):
     proc = subprocess.run(
@@ -97,14 +99,14 @@ def run(cmd: str):
     )
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 def extract_pool_host(pool_str: str) -> str:
-    """Extract the bare host:port from any pool URL string (strips only the scheme prefix, e.g. "stratum+ssl://", if present)."""
+    """Extract the bare host:port from any pool URL string (strips only the scheme prefix, e.g"""
     if not pool_str:
         return ""
     if "://" in pool_str:
         return pool_str.split("://")[1]
     return pool_str
 def normalize_to_hs(value, unit=None):
-    """Convert any hash-rate unit to H/s."""
+    """Convert any hash-rate unit to H/s"""
     if value is None:
         return None
     try:
@@ -134,14 +136,9 @@ def normalize_to_hs(value, unit=None):
 def service_status(service):
     rc, out, _ = run(f"systemctl is-active {service}")
     return out.strip() if rc == 0 else "unknown"
-GPU_TOOL_PAUSE_SECONDS = 30
-GPU_TOOL_TIMEOUT_SECONDS = 5   # max time one local GPU tool call may run before it counts as failed
 _gpu_tool_state = {}
 def _gpu_tool_allowed(tool):
-    """Safety guard shared by every local GPU tool call (nvidia-smi, rocm-smi, gputemps). A call that TIMES
-    OUT blocks the tool immediately until the agent restarts (driver assumed stuck). Any other failed call
-    pauses it for GPU_TOOL_PAUSE_SECONDS; if the next call after that fails too, it is blocked until the
-    agent restarts. A success resets the count. Returns False while paused/blocked."""
+    """Safety guard shared by every local GPU tool call (nvidia-smi, rocm-smi, gputemps)"""
     st = _gpu_tool_state.get(tool)
     if not st:
         return True
@@ -154,7 +151,6 @@ def _gpu_tool_record(tool, ok, why="", timed_out=False):
         st["fails"] = 0
         return
     if timed_out:
-        # A call that hit its timeout means the driver is most likely stuck: block at once, no retries.
         st["fails"] += 1
         st["blocked"] = True
         print(f"[Telemetry] GPU tool guard: {tool} call TIMED OUT ({why or 'no detail'}) - driver assumed stuck, BLOCKED until the agent restarts")
@@ -167,10 +163,7 @@ def _gpu_tool_record(tool, ok, why="", timed_out=False):
         st["blocked"] = True
         print(f"[Telemetry] GPU tool guard: {tool} failed again ({why or 'no detail'}) - BLOCKED until the agent restarts")
 def _gpu_failure_placeholders(reason):
-    """When a GPU stats source FAILS (tool paused/blocked/failed/timed out, or osn unreachable) report every
-    known GPU with -1 in the numeric fields so it is obvious on the dashboard, instead of an empty list that
-    looks like "no GPUs". The GPU indexes come from the start-up read cache (or the last known GPU count);
-    if neither is known yet, returns []. Not used for intentional skips (passthrough / docker rule)."""
+    """When a GPU stats source FAILS (tool paused/blocked/failed/timed out, or osn unreachable) report"""
     idxs = sorted(_gpu_static_cache["by_index"]) or list(range(_last_gpu_count or 0))
     out = []
     for i in idxs:
@@ -184,9 +177,7 @@ def _gpu_failure_placeholders(reason):
         })
     return out
 def _gpu_passthrough_zeros(reason, pci_list=()):
-    """GPU passthrough (GPUs belong to a VM): nothing is read, every known GPU reports 0 in all numeric fields
-    (not -1: this is expected, not a failure). Count comes from the vfio PCI list, else the start-up cache /
-    last known count; if none is known, returns []."""
+    """GPU passthrough (GPUs belong to a VM): nothing is read, every known GPU reports 0 in all numeric"""
     idxs = sorted(_gpu_static_cache["by_index"]) or list(range(_last_gpu_count or 0)) or list(range(len(pci_list)))
     out = []
     for i in idxs:
@@ -196,11 +187,11 @@ def _gpu_passthrough_zeros(reason, pci_list=()):
             "uuid": st.get("uuid"),
             "temp": 0, "mem_temp": 0, "util": 0, "mem_util": 0, "power_watts": 0, "fan_percent": 0,
             "sm_clock": 0, "mem_clock": 0, "vram_used": 0, "vram_total": 0,
-            "passthrough": True, "stats_skipped": reason,  # zeros = GPU intentionally not read (passthrough / BLOCK_LIST)
+            "passthrough": True, "stats_skipped": reason,
         })
     return out
 def detect_gpu_once():
-    """Detect GPU vendor once; cache result in module globals."""
+    """Detect GPU vendor once; cache result in module globals"""
     global gpu_present, gpu_type, _gpu_detected
     if _gpu_detected:
         return gpu_present, gpu_type
@@ -244,7 +235,7 @@ def detect_gpu_once():
     _gpu_detected = True
     return gpu_present, gpu_type
 def collect_gpu_stats(skip=False):
-    """Top-level dispatcher; returns list of GPU dicts."""
+    """Top-level dispatcher; returns list of GPU dicts"""
     global gpu_present, gpu_type, _last_gpu_count
     if skip:
         return []
@@ -276,7 +267,7 @@ def collect_gpu_stats(skip=False):
     _last_gpu_count = len(gpus)
     return gpus
 def collect_basic_gpu_info():
-    """Minimal GPU record from lspci when no driver is installed."""
+    """Minimal GPU record from lspci when no driver is installed"""
     try:
         rc = subprocess.run(
             "lspci | grep -i 'VGA\\|3D' | head -1",
@@ -312,17 +303,13 @@ def collect_basic_gpu_info():
     except Exception:
         return []
 def _parse_float_or_none(raw):
-    """nvidia-smi prints '[Not Supported]' for some fields on some GPUs/drivers; treat that as
-    unknown rather than crashing or defaulting to a misleading 0."""
+    """nvidia-smi prints '[Not Supported]' for some fields on some GPUs/drivers; treat that as unknown"""
     try:
         return float(raw)
     except ValueError:
         return None
 def _gpu_architecture_from_name(name):
-    """Best-effort NVIDIA architecture guess from the GPU name string. nvidia-smi's --query-gpu
-    has no 'architecture' field (confirmed against --help-query-gpu), and the real way to get it
-    (NVML nvmlDeviceGetArchitecture) needs the full ctypes NVML bindings for one label - not worth
-    it for a mining-rig-scale set of known GPU names."""
+    """Best-effort NVIDIA architecture guess from the GPU name string"""
     n = name.upper()
     if re.search(r"RTX\s?50\d{2}", n):
         return "Blackwell"
@@ -346,9 +333,7 @@ def _gpu_architecture_from_name(name):
 _GPUTEMPS_BIN = None
 _GPUTEMPS_CHECKED = False
 def _find_gputemps_binary():
-    """Locates the optional 'gputemps' binary (github.com/ThomasBaruzier/gddr6-core-junction-vram-temps),
-    used as a fallback VRAM temp source since nvidia-smi's temperature.memory is unsupported on
-    virtually all GeForce cards. Cached lookup; returns None if it isn't installed - fully optional."""
+    """Locates the optional 'gputemps' binary (github.com/ThomasBaruzier/gddr6-core-junction-vram-temps)"""
     global _GPUTEMPS_BIN, _GPUTEMPS_CHECKED
     if _GPUTEMPS_CHECKED:
         return _GPUTEMPS_BIN
@@ -360,9 +345,7 @@ def _find_gputemps_binary():
             break
     return _GPUTEMPS_BIN
 def _collect_gputemps_vram(indexes):
-    """Batch-reads VRAM temps for the given NVML device indexes via gputemps --json. Returns
-    {index: celsius} for whichever devices it could read - missing entries mean N/A (binary
-    absent, no root, or the sensor unsupported for that GPU/driver)."""
+    """Batch-reads VRAM temps for the given NVML device indexes via gputemps --json"""
     binpath = _find_gputemps_binary()
     if not binpath or not indexes or not _gpu_tool_allowed("gputemps"):
         return {}
@@ -392,7 +375,7 @@ def _collect_gputemps_vram(indexes):
                 results[gpu.get("index")] = vram
     return results
 def collect_nvidia_gpu_stats():
-    """Collect NVIDIA GPU stats via a single nvidia-smi call."""
+    """Collect NVIDIA GPU stats via a single nvidia-smi call"""
     cmd = (
         "nvidia-smi --query-gpu=index,uuid,temperature.gpu,temperature.memory,"
         "utilization.gpu,utilization.memory,power.draw,"
@@ -452,9 +435,6 @@ def collect_nvidia_gpu_stats():
                                 "10de": "NVIDIA Founders Edition",
                             }.get(subsys_id_match.group(1), "")
                         if not board_partner and subsystem_line:
-                            # only the Subsystem line - not the full -v dump, which
-                            # always contains an "MSI:"/"MSI-X:" interrupt capability
-                            # line that would otherwise false-match brand "msi"
                             for pattern, partner in [
                                 ("asus", "ASUS"), ("evga", "EVGA"), ("msi", "MSI"),
                                 ("gigabyte", "Gigabyte"), ("zotac", "Zotac"),
@@ -494,7 +474,7 @@ def collect_nvidia_gpu_stats():
                 "power_limit_min": power_limit_min,
                 "power_limit_default": power_limit_default,
                 "power_limit_max": power_limit_max,
-                "power_limit": _parse_float_or_none(pwr_cur_raw),  # currently SET power limit (W)
+                "power_limit": _parse_float_or_none(pwr_cur_raw),
                 "pci_bus_id": pci_bus, "pci_slot": pci_slot,
             })
         except (ValueError, IndexError):
@@ -507,7 +487,7 @@ def collect_nvidia_gpu_stats():
                 g["mem_temp"] = vram_fallback[g["index"]]
     return gpus
 def collect_amd_gpu_stats():
-    """Collects AMD GPU stats via a single 'rocm-smi --json' call, falling back to the text-parsing path if --json fails."""
+    """Collects AMD GPU stats via a single 'rocm-smi --json' call, falling back to the text-parsing path"""
     try:
         rc = subprocess.run(
             ["rocm-smi", "--json"],
@@ -573,7 +553,7 @@ def collect_amd_gpu_stats():
     except Exception:
         return _collect_amd_gpu_stats_text_fallback()
 def _collect_amd_gpu_stats_text_fallback():
-    """Text-format fallback for ROCm versions without --json support, using a single 'rocm-smi' call."""
+    """Text-format fallback for ROCm versions without --json support, using a single 'rocm-smi' call"""
     try:
         rc = subprocess.run(
             ["rocm-smi"], capture_output=True, text=True, timeout=3.0
@@ -642,7 +622,7 @@ def _collect_amd_gpu_stats_text_fallback():
     except Exception:
         return []
 def _amd_vram_mb_from_name(name: str) -> int:
-    """Return VRAM in MB for common AMD RDNA cards; default 8 GB."""
+    """Return VRAM in MB for common AMD RDNA cards; default 8 GB"""
     n = name.upper()
     for model, mb in [
         ("6950 XT", 16384), ("6900 XT", 16384), ("6900", 16384),
@@ -657,7 +637,7 @@ def _amd_vram_mb_from_name(name: str) -> int:
             return mb
     return 8192
 def _get_amd_pci_id_via_lspci() -> str:
-    """Single lspci call to find AMD GPU PCI slot."""
+    """Single lspci call to find AMD GPU PCI slot"""
     try:
         rc = subprocess.run(
             "lspci | grep -iE 'VGA.*AMD|VGA.*Radeon|3D.*AMD' | head -1",
@@ -671,7 +651,7 @@ def _get_amd_pci_id_via_lspci() -> str:
         pass
     return ""
 def _read_amdgpu_driver_version() -> str:
-    """Read amdgpu driver version from sysfs — no subprocess needed."""
+    """Read amdgpu driver version from sysfs — no subprocess needed"""
     try:
         with open("/sys/module/amdgpu/version") as f:
             return f.read().strip()
@@ -679,10 +659,10 @@ def _read_amdgpu_driver_version() -> str:
         pass
     return "unknown"
 def get_amd_driver_version() -> str:
-    """Public wrapper around _read_amdgpu_driver_version()."""
+    """Public wrapper around _read_amdgpu_driver_version()"""
     return _read_amdgpu_driver_version()
 def determine_amd_board_partner(pci_id: str, gpu_name: str) -> str:
-    """Identify AIB partner from lspci subsystem info, then GPU name."""
+    """Identify AIB partner from lspci subsystem info, then GPU name"""
     board_partner = ""
     if pci_id:
         try:
@@ -696,9 +676,6 @@ def determine_amd_board_partner(pci_id: str, gpu_name: str) -> str:
                     if "subsystem:" in line.lower():
                         subsystem_line = line.lower()
                         break
-                # only the Subsystem line - not the full -v dump, which always
-                # contains an "MSI:"/"MSI-X:" interrupt capability line that
-                # would otherwise false-match brand "msi" on any AIB partner
                 for pattern, name in [
                     ("asus", "ASUS"), ("msi", "MSI"),
                     ("gigabyte", "Gigabyte"), ("sapphire", "Sapphire"),
@@ -733,7 +710,7 @@ def determine_amd_board_partner(pci_id: str, gpu_name: str) -> str:
                 break
     return board_partner
 def collect_cpu_temp():
-    """Single-pass hwmon scan checking AMD k10temp first, then Intel coretemp/pch."""
+    """Single-pass hwmon scan checking AMD k10temp first, then Intel coretemp/pch"""
     hwmon_base = "/sys/class/hwmon"
     try:
         for hw in os.listdir(hwmon_base):
@@ -791,24 +768,17 @@ def collect_memory():
         "percent":  round((used / total * 100), 1) if total else 0.0,
     }
 def collect_system_uptime():
-    """Reads uptime from /proc/uptime."""
+    """Reads uptime from /proc/uptime"""
     with open("/proc/uptime") as f:
         return float(f.read().split()[0])
-# Virtual/tunnel interface name prefixes to exclude from collect_network()'s totals - docker/podman
-# bridges, veth pairs, and VPN/tunnel adapters all carry the same bytes as the real physical link
-# underneath them (or aren't real link traffic at all), so summing them in would double-count or
-# inflate the rig's actual upload/download usage.
 _NETWORK_IGNORE_PREFIXES = ("lo", "docker", "veth", "br-", "virbr", "tun", "tap", "wg", "podman")
 def _read_network_bytes():
-    """Sums RX/TX byte counters from /proc/net/dev across all non-virtual interfaces at this instant.
-    These are raw cumulative counters that reset on reboot/link reset - collect_network() below takes
-    two of these readings a short interval apart to derive a live throughput figure, the same
-    sleep-then-diff technique collect_cpu_usage() already uses for %CPU."""
+    """Sums RX/TX byte counters from /proc/net/dev across all non-virtual interfaces at this instant"""
     rx_total = 0
     tx_total = 0
     try:
         with open("/proc/net/dev") as f:
-            lines = f.readlines()[2:]  # first two lines are headers
+            lines = f.readlines()[2:]
         for line in lines:
             if ":" not in line:
                 continue
@@ -819,18 +789,13 @@ def _read_network_bytes():
             fields = rest.split()
             if len(fields) < 9:
                 continue
-            rx_total += int(fields[0])  # bytes column
-            tx_total += int(fields[8])  # bytes column
+            rx_total += int(fields[0])
+            tx_total += int(fields[8])
     except Exception:
         pass
     return rx_total, tx_total
 def collect_network():
-    """rx_bytes/tx_bytes are the raw cumulative counters (reset on reboot/link reset) - used for the
-    Stats page's per-sample MB bar chart and running totals. rx_mbps/tx_mbps are a live, freshly-
-    measured throughput figure taken over a short window right now, NOT averaged across the (much
-    longer, ~90s by default) gap since the previous stored history sample - same "read, sleep
-    briefly, read again" technique as collect_cpu_usage(), so the Mbps line chart reflects the actual
-    rate at the moment each sample was taken instead of a smoothed-out average."""
+    """rx_bytes/tx_bytes are the raw cumulative counters (reset on reboot/link reset) - used for the Stats"""
     rx1, tx1 = _read_network_bytes()
     sample_window_s = 0.5
     time.sleep(sample_window_s)
@@ -911,7 +876,7 @@ def collect_docker_containers():
                     continue
     return containers
 def collect_service_uptime(service):
-    """Checks systemd unit `service` and echoes that same name back as "service" in the returned dict so the dashboard knows which unit this rig is reporting against."""
+    """Checks systemd unit `service` and echoes that same name back as 'service' in the returned dict so"""
     try:
         rc, out, _ = run(f"systemctl is-active {service}")
         state = out.strip().lower()
@@ -950,18 +915,7 @@ _BUILTIN_MINER_PROCESS_MAP = {
 _custom_miner_lock = threading.Lock()
 _CUSTOM_MINER_PROCESS_NAMES = {"cpu": "", "gpu": "", "aux": ""}
 def set_custom_miner_process_name(slot, name):
-    """Sets/replaces the currently-registered custom-miner process name for
-    one slot ("cpu"/"gpu"/"aux"). Safe to call more than once per slot, and
-    safe to call while detect_running_miners() is reading it on another
-    thread (both take _custom_miner_lock).
-    _BUILTIN_MINER_PROCESS_MAP is a permanent registry that is never mutated
-    anywhere - this function only ever touches
-    _CUSTOM_MINER_PROCESS_NAMES[slot], kept in a completely separate dict so
-    the two can never be merged/confused the way a shared dict could be.
-    Each of the three slots tracks its own custom-miner name independently
-    so more than one unrecognized miner can be collected at once (e.g. GPU
-    running keryx-miner while AUX runs keryxd) instead of the first one
-    found stealing a single shared name/slot."""
+    """Sets/replaces the currently-registered custom-miner process name for one slot ('cpu'/'gpu'/'aux')"""
     global _CUSTOM_MINER_PROCESS_NAMES
     with _custom_miner_lock:
         _CUSTOM_MINER_PROCESS_NAMES[slot] = (name or "").strip().lower()
@@ -983,7 +937,7 @@ _MINER_DOCKER_MAP = {
     "peakminer":    "peakminer",
 }
 def _docker_published_miners():
-    """Returns {miner_name: True} for running Docker containers matching a known miner image that publish at least one host port."""
+    """Returns {miner_name: True} for running Docker containers matching a known miner image that publish"""
     found = {}
     try:
         result = subprocess.run(
@@ -1007,7 +961,7 @@ def _docker_published_miners():
         print(f"Error detecting Docker miner containers: {e}")
     return found
 def _docker_known_miner_running():
-    """True if any running Docker container's image/name matches a known miner name in _MINER_DOCKER_MAP - name match only, published ports are NOT required (unlike _docker_published_miners(), which detect_running_miners() still uses). Feeds collect_full_stats()'s skip_gpu decision."""
+    """True if any running Docker container's image/name matches a known miner name in _MINER_DOCKER_MAP -"""
     try:
         result = subprocess.run(
             'docker ps --format "{{.Image}}|{{.Names}}"',
@@ -1029,17 +983,7 @@ _DEFAULT_IGNORED_DOCKER_IMAGES = (
     "vastai/test:common",
 )
 def _is_ignored_docker_image(image):
-    """True if `image` is a "gpu stats safe" sidecar - a platform rental/monitoring container
-    (the hardcoded defaults above, matching the equivalent hardcoded IGNORED_IMAGES entries in
-    the clore/vast Docker-Events monitor scripts) or one the user added via OVERRIDE_LIST in
-    rigcontrol-agent.conf (see rigcontrol_agent.sh, which sets this module's OVERRIDE_LIST global
-    at startup). Prefix match, same convention as should_ignore_image() in
-    Miner-scripts/Docker-Events/*.sh - case-insensitive on both the hardcoded defaults and
-    OVERRIDE_LIST entries. Without this, docker_containers_running() below treated ANY running
-    container - including a harmless sidecar like octaspace's own "octaspace/qubjetski:1"
-    monitoring container - as proof some other workload already owns the GPU, which blanked out
-    this rig's own GPU stats block ("GPUs (0)"/"No GPU data") even though the GPU was completely
-    idle."""
+    """True if `image` is a 'gpu stats safe' sidecar - a platform rental/monitoring container (the"""
     image_lower = (image or "").strip().lower()
     if not image_lower:
         return False
@@ -1047,14 +991,11 @@ def _is_ignored_docker_image(image):
         if image_lower.startswith(prefix.lower()):
             return True
     for prefix in OVERRIDE_LIST:
-        if prefix and prefix.strip().lower() in image_lower:  # keyword anywhere in the image (covers starts-with)
+        if prefix and prefix.strip().lower() in image_lower:
             return True
     return False
 def docker_containers_running():
-    """True if any Docker container is currently running whose image isn't a known "gpu stats
-    safe" sidecar (see _is_ignored_docker_image()) - feeds collect_full_stats()'s skip_gpu
-    decision (skip nvidia-smi only when something that might actually be using the GPU is
-    running)."""
+    """True if any Docker container is currently running whose image isn't a known 'gpu stats safe'"""
     rc, out, _ = run('docker ps --format "{{.Image}}"')
     if rc != 0 or not out.strip():
         return False
@@ -1065,14 +1006,6 @@ def docker_containers_running():
 _last_detected_miners_set = frozenset()
 _miners_set_changed_flag = False
 _custom_miner_last_pid = {}
-# Names whose PID changed on the current detect_running_miners() poll - a one-poll-lived
-# signal (cleared and rebuilt every call, not one-shot-consumed like
-# consume_miners_changed_flag()) so any collector called later in the SAME poll cycle
-# (e.g. _collect_named_miner_block_log_stats() below) can tell "did this miner just
-# restart" without re-querying/re-caching its PID itself. Safe to rely on now that
-# detect_running_miners() matches on exact exe basename (not a substring of the whole
-# command line) - see its docstring for why that used to make _custom_miner_last_pid
-# flap between two different PIDs for what was logically one miner.
 _miner_pid_changed_this_poll = set()
 _RIG_CONF_SLOT_PATHS = (
     ("cpu", "/etc/rigcontrol/rig-cpu.conf"),
@@ -1080,13 +1013,7 @@ _RIG_CONF_SLOT_PATHS = (
     ("aux", "/etc/rigcontrol/rig-aux.conf"),
 )
 def _read_conf_key(path, *keys, gpu_id="0"):
-    """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a
-    2-column KEY "value" variant, stored under an ALL fallback), returning the first key in
-    priority order with a resolved value. Duplicated from rigcontrol_agent.sh's identically-named
-    helper (there's no import path from here back into the agent) so detect_running_miners()
-    below can resolve a custom miner's slot straight from the flightsheet itself, instead of
-    only knowing about a slot once rigcontrol_agent.sh's resolve_custom_miner() has separately
-    registered it."""
+    """Reads a KEY GPU_ID 'value' row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY"""
     if not os.path.isfile(path):
         return ""
     def _strip_quotes(v):
@@ -1122,8 +1049,7 @@ def _read_conf_key(path, *keys, gpu_id="0"):
         print(f"Error reading {path}: {e}")
     return ""
 def _read_conf_key_json(path, *keys):
-    """JSON counterpart to _read_conf_key() - see that function's docstring for why this is
-    duplicated from rigcontrol_agent.sh rather than shared/imported."""
+    """JSON counterpart to _read_conf_key() - see that function's docstring for why this is duplicated"""
     if not os.path.isfile(path):
         return ""
     try:
@@ -1151,16 +1077,7 @@ def _read_conf_key_json(path, *keys):
     return ""
 _rig_slot_conf_cache = {"cpu": {"mtime": None, "name": ""}, "gpu": {"mtime": None, "name": ""}, "aux": {"mtime": None, "name": ""}}
 def _resolve_custom_name_for_slot(slot, conf_path):
-    """Returns the flightsheet-configured custom-miner process name for one slot
-    ("cpu"/"gpu"/"aux"), or "" if that slot isn't running a custom (unrecognized-by-name)
-    miner - i.e. its MINER field names something already in _BUILTIN_MINER_PROCESS_MAP (or is
-    unset). Mirrors rigcontrol_agent.sh's resolve_custom_miner() resolution order (CUSTOM_MINER_
-    BIN_<SLOT> override, then rig-<slot>.json, then rig-<slot>.conf) but is mtime-cached per slot
-    (checks the newer of the .json/.conf files) so detect_running_miners() can call this on every
-    single poll for free - only re-parses when the flightsheet actually changes. Called BEFORE
-    the ps aux scan below (not reactively after failing to match a line) so a slot's custom-miner
-    name is always known going into the match loop, whether or not that miner has ever been seen
-    running before."""
+    """Returns the flightsheet-configured custom-miner process name for one slot ('cpu'/'gpu'/'aux'), or"""
     override_bin = _read_agent_conf_val(f"CUSTOM_MINER_BIN_{slot.upper()}").strip()
     if override_bin:
         return os.path.basename(override_bin.rstrip("/"))
@@ -1178,54 +1095,18 @@ def _resolve_custom_name_for_slot(slot, conf_path):
     resolved = _read_conf_key_json(json_path, "CUSTOM_MINER", "MINER") or _read_conf_key(conf_path, "CUSTOM_MINER", "MINER")
     resolved_lower = resolved.strip().lower()
     if resolved_lower in _BUILTIN_MINER_PROCESS_MAP or resolved_lower in set(_BUILTIN_MINER_PROCESS_MAP.values()):
-        resolved = ""  # a known built-in miner, not custom - same "already known" check resolve_custom_miner() does
+        resolved = ""
     cache["mtime"] = mtime
     cache["name"] = resolved
     return resolved
 def consume_miners_changed_flag():
-    """Returns True if detect_running_miners() has observed the running-miner
-    set change since this was last called, then clears the flag (one-shot).
-    No longer used to gate custom-miner slot registration - detect_running_miners() below
-    resolves each slot's custom-miner name straight from the (cached) flightsheet on every
-    call now, so there's nothing left to gate on a "did the process set change" signal for.
-    Still available for any other caller that only cares about the running set changing."""
+    """Returns True if detect_running_miners() has observed the running-miner set change since this was"""
     global _miners_set_changed_flag
     changed = _miners_set_changed_flag
     _miners_set_changed_flag = False
     return changed
 def detect_running_miners():
-    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via `ps -eo pid=,args=` and Docker containers via docker ps. Caches the result and flags (see consume_miners_changed_flag) when it differs from the previous call.
-    Resolves each slot's custom-miner name from the flightsheet (via _resolve_custom_name_for_slot(),
-    mtime-cached) BEFORE building the match pattern, so a brand-new custom miner - keryx-miner
-    or anything else - gets matched to the right slot on the very same poll its process first shows
-    up, instead of needing a separate caller (rigcontrol_agent.sh's resolve_custom_miner()) to have
-    already registered it first.
-    Matches against each process's own invoked-executable basename (the first token of its `args`,
-    with any path stripped), NOT the full command line - matching the full line (as this used to,
-    via `ps aux | grep -E pattern`) means a wrapper/launcher script whose PATH argument merely
-    contains a miner's name (e.g. `bash /opt/miners/custom/keryxd/current/start-keryxd.sh`) matches
-    just as readily as the miner's own process line, even though the wrapper isn't the miner. Two
-    lines matching the same name for what's logically one miner meant whichever one `ps` happened
-    to list last that poll won the PID comparison below - not guaranteed stable poll to poll, so it
-    could flap between the wrapper's PID and the real binary's PID and look like a restart on every
-    flap (this is what broke keryxd's share counters after the PID-restart fix started trusting this
-    signal directly instead of re-querying independently). Matching on just the exe basename can't
-    be fooled by a wrapper's path/args this way; this fleet already runs miners inside detached
-    `screen -S <slot>` sessions, whose real binary always shows up as its own separate process with
-    its own accurate exe basename, not merged into screen's.
-    Also tracks each custom-miner slot's PID (_custom_miner_last_pid) independently of the
-    set-membership flag: a miner that crashes and restarts (or gets reinstalled to a new
-    version) keeps the same "custom_log_<slot>" key the whole time, so the set never changes
-    and consume_miners_changed_flag() alone would never notice. Comparing PIDs catches that
-    case directly from ps output and forces _named_miner_version() to re-query --version right
-    away (see the force=True call below) instead of relying on the API's self-reported uptime
-    ever rolling back - which never happens if the API was never reachable in the first place.
-    Also invalidates _agent_conf_cache's mtime on a PID change, forcing the next
-    _read_agent_conf_val() call (used for that miner's <NAME>_API_HOST/_PORT/_BIN/_LOG_PATH) to
-    re-read rigcontrol-agent.conf from disk immediately rather than waiting for its normal
-    mtime-diff check - a miner restart is exactly the moment a conf edit (e.g. adding the
-    matching API port for a version that just enabled its stats API) is most likely to need to
-    take effect right away, without waiting on the next incidental conf write."""
+    """Returns a deduplicated list of currently-running miner identifiers, checking native processes via"""
     global _last_detected_miners_set, _miners_set_changed_flag
     found = {}
     _miner_pid_changed_this_poll.clear()
@@ -1241,9 +1122,6 @@ def detect_running_miners():
                                    "gminer|onezerominer|wildrig|teamredminer|t-rex|keryx-miner|keryxd|peakminer"
                                    + "".join(f"|{re.escape(_cname)}" for _cname in custom_names.values() if _cname)
                                    + ")", re.IGNORECASE)
-        # No `grep` pipeline needed - `-eo pid=,args=` gives PID and the full argv as two
-        # cleanly-splittable fields directly, and matching happens in Python below against
-        # just the exe basename, so there's nothing left for a shell-side grep to filter.
         result = subprocess.run(
             ["bash", "-c", "ps -eo pid=,args="],
             capture_output=True, text=True, timeout=2
@@ -1260,11 +1138,6 @@ def detect_running_miners():
                 _exe_name = os.path.basename(_exe_token).lower()
                 if not name_pattern.search(_exe_name):
                     continue
-                # Figure out which custom-miner NAME this process is (whether or not it's
-                # currently attributed to a slot) before touching PID tracking at all -
-                # _custom_miner_last_pid/_named_miner_version_cache are both keyed by name,
-                # not by slot, so PID-change detection shouldn't depend on slot resolution
-                # having succeeded. _matched_slot is only used below for the found[] key.
                 _matched_slot = None
                 _matched_name = None
                 for _slot, _cname in custom_names.items():
@@ -1273,11 +1146,6 @@ def detect_running_miners():
                         _matched_name = _cname
                         break
                 if _matched_name is None:
-                    # keryx-miner/keryxd are the only names hardcoded into name_pattern ahead
-                    # of any slot resolution (see the base pattern above) - matching one here
-                    # with no assigned slot means it's running but not named in any flightsheet
-                    # right now. Still worth tracking its PID/version; just nothing to attribute
-                    # it to in found[] until a flightsheet actually claims it.
                     for _hint_name in ("keryx-miner", "keryxd"):
                         if _hint_name in _exe_name:
                             _matched_name = _hint_name
@@ -1289,11 +1157,6 @@ def detect_running_miners():
                         _custom_miner_last_pid[_matched_name] = _pid
                         _miner_pid_changed_this_poll.add(_matched_name)
                         _agent_conf_cache["mtime"] = None
-                        # Also force _resolve_custom_name_for_slot()'s per-slot cache to
-                        # re-read rig-*.conf/.json on the next call - a restart is exactly
-                        # the moment a flightsheet reassignment is most likely to need to
-                        # take effect immediately rather than waiting on its own mtime check
-                        # (which only fires on an actual file edit, not a miner restart).
                         for _c in _rig_slot_conf_cache.values():
                             _c["mtime"] = None
                         _named_miner_version(_matched_name, force=True)
@@ -1311,7 +1174,7 @@ def detect_running_miners():
         _miners_set_changed_flag = True
     return list(found.keys())
 def collect_miner_stats_based_on_processes():
-    """Collect stats only for miners currently running."""
+    """Collect stats only for miners currently running"""
     collectors = {
         "xmrig":        collect_xmrig_stats,
         "lolminer":     collect_lolminer_stats,
@@ -1336,28 +1199,12 @@ def collect_miner_stats_based_on_processes():
             except Exception as e:
                 stats[f"miner_{miner}"] = {"status": "error", "error": str(e)}
     return stats
-# ===== Shared result-shape helpers =====
-# Every collect_*_stats() function below (and the Windows agent's rigcontrol_telemetry.py, which
-# uses the identical field names/shape for this same set of builders) returns through these three
-# builders instead of hand-rolling its own dict, so every miner - regardless of how different its
-# raw API is - reports back through the SAME top-level keys, the SAME per-algorithm key set, and the
-# SAME per-GPU key set. Before this, each collector had grown its own subset (e.g. some GPU lists
-# keyed by "id", others "index" or "gpu_id"; power/temp under different names per miner; accepted/
-# rejected present on some GPU entries and not others) since they were written one at a time against
-# each miner's own API shape. The raw PARSING logic per miner is unchanged here - every collector
-# still reads whatever fields its own miner's API actually has - only the OUTPUT shape is unified, so
-# the frontend's DataHelper can build off one consistent schema instead of special-casing every miner.
 def _build_algo_entry(algorithm, hashrate_hs=None, accepted_shares=None, rejected_shares=None,
                        stale_shares=None, invalid_shares=None, cpu_hashrate_hs=None,
                        gpu_hashrate_hs=None, mining_type=None, pool=None, pool_url=None,
                        pool_latency_ms=None, difficulty=None, workers=None, thread_hashrates=None,
                        **extra):
-    """Canonical per-algorithm entry - every key below is present on every miner's algorithms[]
-    entries now, left as None when that particular miner's API doesn't report it, instead of the key
-    being absent entirely. **extra still lets a genuinely miner-specific field (e.g. lolminer's
-    worker_accepted list, T-Rex's hashrate_hour) be attached without forcing every OTHER miner to
-    also carry a None-filled version of it - only the fields meaningful across most miners are
-    mandatory above."""
+    """Canonical per-algorithm entry - every key below is present on every miner's algorithms[] entries"""
     entry = {
         "algorithm":        algorithm,
         "hashrate_hs":      hashrate_hs,
@@ -1380,13 +1227,7 @@ def _build_algo_entry(algorithm, hashrate_hs=None, accepted_shares=None, rejecte
 def _build_gpu_entry(index, name=None, hashrate_hs=None, accepted_shares=None, rejected_shares=None,
                       stale_shares=None, invalid_shares=None, power=None, core_clock=None,
                       mem_clock=None, temperature=None, mem_temp=None, fan_speed=None, **extra):
-    """Canonical per-GPU entry. Several miners here (rigel, wildrig, lolminer, gminer, T-Rex,
-    peakminer) already report real per-device power/clock/temp/fan straight from their own API - this
-    just normalizes the KEY NAMES those get stored under (e.g. "power_usage"/"power_w" -> "power",
-    "memory_clock" -> "mem_clock") to match what the frontend's DataHelper already recognizes, and
-    guarantees every miner's gpu entries carry the same core key set. **extra keeps miner-specific
-    extras (bus_id, uuid, pci_address, lhr_unlock, hashrate_minute/hour/day, etc.) without spreading
-    None-filled versions of them onto every other miner's entries."""
+    """Canonical per-GPU entry"""
     entry = {
         "gpu_id":          index,
         "index":           index,
@@ -1408,17 +1249,7 @@ def _build_gpu_entry(index, name=None, hashrate_hs=None, accepted_shares=None, r
 def _build_miner_result(status, miner, miner_version=None, uptime_s=None, algorithms=None, gpus=None,
                          error=None, total_hashrate_hs=None, total_accepted_shares=None,
                          total_rejected_shares=None, **extra):
-    """Canonical top-level shape for every collect_*_stats() return value. total_hashrate_hs/
-    total_accepted_shares/total_rejected_shares default to summing algorithms[] so they can't drift
-    out of sync with the per-algorithm numbers returned alongside them - correct for miners where
-    each algorithms[] entry represents genuinely separate hashrate (e.g. srbminer's CPU+GPU entries,
-    bzminer's dual GPU+CPU split). Pass an explicit override for a miner where that assumption is
-    wrong instead - e.g. lolminer/onezerominer's dual-algo mining reports the SAME underlying GPU
-    hashrate under two different algorithms[] entries at once, so summing them would double-count;
-    those two collectors explicitly pass algorithms[0]'s numbers through here instead. **extra still
-    lets a specific miner attach genuinely miner-specific top-level fields (T-Rex's watchdog block,
-    XMRig's cpu/system blocks, etc.) without forcing every other miner to also carry a None-filled
-    version."""
+    """Canonical top-level shape for every collect_*_stats() return value"""
     algorithms = algorithms or []
     result = {
         "status":        status,
@@ -1838,9 +1669,6 @@ def collect_lolminer_stats():
         uptime_s=session.get("Uptime", 0),
         algorithms=algorithms,
         gpus=gpus,
-        # lolminer's dual-algo mining reports the SAME underlying GPU hashrate under two different
-        # algorithms[] entries at once (that's what dual mining IS) - summing across all entries would
-        # double-count, so only algorithms[0]'s own numbers represent the actual rig total.
         total_hashrate_hs=algorithms[0]["hashrate_hs"] if algorithms else 0,
         total_accepted_shares=algorithms[0]["accepted_shares"] if algorithms else 0,
         total_rejected_shares=algorithms[0]["rejected_shares"] if algorithms else 0,
@@ -1908,9 +1736,6 @@ def collect_onezerominer_stats():
         uptime_s=data.get("uptime_seconds", 0),
         algorithms=algorithms,
         gpus=gpus,
-        # Same reasoning as lolminer above - onezerominer's "algos" entries can represent dual-algo
-        # mining on the SAME GPUs (not "split" mode, where different GPUs mine different algos and
-        # summing would be correct) - algorithms[0] alone is the safe, conservative total.
         total_hashrate_hs=algorithms[0]["hashrate_hs"] if algorithms else 0,
         total_accepted_shares=algorithms[0]["accepted_shares"] if algorithms else 0,
         total_rejected_shares=algorithms[0]["rejected_shares"] if algorithms else 0,
@@ -1987,7 +1812,7 @@ def collect_gminer_stats():
         pool_speed=data.get("pool_speed", 0),
     )
 def collect_xmrig_stats():
-    """Collect XMRig stats from CPU and/or GPU instances."""
+    """Collect XMRig stats from CPU and/or GPU instances"""
     cpu_host = os.environ.get("XMRIG_CPU_API_HOST",
                os.environ.get("XMRIG_API_HOST", "127.0.0.1"))
     cpu_port = int(os.environ.get("XMRIG_CPU_API_PORT",
@@ -2071,7 +1896,7 @@ def collect_xmrig_stats():
         },
     )
 def collect_teamredminer_stats():
-    """TeamRedMiner uses HTTP/0.9 text protocol on port 4028."""
+    """TeamRedMiner uses HTTP/0.9 text protocol on port 4028"""
     algorithm = pool_name = "unknown"
     try:
         result = subprocess.run(
@@ -2200,7 +2025,7 @@ def collect_trex_stats():
         },
     )
 def collect_peakminer_stats():
-    """Reads PeakMiner's /summary HTTP endpoint; reports invalid_shares as its own field since PeakMiner has no separate rejected counter."""
+    """Reads PeakMiner's /summary HTTP endpoint; reports invalid_shares as its own field since PeakMiner"""
     host = os.environ.get("PEAKMINER_API_HOST", "127.0.0.1")
     port = int(os.environ.get("PEAKMINER_API_PORT", "4068"))
     try:
@@ -2241,14 +2066,12 @@ def collect_peakminer_stats():
             last_share_at=data.get("last_share_at"), pool_connected=pool.get("connected", False),
         )],
         gpus=gpus,
-        # PeakMiner has no separate rejected counter - reports everything that isn't accepted as
-        # invalid_shares instead, so total_rejected_shares is always 0 by design here, not a bug.
         total_rejected_shares=0,
         rig_name=RIG_NAME, dev_fee_percent=data.get("dev_fee_percent", 0),
         power_w=data.get("power_w", 0), total_invalid_shares=data.get("invalid_shares", 0),
     )
 def _query_binary_version(bin_path):
-    """Runs `<bin_path> --version` and returns its first line, or "" on any failure; generic helper also used by _named_miner_version()."""
+    """Runs `<bin_path> --version` and returns its first line, or '' on any failure; generic helper also"""
     try:
         out = subprocess.run(
             [bin_path, "--version"], capture_output=True, text=True, timeout=2.0
@@ -2258,20 +2081,13 @@ def _query_binary_version(bin_path):
     except Exception:
         return ""
 def _sanitize_miner_key(name):
-    """Converts a miner name into a valid rigcontrol-agent.conf variable prefix, e.g.
-    "keryx-miner" -> "KERYX_MINER". Strips a trailing "-linux-x86_64" platform/arch suffix and any
-    trailing version-number segment first (e.g. "quanpool-miner-6.2.0-linux-x86_64" ->
-    "quanpool-miner" -> "QUANPOOL_MINER"), mirroring the identical fix applied to the bash
-    launchers' MINER_UPPER derivation (see Miner-scripts/Docker-Events/*.sh) - without this, every
-    custom miner's *_API_HOST/_API_PORT/_BIN/_LOG_PATH rigcontrol-agent.conf key would be pinned to
-    one exact binary version and silently stop matching (falling back to "no log file"/API-disabled)
-    the moment that miner gets updated to a new version."""
+    """Converts a miner name into a valid rigcontrol-agent.conf variable prefix, e.g"""
     base = (name or "").strip()
     base = re.sub(r"-linux-x86_64$", "", base, flags=re.IGNORECASE)
     base = re.sub(r"-[0-9][0-9A-Za-z_.]*$", "", base)
     return re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_").upper()
 def _named_miner_bin(name):
-    """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back to CUSTOM_MINER_BASE_DIR/custom/<name>/current/<name> - matches 01-miner_install.sh's install_custom_miner(), which always installs under a "custom/" subdirectory (miner_dir="$BASE_DIR/custom/$bin_name/current"). This fallback previously omitted "custom/", so it silently pointed at a different, never-installed/never-updated path instead of the real binary - version queries against a custom miner with no <NAME>_BIN override would keep reporting whatever (if anything) happened to already exist at that wrong location."""
+    """Resolves a named custom miner's binary path via <NAME>_BIN in rigcontrol-agent.conf, falling back"""
     if not name:
         return ""
     bin_path = os.environ.get(f"{_sanitize_miner_key(name)}_BIN", "").strip()
@@ -2280,14 +2096,14 @@ def _named_miner_bin(name):
     return f"{CUSTOM_MINER_BASE_DIR}/custom/{name}/current/{name}"
 _named_miner_version_cache = {}
 def _named_miner_version(name, force=False):
-    """Caches and returns `<name> --version`'s first line, re-querying only when forced (e.g. on a detected restart)."""
+    """Caches and returns `<name> --version`'s first line, re-querying only when forced (e.g"""
     cache = _named_miner_version_cache.setdefault(name, {"version": "", "queried": False, "last_uptime_s": None})
     if force or not cache["queried"]:
         cache["version"] = _query_binary_version(_named_miner_bin(name))
         cache["queried"] = True
     return cache["version"]
 def _tail_file(path, max_bytes=131072):
-    """Read the last max_bytes of a file as text (cheap tail, no deps)."""
+    """Read the last max_bytes of a file as text (cheap tail, no deps)"""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -2299,16 +2115,7 @@ def _tail_file(path, max_bytes=131072):
         return None
 _log_event_state = {}
 def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
-    """Reads only what's been appended to path since the last call. A shrink is checked
-    against a small fingerprint of the last bytes we actually read (state['tail_fp']): if
-    that fingerprint still appears in the shrunk file, it's an in-place trim (e.g.
-    tail -c N > file, same fd the writer still holds) - resume right after the fingerprint
-    so an already-seen/already-matched line never gets read (and re-actioned) twice, while
-    any genuinely new bytes appended in that same window still come through. If the
-    fingerprint isn't found, it's a real restart - start over from byte 0. (Inode alone
-    isn't reliable here - a freed inode can be reused immediately by the fresh log, so a
-    genuine restart can land on the very same inode number.) Falls back to the old
-    size-threshold guess only before we have any fingerprint yet."""
+    """Reads only what's been appended to path since the last call"""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -2343,10 +2150,9 @@ def _read_new_log_bytes(path, state, restart_threshold_bytes=1048576):
         return data.decode("utf-8", errors="ignore")
     except Exception:
         return None
-AGENT_CONF_PATH = "/etc/rigcontrol/rigcontrol-agent.conf"
 _agent_conf_cache = {"mtime": None, "data": {}}
 def _read_agent_conf_val(key):
-    """Reads a KEY=value from rigcontrol-agent.conf, only re-reading/re-parsing the file when its mtime has changed since the last call - same live-read intent as docker_events_universal.sh (edited custom-miner settings apply on the next poll, no agent restart needed) without hitting disk on every single call."""
+    """Reads a KEY=value from rigcontrol-agent.conf, only re-reading/re-parsing the file when its mtime"""
     try:
         mtime = os.path.getmtime(AGENT_CONF_PATH)
     except OSError:
@@ -2367,7 +2173,7 @@ def _read_agent_conf_val(key):
         _agent_conf_cache["data"] = data
     return _agent_conf_cache["data"].get(key, "")
 def _find_slot_miner_pid(slot):
-    """Finds the PID/cmdline of the miner process running inside the detached `screen -S <slot>` session (slot is "cpu"/"gpu"/"aux"), or (None, None) if not found."""
+    """Finds the PID/cmdline of the miner process running inside the detached `screen -S <slot>` session"""
     try:
         result = subprocess.run(["screen", "-list"], capture_output=True, text=True, timeout=2)
     except Exception:
@@ -2410,7 +2216,7 @@ def _find_slot_miner_pid(slot):
         frontier = next_frontier
     return None, None
 def resolve_active_miner_api(slot):
-    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is actually running under the given slot ("cpu"/"gpu"/"aux"), reusing the collect_*_stats() port conventions. Returns {"method": "http"/"tcp"/"none", ...}."""
+    """Resolves the real HTTP/TCP stats-API endpoint for whichever miner is actually running under the"""
     pid, cmdline = _find_slot_miner_pid(slot)
     if not cmdline:
         return {"method": "none", "reason": f"no active miner process found under the '{slot}' screen session"}
@@ -2477,15 +2283,7 @@ def resolve_active_miner_api(slot):
         "reason": f"detected '{bin_name}' but no known API port for it (set {key}_API_HOST / {key}_API_PORT in rigcontrol-agent.conf)",
     }
 def collect_named_custom_miner_stats(slot):
-    """Telemetry for the custom miner registered for this slot ("cpu"/"gpu"/"aux",
-    via set_custom_miner_process_name()); every setting is looked up fresh in
-    rigcontrol-agent.conf on each call under a prefix derived from the
-    miner's own name - <NAME>_BIN for the binary, <NAME>_API_HOST/<NAME>_API_PORT
-    for a keryx-style JSON stats API, or <NAME>_LOG_PATH for log scraping
-    (add <NAME>_LOG_STYLE=blocks for keryxd-style "Accepted N blocks"
-    counting instead of generic hashrate scraping). Each slot is resolved
-    independently so more than one unrecognized miner (e.g. keryx-miner on
-    gpu and keryxd on aux) can be collected at the same time."""
+    """Telemetry for the custom miner registered for this slot ('cpu'/'gpu'/'aux', via"""
     with _custom_miner_lock:
         name = _CUSTOM_MINER_PROCESS_NAMES.get(slot, "")
     if not name:
@@ -2502,13 +2300,7 @@ def collect_named_custom_miner_stats(slot):
         return _collect_named_miner_block_log_stats(name, log_path, mining_type)
     return _collect_named_miner_generic_log_stats(name, key, log_path, mining_type)
 def _parse_hive_style_miner_stats(name, data, mining_type="GPU"):
-    """Parses HiveOS-format miner stats (suprminer-neptune), e.g.
-      {"hs":[305052200.41],"hs_units":"hs","temp":[51],"fan":[72],"power":[222],
-       "core_clock":[2580],"mem_clock":[5001],"ar":[69,1,0],"algo":"neb","ver":"1.9.52",
-       "uptime":1393,"total_khs":305052.2,"pool":"stratum+tcp://...","diff":25224620361,
-       "active":true}
-    "ar" is [accepted, rejected, invalid] in aggregate (not per GPU), so per-GPU share counts are
-    only attributed on a single-GPU rig. hs values are scaled by "hs_units" (hs/khs/mhs/ghs)."""
+    """Parses HiveOS-format miner stats (suprminer-neptune), e.g"""
     mult = {"hs": 1, "khs": 1e3, "mhs": 1e6, "ghs": 1e9}.get(str(data.get("hs_units", "hs")).lower(), 1)
     hs = [float(x or 0) * mult for x in (data.get("hs") or [])]
     total_hr = sum(hs)
@@ -2552,33 +2344,7 @@ def _parse_hive_style_miner_stats(name, data, mining_type="GPU"):
         gpus=gpus,
     )
 def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
-    """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected OPoI SHARE counts, and
-    (on builds that report it) real per-device temp/fan/power/clock/vram readings. The API's own
-    JSON keys are literally named "accepted_blocks"/"rejected_blocks"/"blocks_accepted"/
-    "blocks_rejected" (kept as-is below since that's what the miner actually calls them), but for
-    keryx-MINER (this function) they count accepted/rejected OPoI shares this rig submitted, not
-    distinct blockchain blocks - "block" in that literal sense only applies to keryxD, the node
-    (see _collect_named_miner_block_log_stats() below, which really does count blocks off keryxd's
-    own log). Confirmed live via:
-      $ curl 127.0.0.1:3338/stats
-      {"started_epoch_s":..., "uptime_s":512, "synced":true, "opoi_challenge_active":false,
-       "mining_address":"keryx:...", "api_port":3338, "total_hashrate_hs":2163142,
-       "accepted_blocks":5, "rejected_blocks":0, "claimed_outputs":2913,
-       "claimed_sompi":303660659242, "escrow_pending_outputs":1451,
-       "escrow_pending_sompi":150064094454, "last_update_epoch_s":..., "devices":[
-         {"id":"#0 (NVIDIA GeForce RTX 3090)", "hashrate_hs":2163142, "blocks_accepted":5,
-          "blocks_rejected":0, "temp_c":57, "memory_temp_c":null, "fan_percent":92,
-          "power_draw_w":333.238}
-       ]}
-    (claimed_outputs/claimed_sompi/escrow_pending_outputs/escrow_pending_sompi are Keryx-protocol
-    wallet/escrow bookkeeping, not GPU or mining-rate data - not surfaced here, same as the Windows
-    agent's collect_keryx_stats().)
-    Deliberately NOT used for temp/fan/power/clock/vram even when a build reports them (e.g.
-    0.11.10's per-device temp_c/fan_percent/power_draw_w/core_mhz/mem_mhz/vram_total_mb/
-    vram_used_mb) - those always come from collect_nvidia_gpu_stats() (nvidia-smi) instead, same
-    as the Windows agent's collect_keryx_stats(), so there's a single source of truth for GPU
-    sensor readings instead of the miner's own numbers disagreeing with it. The frontend merges
-    the system GPU list with each miner's own "gpus" list by index."""
+    """Reads a keryx-style JSON /stats API for hashrate, accepted/rejected OPoI SHARE counts, and (on"""
     data = None
     last_err = None
     for path in ("/stats", "/v1/miner/stats", "/"):
@@ -2594,20 +2360,8 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
             error=f"{name} API unreachable at {api_host}:{api_port} (/stats, /v1/miner/stats): {last_err}",
             miner_version=_named_miner_version(name),
         )
-    # HiveOS-style stats (suprminer-neptune): {"hs":[..],"hs_units":"hs","ar":[acc,rej,invalid],
-    # "algo":"neb","ver":"1.9.52","uptime":N,"pool":..,"diff":..,"temp":[..],...}. Handled
-    # separately; GPU sensors still come from nvidia-smi like every other miner here.
     if isinstance(data, dict) and isinstance(data.get("hs"), list) and "ar" in data:
         return _parse_hive_style_miner_stats(name, data, mining_type)
-    # keryx-miner-supr 0.11.10 changed its device key from "id" to "name" (still holding the same
-    # "#N (GPU NAME)" string, just under a different JSON key) and moved accepted/rejected off the
-    # top level into a nested "shares": {"accepted":.., "rejected":..} object - confirmed via a raw
-    # /stats response pasted from a live 0.11.10 rig. dev.get("id") or dev.get("name") and the
-    # accepted_shares/rejected_shares fallback below handle both the old and new shape, so this keeps
-    # working across the schema change either direction without needing to pin a version. That same
-    # 0.11.10 response also includes real per-device core_mhz/mem_mhz/fan_pct/power_w/temp_c/
-    # vram_total_mb/vram_used_mb readings, but those are never read here - see the docstring above
-    # for why GPU sensor readings always come from collect_nvidia_gpu_stats() instead.
     device_re = re.compile(r"#(\d+)\s*\(([^)]+)\)")
     raw_devices = data.get("devices", []) or []
     parsed_devices = []
@@ -2619,10 +2373,6 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
         parsed_devices.append((idx, gname, dev))
     parsed_devices.sort(key=lambda d: d[0])
     total_hr_hs = data.get("total_hashrate_hs", 0)
-    # Despite the API's own "accepted_blocks"/"rejected_blocks" key names, these are accepted/
-    # rejected OPoI SHARE counts for keryx-miner, not distinct blockchain blocks - see the
-    # docstring above. Named accepted_shares/rejected_shares here (rather than mirroring the API's
-    # own "_blocks" naming) so this doesn't read as literal block counts anywhere below.
     if "accepted_blocks" in data or "rejected_blocks" in data:
         accepted_shares = data.get("accepted_blocks", 0)
         rejected_shares = data.get("rejected_blocks", 0)
@@ -2632,29 +2382,13 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
         rejected_shares = shares.get("rejected", 0)
     uptime_s = data.get("uptime_s", 0)
     cache = _named_miner_version_cache.setdefault(name, {"version": "", "queried": False, "last_uptime_s": None})
-    # Newer keryx-miner-supr builds (confirmed on 0.11.10) report their own "version" field directly
-    # in the /stats response, which is always fresh (no caching needed - it's already the live poll
-    # result) and sidesteps the whole class of "stale cached --version subprocess result" bugs this
-    # fleet hit earlier with the bin-path-based _named_miner_version() approach. Only fall back to
-    # shelling out to --version (via the uptime-drop restart check below) when an older build's
-    # response doesn't include "version" at all.
     if data.get("version"):
         cache["version"] = f"{name} {data['version']}"
         cache["queried"] = True
     elif cache.get("last_uptime_s") is None or uptime_s < cache["last_uptime_s"]:
         _named_miner_version(name, force=True)
     cache["last_uptime_s"] = uptime_s
-    # Confirmed live (see docstring above), each device object reports its own real
-    # "blocks_accepted"/"blocks_rejected" share counts - prefer those over the aggregate whenever
-    # a device actually has them, so multi-GPU rigs get honest per-device accepted/rejected
-    # instead of None. Same reasoning as the Windows agent's collect_keryx_stats() for the
-    # fallback below: older builds only report accepted/rejected in AGGREGATE, never broken down
-    # per device, so there's no way to honestly attribute them to a specific GPU on a multi-GPU
-    # rig - but on a single-GPU rig there's no ambiguity, the one GPU IS the whole aggregate.
     single_gpu = len(parsed_devices) == 1
-    # No power/core_clock/mem_clock/temperature/mem_temp/fan_speed/vram_*/efficiency_mhs_per_w
-    # here even when a device reports them - see the docstring above, GPU sensor readings never
-    # come from this API, only from collect_nvidia_gpu_stats() (merged in by the frontend by index).
     gpus = [
         _build_gpu_entry(
             idx, name=gname, hashrate_hs=dev.get("hashrate_hs", 0),
@@ -2680,59 +2414,16 @@ def _collect_named_miner_api_stats(name, api_host, api_port, mining_type="AUX"):
         synced=data.get("synced"),
         mining_address=data.get("mining_address", ""),
     )
-# Real "Accepted N blocks"/"N via submit block" batches seen in practice
-# top out in the low tens (e.g. 14, 4, 2) - never anywhere close to
-# thousands. A captured digit group this large almost certainly isn't a
-# real batch count; it's a corrupted/torn line (e.g. two concurrently-
-# written log lines interleaved so some unrelated large number ends up
-# right where a count was expected). Discarding rather than trusting it
-# stops a single bad line from permanently poisoning the cumulative
-# counter - on top of, not instead of, the line-anchoring and PID-restart
-# fixes below.
 _NAMED_MINER_BLOCK_MAX_PLAUSIBLE_BATCH = 1000
-
 def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
-    """Tails a keryxd-style log for "Accepted N blocks" lines and sums the
-    counts since the last poll, offset-tracked via _read_new_log_bytes -
-    same as before, this total still feeds hashrate_hs/total_hashrate_hs.
-    Newer keryxd builds additionally break that count down by how each
-    block was accepted, e.g.:
-      2026-08-22 00:41:02.115-04:00 [INFO ] Accepted 4 blocks ...591275976f18aeb3d5d9c3ddce13dc85908597b578c9855caa84b21cee5ccfeb, 2 via relay and 2 via submit block
-    "via relay" blocks are just other nodes' finds propagating through -
-    they say nothing about this rig's own mining. "via submit block" is
-    this node actually submitting a block itself, the real accepted-share
-    signal - that sub-count is tracked as a second, separate running
-    total and surfaced as accepted_shares/total_accepted_shares,
-    alongside (not instead of) the existing hashrate_hs/total_hashrate_hs
-    total-blocks-accepted metric above. Both totals reset to 0 whenever
-    the miner itself restarts - detected two ways: the log file going
-    small (a real replace/truncate) OR the miner's PID changing (catches
-    restarts where the service wrapper just keeps appending to the same
-    log file, which the file-size check alone would miss forever). This
-    is only ever called (via collect_named_custom_miner_stats()) for a
-    name detect_running_miners() already matched THIS poll, so its
-    PID-change signal (_miner_pid_changed_this_poll, populated at the
-    exact point detect_running_miners() already does its own PID compare
-    against _custom_miner_last_pid) is reused directly here instead of
-    re-querying/re-caching the PID independently.
-
-    The line regex below is anchored to the real line shape - timestamp +
-    "[LEVEL]" + "Accepted N blocks" - rather than just "digits near the
-    right words" anywhere in the tail window. That means a corrupted/torn
-    line can only produce a match if it also happens to start with a
-    well-formed timestamp, which is far less likely than merely landing
-    next to "via submit block". group(1) is the total count, group(2) is
-    the submit-block sub-count (None on relay-only lines).
-    """
+    """Tails a keryxd-style log for 'Accepted N blocks' lines and sums the counts since the last poll"""
     line_re = re.compile(
         r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2}[ \t]+"
         r"\[[A-Za-z]+\s*\][ \t]+Accepted[ \t]+(\d+)[ \t]+blocks?"
         r"(?:[^\n]*?[ \t](\d+)[ \t]+via[ \t]+submit[ \t]+blocks?)?",
         re.MULTILINE,
     )
-
     miner_restarted = name in _miner_pid_changed_this_poll
-
     share_state = _log_event_state.setdefault(
         log_path, {"offset": 0, "accepted_shares": 0, "submit_block_shares": 0}
     )
@@ -2743,8 +2434,6 @@ def _collect_named_miner_block_log_stats(name, log_path, mining_type="AUX"):
             miner_version=_named_miner_version(name),
         )
     if share_state.get("reset") or miner_restarted:
-        # A real restart - detected either way above - starts a genuinely
-        # new session; zero both counts instead of carrying them forward.
         share_state["accepted_shares"] = 0
         share_state["submit_block_shares"] = 0
     for match in line_re.finditer(new_text):
@@ -2780,7 +2469,7 @@ _CUSTOM_ACCEPTED_RE = re.compile(r"accepted[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_REJECTED_RE = re.compile(r"rejected[^\d\n]{0,10}(\d+)", re.IGNORECASE)
 _CUSTOM_HASHRATE_UNIT_MULTIPLIER = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12, "p": 1e15}
 def _collect_named_miner_generic_log_stats(name, key, log_path, mining_type="AUX"):
-    """Best-effort telemetry scraped from a custom miner's own log, taking the last matching hashrate/accepted/rejected line in the tail window; tail size configurable via <NAME>_LOG_TAIL_BYTES."""
+    """Best-effort telemetry scraped from a custom miner's own log, taking the last matching"""
     tail_bytes = int(os.environ.get(f"{key}_LOG_TAIL_BYTES", "65536"))
     text = _tail_file(log_path, max_bytes=tail_bytes)
     if text is None:
@@ -2822,14 +2511,8 @@ ALL_TELEMETRY_GROUPS = {
     "cpu_temp", "cpu_usage", "load", "memory", "uptime", "gpu", "miner", "docker", "network",
     "cpu_service", "gpu_service", "aux_service", "watchdog_service",
 }
-# ---- OctaSpace node (osn) stats -------------------------------------------------------------
-# Scrapes the osn agent's local Prometheus endpoint. Returns None when osn isn't running/reachable
-# so stats["octaspace"] is only present when osn data is actually available.
-OSN_URL = os.environ.get("OSN_METRICS_URL", "http://127.0.0.1:18888/metrics")
-OSN_UNIT = os.environ.get("OSN_SERVICE_NAME", "osn")
 _OSN_LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+(\S+)')
 _OSN_LABEL = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
-# Label names that identify a GPU / NIC / disk, in order of preference.
 _OSN_ID_KEYS = ("index", "gpu", "uuid", "bus_id", "pci", "device", "iface", "interface", "name")
 def _osn_parse(text):
     for line in text.splitlines():
@@ -2857,7 +2540,7 @@ def _osn_service_active():
     except Exception:
         return None
 def _osn_group(samples, prefix):
-    """osn_gpu_temp{index="0"} -> {"0": {"temp": ...}}"""
+    """osn_gpu_temp{index='0'} -> {'0': {'temp': ...}}"""
     out = {}
     for name, labels, val in samples:
         if not name.startswith(prefix):
@@ -2870,9 +2553,7 @@ def _osn_group(samples, prefix):
         out.setdefault(key, {})[field] = _osn_num(val)
     return out
 def _osn_gpus(samples):
-    """Per-GPU dict keyed by GPU index (str), already in the universal gpus[] field names, built from
-    osn's explicit osn_gpu_* series (labels: gpu, uuid, model, bus_id; clock/reason for sub-series).
-    Units converted: clock Hz -> MHz, memory bytes -> MB."""
+    """Per-GPU dict keyed by GPU index (str), already in the universal gpus[] field names, built from"""
     gpus = {}
     def g(labels):
         return gpus.setdefault(str(labels.get("gpu", "0")), {})
@@ -2892,8 +2573,8 @@ def _osn_gpus(samples):
         if f == "utilization_percent":            d["util"] = int(val)
         elif f == "temperature_celsius":          d["temp"] = int(val)
         elif f == "fan_percent":                  d["fan_percent"] = int(val)
-        elif f == "memory_temperature_celsius":   d["mem_temp"] = int(val)   # AMD only
-        elif f == "hotspot_temperature_celsius":  d["hotspot_temp"] = int(val)  # AMD only
+        elif f == "memory_temperature_celsius":   d["mem_temp"] = int(val)
+        elif f == "hotspot_temperature_celsius":  d["hotspot_temp"] = int(val)
         elif f == "power_draw_watts":             d["power_watts"] = val
         elif f == "power_limit_watts":            d["power_limit"] = val
         elif f == "power_default_limit_watts":    d["power_limit_default"] = val
@@ -2913,7 +2594,7 @@ def _osn_gpus(samples):
             d["pstate"] = labels.get("pstate")
     return gpus
 def collect_osn(timeout=2):
-    """Returns the osn stats dict, or None if osn's metrics endpoint isn't reachable."""
+    """Returns the osn stats dict, or None if osn's metrics endpoint isn't reachable"""
     try:
         text = urllib.request.urlopen(OSN_URL, timeout=timeout).read().decode()
     except Exception:
@@ -2927,7 +2608,6 @@ def collect_osn(timeout=2):
     res["cuda"] = info.get("cuda")
     start = flat.get("osn_start_time_seconds")
     res["uptime_s"] = int(time.time() - start) if start else None
-    # These two emit no sample when idle, so absent == 0.
     res["activity"] = _osn_num(flat.get("osn_activity", 0))
     res["link"] = {
         "connected": _osn_num(flat.get("osn_link_connected", 0)),
@@ -2943,9 +2623,6 @@ def collect_osn(timeout=2):
     res["disk_free"] = _osn_num(flat.get("osn_docker_disk_free_bytes"))
     res["disk_total"] = _osn_num(flat.get("osn_docker_disk_total_bytes"))
     res["gpu_passthrough"] = _osn_num(flat.get("osn_gpu_passthrough_active", 0))
-    # osn says GPU readings are stale while the GPUs are passed through to a VM, and are zeros/missing
-    # when its own GPU read failed - in both cases treat osn as having no GPU data so the local
-    # nvidia-smi values (and OSN_GPU_ONLY's fallback) take over.
     if res["gpu_passthrough"] or "gpus" in res["collect_failed"]:
         res["gpus"] = {}
     else:
@@ -2954,9 +2631,7 @@ def collect_osn(timeout=2):
     res["net"] = _osn_group(samples, "osn_network_")
     return res
 def _gpu_passthrough_local(base="/sys/bus/pci/devices"):
-    """Universal GPU-passthrough check, independent of osn: returns the PCI addresses of every NVIDIA/AMD
-    display-class device currently bound to vfio-pci (i.e. handed to a VM), [] if none. Reads sysfs only -
-    it never opens or queries a GPU, so it is safe to run before anything else."""
+    """Universal GPU-passthrough check, independent of osn: returns the PCI addresses of every NVIDIA/AMD"""
     try:
         entries = os.listdir(base)
     except OSError:
@@ -2981,16 +2656,11 @@ def _gpu_passthrough_local(base="/sys/bus/pci/devices"):
             bound.append(e)
     return bound
 def _docker_skip_gpu_enabled():
-    """Safety flag DOCKER_SKIP_GPU_STATS (rigcontrol-agent.conf or env), OFF by default. When ON, GPU stats
-    are skipped while a docker container is running that isn't a known miner / OVERRIDE_LIST image (the old
-    "GPUs are probably busy" rule) - useful for diagnosis or brand-new rigs. GPU passthrough is separate
-    and always skips regardless of this flag."""
+    """Safety flag DOCKER_SKIP_GPU_STATS (rigcontrol-agent.conf or env), OFF by default"""
     v = (_read_agent_conf_val("DOCKER_SKIP_GPU_STATS") or os.environ.get("DOCKER_SKIP_GPU_STATS", "")).strip().strip("\"'").lower()
     return v in ("1", "true", "yes", "on")
 def _block_list_match():
-    """BLOCK_LIST (rigcontrol-agent.conf or env, comma separated, default empty): if any running docker container's
-    image starts with one of these entries (same case-insensitive keyword match as OVERRIDE_LIST), GPU stats are
-    ALWAYS skipped - independent of DOCKER_SKIP_GPU_STATS. Returns the matching "image (entry)" or ""."""
+    """BLOCK_LIST (rigcontrol-agent.conf or env, comma separated, default empty): if any running docker"""
     raw = (_read_agent_conf_val("BLOCK_LIST") or os.environ.get("BLOCK_LIST", "")).strip().strip("\"'")
     entries = [e.strip().strip("\"'").lower() for e in raw.split(",") if e.strip().strip("\"'")]
     if not entries:
@@ -3004,24 +2674,15 @@ def _block_list_match():
     for image in out.strip().splitlines():
         il = image.strip().lower()
         for e in entries:
-            if e in il:  # keyword anywhere in the image (covers starts-with)
+            if e in il:
                 return f"{image.strip()} (BLOCK_LIST '{e}')"
     return ""
 def _osn_primary_enabled():
-    """OctaSpace node (osn) is the primary source of GPU and system stats (default ON). Set
-    OSN_PRIMARY=0 (rigcontrol-agent.conf or env) to ignore osn and use local collection instead.
-    While ON: GPU metrics come ONLY from osn - there is NO local GPU fallback (nvidia-smi/amd tools
-    are never run), so if osn is down or reports stale GPU data (passthrough) the GPU list is simply
-    empty. CPU/memory use osn when reachable and the local /proc values otherwise. Miner API stats
-    are always collected locally."""
+    """OctaSpace node (osn) is the primary source of GPU and system stats (default ON)"""
     v = (_read_agent_conf_val("OSN_PRIMARY") or os.environ.get("OSN_PRIMARY", "")).strip().strip("\"'").lower()
     return v not in ("0", "false", "no", "off")
 def _apply_osn_stats(stats, osn, active_groups):
-    """osn -> the SAME universal fields the dashboard already reads (gpus[], cpu_usage, memory), so no
-    frontend change is needed. Miner API stats are never touched. Fields osn doesn't report
-    (mem_temp/mem_util on NVIDIA, vbios_version, power_limit_min/max, board_partner, load average,
-    network rates, uptime, docker, services) are simply not provided by it; local sources still fill
-    the ones that don't depend on nvidia-smi (load/network/uptime/docker/services)."""
+    """osn -> the SAME universal fields the dashboard already reads (gpus[], cpu_usage, memory), so no"""
     if "cpu_usage" in active_groups and osn.get("cpu_load_pct") is not None:
         stats["cpu_usage"] = round(float(osn["cpu_load_pct"]), 1)
     if "memory" in active_groups and osn.get("mem_total"):
@@ -3056,12 +2717,7 @@ def _apply_osn_stats(stats, osn, active_groups):
     stats["gpu_present"] = True
     stats["gpu_stats_skipped"] = False
 def _osn_allow_missing_gpu_stats():
-    """Agent flag OSN_ALLOW_MISSING_GPU_STATS (default ON). Controls only the EXTRA per-poll collection of
-    GPU stats osn leaves out that need no nvidia-smi: live mem_temp via the gputemps helper, plus
-    lspci//proc fallbacks for board partner/vbios. It does NOT affect the start-up read: while osn is
-    primary the agent always does one full local read at start, caches the static stats (power limits,
-    vbios, board partner, ...) and applies them where osn is missing them. Beyond that single read the
-    agent never runs nvidia-smi."""
+    """Agent flag OSN_ALLOW_MISSING_GPU_STATS (default ON)"""
     v = (_read_agent_conf_val("OSN_ALLOW_MISSING_GPU_STATS") or os.environ.get("OSN_ALLOW_MISSING_GPU_STATS", "")).strip().strip("\"'").lower()
     return v not in ("0", "false", "no", "off")
 _OSN_STATIC_NO_SMI_CACHE = {}
@@ -3078,7 +2734,7 @@ _BOARD_PARTNER_NAME_HINTS = [
     ("founder", "NVIDIA Founders Edition"),
 ]
 def _board_partner_no_smi(pci_slot, name):
-    """Board partner from the card's PCI subsystem ID via lspci (no nvidia-smi), else a guess from the name."""
+    """Board partner from the card's PCI subsystem ID via lspci (no nvidia-smi), else a guess from the"""
     try:
         if pci_slot:
             slot = ":".join(str(pci_slot).split(":")[-2:]).lower()
@@ -3099,7 +2755,7 @@ def _board_partner_no_smi(pci_slot, name):
             return partner
     return ""
 def _vbios_no_smi(pci_slot):
-    """Video BIOS version from /proc/driver/nvidia/gpus/<domain:bus:dev.fn>/information (no nvidia-smi)."""
+    """Video BIOS version from /proc/driver/nvidia/gpus/<domain:bus:dev.fn>/information (no nvidia-smi)"""
     if not pci_slot:
         return ""
     slot = str(pci_slot).lower()
@@ -3118,11 +2774,7 @@ _GPU_STATIC_KEYS = ("name", "uuid", "vendor", "architecture", "board_partner", "
                     "pci_bus_id", "pci_slot", "vram_total", "driver_version")
 _gpu_static_cache = {"by_index": {}, "by_uuid": {}, "done": False}
 def _ensure_gpu_static_cache():
-    """ONE full local GPU read on the first collection after agent start - ALWAYS, regardless of
-    OSN_PRIMARY / OSN_ALLOW_MISSING_GPU_STATS / osn availability / telemetry groups. Caches everything
-    that doesn't change at runtime (power limits, VBIOS, board partner, architecture, PCI address, VRAM
-    size, driver...). It never runs again until the agent restarts - dashboard refreshes and every later
-    poll just reuse the cache (even if the read failed or didn't return a GPU)."""
+    """ONE full local GPU read on the first collection after agent start - ALWAYS, regardless of"""
     if _gpu_static_cache["done"]:
         return
     _gpu_static_cache["done"] = True
@@ -3140,10 +2792,7 @@ def _ensure_gpu_static_cache():
     print(f"[Telemetry] Cached static GPU stats for {len(local)} gpu(s) from one full start-up read "
           f"(power limits, vbios, board partner, ...) - reused on every poll/refresh")
 def _osn_fill_static_from_cache(stats):
-    """Always on while osn is primary (independent of OSN_ALLOW_MISSING_GPU_STATS): the start-up full
-    local read (see _ensure_gpu_static_cache) fills the values that never change at runtime - power
-    limits, vbios, board partner, architecture, ... - only where osn left them out. Returns the number of
-    values filled."""
+    """Always on while osn is primary (independent of OSN_ALLOW_MISSING_GPU_STATS): the start-up full"""
     gpus = stats.get("gpus") or []
     filled = 0
     for g in gpus:
@@ -3154,10 +2803,7 @@ def _osn_fill_static_from_cache(stats):
                 filled += 1
     return filled
 def _osn_fill_without_smi(stats):
-    """OSN_ALLOW_MISSING_GPU_STATS=1 only: extra collection that never runs nvidia-smi - board_partner /
-    vbios_version via lspci and /proc/driver/nvidia when the start-up cache didn't have them, plus
-    mem_temp read live via the gputemps helper (only if that binary exists). mem_util has no non-smi
-    source and stays missing. Returns the number of values filled."""
+    """OSN_ALLOW_MISSING_GPU_STATS=1 only: extra collection that never runs nvidia-smi - board_partner /"""
     gpus = stats.get("gpus") or []
     filled = 0
     for g in gpus:
@@ -3187,13 +2833,12 @@ def _osn_fill_without_smi(stats):
 _nvml_state = {"lib": None, "tried": False, "warned": set()}
 _NVML_ERR_NAMES = {1: "UNINITIALIZED", 2: "INVALID_ARGUMENT", 3: "NOT_SUPPORTED", 4: "NO_PERMISSION", 6: "NOT_FOUND", 13: "FUNCTION_NOT_FOUND", 999: "UNKNOWN"}
 def _nvml_warn_once(msg):
-    """Core-offset problems are logged once each (not every poll) so a missing value is explainable."""
+    """Core-offset problems are logged once each (not every poll) so a missing value is explainable"""
     if msg not in _nvml_state["warned"]:
         _nvml_state["warned"].add(msg)
         print(f"[Telemetry] core offset: {msg}")
 def _nvml_lib():
-    """Lazily loads libnvidia-ml (NVML) once via ctypes and initialises it. None if unavailable
-    (no NVIDIA driver / AMD rig)."""
+    """Lazily loads libnvidia-ml (NVML) once via ctypes and initialises it"""
     if _nvml_state["tried"]:
         return _nvml_state["lib"]
     _nvml_state["tried"] = True
@@ -3210,8 +2855,7 @@ def _nvml_lib():
         _nvml_warn_once(f"libnvidia-ml.so.1 load error: {e}")
     return _nvml_state["lib"]
 def _nvml_core_offsets(indexes):
-    """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has
-    applied, however it was set). Indexes that can't be read (old driver / no support) are omitted."""
+    """{gpu_index: core clock offset in MHz} via nvmlDeviceGetGpcClkVfOffset (the offset the driver has"""
     out = {}
     lib = _nvml_lib()
     if lib is None:
@@ -3238,8 +2882,7 @@ def _nvml_core_offsets(indexes):
             continue
     return out
 def _apply_gpu_core_offsets(gpus):
-    """Adds "coreoffset" (MHz, from NVML nvmlDeviceGetGpcClkVfOffset) to each NVIDIA GPU entry in the
-    reply. Read-only; only called when GPU access is allowed (never during passthrough/docker skip)."""
+    """Adds 'coreoffset' (MHz, from NVML nvmlDeviceGetGpcClkVfOffset) to each NVIDIA GPU entry in the"""
     idxs = [g["index"] for g in gpus if isinstance(g.get("index"), int) and not g.get("stats_failed") and str(g.get("vendor", "NVIDIA")).upper() == "NVIDIA"]
     if not idxs:
         return
@@ -3248,7 +2891,7 @@ def _apply_gpu_core_offsets(gpus):
         if g.get("index") in offsets:
             g["coreoffset"] = offsets[g["index"]]
 def _stats_source_summary(osn_primary, osn, stats, fill_note="", gpu_skip_reason=""):
-    """One-line description of where this poll's stats came from (logged every collection)."""
+    """One-line description of where this poll's stats came from (logged every collection)"""
     n_gpu = len(stats.get("gpus") or [])
     if gpu_skip_reason:
         gpu = f"GPU=NONE ({gpu_skip_reason})"
@@ -3289,12 +2932,7 @@ def collect_full_stats(visible_groups=None):
         "system_uptime_seconds": collect_system_uptime() if "uptime" in active_groups else None,
         "network":               collect_network() if "network" in active_groups else None,
     }
-    # FIRST check, before anything else (even before osn is asked): GPUs bound to vfio-pci belong to a VM.
-    # Works with or without osn (OSN_PRIMARY=0, osn down/absent) and reads sysfs only.
     _local_pt = _gpu_passthrough_local()
-    # osn is ALWAYS queried (even with OSN_PRIMARY=0): when it reports "GPU passthrough" active the GPUs
-    # belong to a VM, so NO GPU access of any kind happens - no start-up read, no nvidia-smi/amd tools,
-    # no gputemps, no cached-value fill. The start-up read is simply deferred until passthrough ends.
     _osn = None
     try:
         _osn = collect_osn()
@@ -3303,9 +2941,6 @@ def collect_full_stats(visible_groups=None):
     _gpu_passthrough = bool(_local_pt) or bool(_osn and _osn.get("gpu_passthrough"))
     _osn_primary = _osn_primary_enabled()
     _osn_src = _osn if _osn_primary else None
-    # Optional docker rule (OFF by default, DOCKER_SKIP_GPU_STATS=1 to enable): a running container that isn't
-    # a known miner (or an OVERRIDE_LIST "gpu stats safe" image) means the GPUs are busy, so GPU stats are skipped.
-    # osn GPU passthrough has absolute priority: checked first, and when active nothing else is evaluated.
     _docker_gpu_skip = False
     if "gpu" in active_groups and not _gpu_passthrough and _docker_skip_gpu_enabled():
         try:
@@ -3333,8 +2968,6 @@ def collect_full_stats(visible_groups=None):
             _ensure_gpu_static_cache()
         except Exception as e:
             print(f"[Telemetry] static GPU cache start-up read failed: {e}")
-    # osn primary: GPU metrics come ONLY from osn - never fall back to nvidia-smi/amd tools, even if
-    # osn is down or reports stale GPU data (assume the GPUs are busy; don't touch them locally).
     if "gpu" in active_groups:
         skip_gpu = _gpu_blocked or _osn_primary
         stats["gpus"] = collect_gpu_stats(skip=skip_gpu)
@@ -3365,10 +2998,6 @@ def collect_full_stats(visible_groups=None):
                         if hr and hr > 0:
                             print(f"{miner_name.upper()}: {hr:,.0f} H/s - {algo.get('algorithm', 'Unknown')} (miner_version={miner_data.get('miner_version', 'unknown')!r})")
                 else:
-                    # Non-"ok" collector results (offline/error/unexpected_format) were previously
-                    # swallowed silently here - only successful entries ever printed, so a failing
-                    # custom miner (e.g. API unreachable, bad JSON shape) left an empty-looking
-                    # "CURRENT MINER HASHRATES" block with zero clue why. Surface the reason instead.
                     print(f"{key[6:].upper()}: status={miner_data.get('status')} - {miner_data.get('error', miner_data.get('reason', ''))}")
         print("=" * 60)
     else:
@@ -3410,14 +3039,9 @@ def collect_full_stats(visible_groups=None):
     print(f"[Telemetry] Requested groups: {requested_label} | Collected: {sorted(active_groups) if active_groups else 'NONE'}")
     return stats
 EOF
-
 sudo tee /usr/local/bin/rigcontrol_cmd.sh.new > /dev/null <<'EOF'
 #!/bin/bash
 set -e
-# The whole body is wrapped in ONE brace group so bash parses all of it before running
-# anything. Otherwise redeploying this file THROUGH itself (Send Cmd running
-# "sudo tee /usr/local/bin/rigcontrol_cmd.sh") rewrites the script under the running shell,
-# which then resumes at a stale byte offset and reports a bogus "unexpected EOF" (rc=2).
 {
 LOG="/var/lib/rigcontrol/rigcontrol_cmd.log"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
@@ -3474,7 +3098,6 @@ rc_miner_api_fetch() {
         echo "$body"
     fi
 }
-# Read entire command from STDIN (multi-line safe)
 RAW_CMD="$(cat)"
 if [[ -z "$RAW_CMD" ]]; then
     echo "No command received"
@@ -3483,12 +3106,10 @@ fi
 echo "==================================================" >> "$LOG"
 echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
 echo "$RAW_CMD" >> "$LOG"
-# Parse first line for structured commands
 FIRST_LINE="$(echo "$RAW_CMD" | head -n1)"
 CMD="$(echo "$FIRST_LINE" | awk '{print $1}')"
 ARG="$(echo "$FIRST_LINE" | cut -d' ' -f2-)"
 case "$CMD" in
-    # GPU Miner Controls
     gpu.start)
         systemctl start "$GPU_SERVICE"
         echo "Started $GPU_SERVICE"
@@ -3501,7 +3122,6 @@ case "$CMD" in
         systemctl restart "$GPU_SERVICE"
         echo "Restarted $GPU_SERVICE"
         ;;
-    # CPU Miner Controls
     cpu.start)
         systemctl start "$CPU_SERVICE"
         echo "Started $CPU_SERVICE"
@@ -3514,7 +3134,6 @@ case "$CMD" in
         systemctl restart "$CPU_SERVICE"
         echo "Restarted $CPU_SERVICE"
         ;;
-    # AUX Service Controls
     aux.start)
         systemctl start "$AUX_SERVICE"
         echo "Started $AUX_SERVICE"
@@ -3527,7 +3146,6 @@ case "$CMD" in
         systemctl restart "$AUX_SERVICE"
         echo "Restarted $AUX_SERVICE"
         ;;
-    # Watchdog Controls (single unified service - see WATCHDOG_SERVICE)
     watchdog.start)
         systemctl enable "$WATCHDOG_SERVICE"
         systemctl start "$WATCHDOG_SERVICE"
@@ -3542,7 +3160,6 @@ case "$CMD" in
         systemctl restart "$WATCHDOG_SERVICE"
         echo "Restarted $WATCHDOG_SERVICE"
         ;;
-    # MINER API CALL (Workers tab -> Logs -> CPU/GPU/AUX API)
     cpu.api)
         rc_miner_api_fetch CPU
         ;;
@@ -3552,7 +3169,6 @@ case "$CMD" in
     aux.api)
         rc_miner_api_fetch AUX
         ;;
-    # MODE SWITCHING
     mode.set)
         MODE="$(echo "$ARG" | tr '[:lower:]' '[:upper:]')"
         systemctl stop "$CPU_SERVICE" "$GPU_SERVICE"
@@ -3570,25 +3186,16 @@ case "$CMD" in
             exit 1
         fi
         ;;
-    # SYSTEM REBOOT
     reboot)
         echo "Rebooting system..."
         shutdown -r now
         ;;
-    # SYSTEM SHUTDOWN
     shutdown)
         echo "Shutting down system..."
         shutdown now
         ;;
-    # RAW MULTI-LINE SHELL COMMAND (DEFAULT)
     *)
         echo "[RAW EXECUTION]"
-        # Delivered via stdin (here-string), NOT as `bash -c "$RAW_CMD"` - passing the whole
-        # command as a single argv string hits the kernel's per-argument MAX_ARG_STRLEN cap
-        # (128 KB on x86_64) regardless of total ARG_MAX headroom, which a large pasted
-        # command (e.g. an entire source file) blows straight through, failing with
-        # "Argument list too long" (exit 126) before a single line of it ever runs. A
-        # here-string has no such size limit since it's just a pipe/temp-file under the hood.
         bash <<< "$RAW_CMD"
         ;;
 esac
@@ -3596,10 +3203,7 @@ exit $?
 }
 EOF
 sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh.new
-# Atomic swap (rename, new inode): a copy of this script that is currently running keeps
-# reading its old file, so redeploying through Send Cmd cannot corrupt the running shell.
 sudo mv -f /usr/local/bin/rigcontrol_cmd.sh.new /usr/local/bin/rigcontrol_cmd.sh
-
 sudo tee /usr/local/bin/rigcontrol_agent.py > /dev/null <<'EOF'
 import rigcontrol_telemetry as telemetry
 import asyncio
@@ -3645,7 +3249,6 @@ def load_broker_config():
     except Exception as e:
         log(f"Config load error: {e}")
     return cfg
-# CONFIG - LOCAL MQTT OR AWS
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
 if USE_AWS:
@@ -3670,9 +3273,8 @@ telemetry.OVERRIDE_LIST = [
 ]
 if telemetry.OVERRIDE_LIST:
     log(f"[Config] OVERRIDE_LIST = {telemetry.OVERRIDE_LIST}")
-# CONFIG - CUSTOM MINER (unknown-API log-scraper) DETECTION
 def _read_conf_key(path, *keys, gpu_id="0"):
-    """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY "value" variant, stored under an ALL fallback), returning the first key in priority order with a resolved value."""
+    """Reads a KEY GPU_ID 'value' row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY"""
     if not os.path.isfile(path):
         return ""
     def _strip_quotes(v):
@@ -3708,7 +3310,7 @@ def _read_conf_key(path, *keys, gpu_id="0"):
         log(f"[Config] Error reading {path}: {e}")
     return ""
 def _read_conf_key_json(path, *keys):
-    """JSON counterpart to _read_conf_key() for rigs with only rig-gpu.json/rig-cpu.json, mirroring 00-get_rig_conf.sh's miner/custom-miner resolution and returning the first key in priority order with a resolved value."""
+    """JSON counterpart to _read_conf_key() for rigs with only rig-gpu.json/rig-cpu.json, mirroring"""
     if not os.path.isfile(path):
         return ""
     try:
@@ -3737,16 +3339,7 @@ def _read_conf_key_json(path, *keys):
 _custom_miner_slots = {"cpu": "", "gpu": "", "aux": ""}
 _custom_miner_conf_paths = {"cpu": "", "gpu": "", "aux": ""}
 def resolve_custom_miner():
-    """Re-resolves the custom-miner slot/name/env vars for ALL THREE slots
-    (cpu/gpu/aux) independently - more than one slot can simultaneously run
-    a miner unrecognized by telemetry._BUILTIN_MINER_PROCESS_MAP (e.g. GPU
-    running keryx-miner while AUX runs keryxd), and each slot needs its own
-    registered custom-miner name so neither one starves the other out of
-    telemetry collection. Called once at startup, then re-run whenever
-    telemetry.consume_miners_changed_flag() reports the running-miner
-    process set changed (see publish_status / stats_db_periodic_loop) so a
-    miner binary/version change picked up while the agent is already
-    running doesn't require an agent restart to be detected."""
+    """Re-resolves the custom-miner slot/name/env vars for ALL THREE slots (cpu/gpu/aux) independently -"""
     global _custom_miner_slots, _custom_miner_conf_paths
     for _slot_name, _rig_conf_path in (
         ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
@@ -3801,7 +3394,6 @@ def resolve_custom_miner():
             os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_slot_name}_miner.log"
             log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_slot_name} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
 resolve_custom_miner()
-# CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
     STATS_DB_MAX_HISTORY_DAYS = int(cfg.get("STATS_DB_MAX_HISTORY_DAYS", STATS_DB_MAX_HISTORY_DAYS))
@@ -3823,7 +3415,6 @@ log(f"[Config] Local stats DB enabled = {STATS_DB_ENABLED}")
 log(f"[Config] Local stats DB max history days = {STATS_DB_MAX_HISTORY_DAYS}")
 log(f"[Config] Local stats DB periodic save interval = {STATS_DB_INTERVAL_SECONDS}s")
 log(f"[Config] Minimum telemetry pull interval = {MIN_TELEMETRY_PULL_INTERVAL_SECONDS}s")
-# CONFIG - SERVICE NAMES
 CPU_SERVICE_NAME = cfg.get("CPU_SERVICE_NAME", "").strip() or "docker_events_cpu.service"
 GPU_SERVICE_NAME = cfg.get("GPU_SERVICE_NAME", "").strip() or "docker_events_gpu.service"
 WATCHDOG_SERVICE_NAME = cfg.get("WATCHDOG_SERVICE_NAME", "").strip() or "rigcontrol_watchdog.service"
@@ -3880,7 +3471,7 @@ def _stats_db_cleanup(conn, days_to_keep):
     if deleted:
         log(f"[StatsDB] Cleanup: removed {deleted} entries older than {days_to_keep} days")
 def save_stats_locally(payload):
-    """Writes one telemetry snapshot to the local SQLite history and prunes rows past the retention window at most once per day, using its own short-lived connection via asyncio.to_thread."""
+    """Writes one telemetry snapshot to the local SQLite history and prunes rows past the retention window"""
     global _stats_db_last_cleanup, _stats_db_last_save
     try:
         conn = _stats_db_connect()
@@ -3900,7 +3491,7 @@ def save_stats_locally(payload):
     except Exception as e:
         log(f"[StatsDB] Error saving local telemetry: {e}")
 def _iso_to_sqlite_utc(iso_str):
-    """Converts an ISO 8601 timestamp to the UTC "YYYY-MM-DD HH:MM:SS" format SQLite writes into rig_telemetry.timestamp."""
+    """Converts an ISO 8601 timestamp to the UTC 'YYYY-MM-DD HH:MM:SS' format SQLite writes into"""
     s = iso_str.strip()
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
@@ -3909,7 +3500,7 @@ def _iso_to_sqlite_utc(iso_str):
         dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 def query_stats_history(days, limit=None, start_date=None):
-    """Reads back locally-stored telemetry oldest first, either the last N days or a fixed window starting at start_date if given."""
+    """Reads back locally-stored telemetry oldest first, either the last N days or a fixed window starting"""
     conn = _stats_db_connect()
     try:
         cursor = conn.cursor()
@@ -3949,7 +3540,7 @@ def query_stats_history(days, limit=None, start_date=None):
             continue
     return entries
 def _conf_set_line(lines, key, value):
-    """Finds KEY= in a list of conf lines and updates it in place, appending a new line if the key isn't present."""
+    """Finds KEY= in a list of conf lines and updates it in place, appending a new line if the key isn't"""
     prefix = f"{key}="
     for i, line in enumerate(lines):
         if line.strip().upper().startswith(prefix.upper()):
@@ -3958,7 +3549,7 @@ def _conf_set_line(lines, key, value):
     lines.append(f"{key}={value}\n")
     return lines
 def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None):
-    """Live-updates stats DB settings and persists the new values back into rigcontrol-agent.conf in a single write."""
+    """Live-updates stats DB settings and persists the new values back into rigcontrol-agent.conf in a"""
     global STATS_DB_ENABLED, STATS_DB_MAX_HISTORY_DAYS, STATS_DB_INTERVAL_SECONDS
     changed_keys = {}
     if enabled is not None:
@@ -3999,7 +3590,7 @@ def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None)
     except Exception as e:
         log(f"[StatsDB] Error persisting stats config to conf: {e}")
 async def mqtt_publish_resilient(mqtt, topic, payload_str, context):
-    """Wraps mqtt.publish() with one retry on a transient disconnect, logging which request failed and waiting briefly for the client's automatic reconnect before retrying."""
+    """Wraps mqtt.publish() with one retry on a transient disconnect, logging which request failed and"""
     try:
         await mqtt.publish(topic, payload_str)
         return True
@@ -4030,15 +3621,6 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         if STATS_DB_ENABLED and (time.time() - _stats_db_last_save) >= STATS_DB_INTERVAL_SECONDS:
             effective_visible_groups = None
         try:
-            # Unconditional every cycle (not gated behind telemetry.consume_miners_changed_flag())
-            # - that flag only flips when detect_running_miners()'s found-set changes, which
-            # requires a process to already be recognized (a registered custom slot, or a builtin)
-            # before its appearance/disappearance can register as a "change" at all. A brand-new
-            # custom-miner name configured while the agent is already running is invisible to that
-            # detection loop until IT'S resolved, so gating registration behind it is a chicken-
-            # and-egg that only self-heals via an unrelated flag flip or a full agent restart.
-            # resolve_custom_miner() itself is just a couple of small conf/json file reads (no
-            # network calls), cheap enough to run on every ~5s telemetry cycle unconditionally.
             await asyncio.to_thread(resolve_custom_miner)
         except Exception as e:
             log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
@@ -4236,7 +3818,7 @@ async def publish_check(mqtt, want_docker: bool = False):
     else:
         log("Offline ping check received - replied online (no telemetry collected)")
 async def stats_db_periodic_loop():
-    """Background loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS) independent of refresh/cmd-triggered publishes, skipping a cycle if a more recent row already exists."""
+    """Background loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS)"""
     CHECK_EVERY = 5
     while True:
         await asyncio.sleep(CHECK_EVERY)
@@ -4247,8 +3829,6 @@ async def stats_db_periodic_loop():
             continue
         try:
             try:
-                # See the matching call in the main telemetry-pull path for why this is
-                # unconditional now instead of gated behind telemetry.consume_miners_changed_flag().
                 await asyncio.to_thread(resolve_custom_miner)
             except Exception as e:
                 log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
@@ -4329,7 +3909,6 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 EOF
-
 AGENT_VENV="/usr/local/lib/rigcontrol-agent/.venv"
 if [ ! -x "$AGENT_VENV/bin/pip" ]; then
     echo "Creating rigcontrol-agent virtual environment at $AGENT_VENV ..."

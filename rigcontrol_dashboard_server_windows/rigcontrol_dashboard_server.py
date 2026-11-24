@@ -32,18 +32,9 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel, ConfigDict
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-
-# aiomqtt relies on add_reader/add_writer, which the Windows Proactor loop
-# does not support. Select the compatible policy before an event loop exists.
 if os.name == "nt":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-# Windows is run directly rather than through Docker Compose, so read its
-# local .env before any configuration values are resolved.
 load_dotenv()
-
-# The Windows deployment owns its local Mosquitto process.  The Pi deployment
-# gets Mosquitto from Docker Compose and intentionally does not include this.
 MOSQUITTO_EXE = r"C:\Program Files\mosquitto\mosquitto.exe"
 MOSQUITTO_CONF = r"C:\Program Files\mosquitto\mosquitto.conf"
 dynamodb = None
@@ -237,8 +228,6 @@ def log(msg: str) -> None:
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now))
     ms = int((now % 1) * 1000)
     print(f"[{ts}.{ms:03d} UTC] [RigControl] {msg}", flush=True)
-
-
 def is_mosquitto_running() -> bool:
     try:
         return any(
@@ -248,8 +237,6 @@ def is_mosquitto_running() -> bool:
     except Exception as exc:
         log(f"ERROR while checking Mosquitto process: {exc}")
         return False
-
-
 def start_mosquitto() -> None:
     if is_mosquitto_running():
         log("Mosquitto already running — skipping startup")
@@ -269,8 +256,6 @@ def start_mosquitto() -> None:
         log("Mosquitto launch command issued")
     except Exception as exc:
         log(f"ERROR starting Mosquitto: {exc}")
-
-
 class _ThreadLocalSQLiteConnections:
     def __init__(self, db_path, ensure_schema_fn, label=None):
         self.db_path = db_path
@@ -661,11 +646,6 @@ class LocalSavedCommandDB:
         self._conns.close_all()
 local_saved_command_db = LocalSavedCommandDB()
 class LocalCmdHistoryDB:
-    # Auto-recorded log of commands actually sent from the Send Cmd modal - append-only and
-    # capped, distinct from saved_commands above (a user-named library the operator explicitly
-    # saves entries into). Modeled on LocalStatusLogDB's insert/list/delete-by-ids shape rather
-    # than LocalSavedCommandDB's name-keyed upsert, since history entries have no name unless/
-    # until the operator promotes one into a saved command from the History tab.
     def __init__(self, db_path: str = None):
         if db_path is None:
             db_path = BASE_DIR / "rigcontrol_cmd_history.db"
@@ -699,8 +679,6 @@ class LocalCmdHistoryDB:
             log(f"[CmdHistoryDB] Error connecting: {e}")
             return False
     def insert_entry(self, command: str):
-        # Same auto-trim-on-insert cap as LocalStatusLogDB - a Send Cmd history is a convenience
-        # log, not an audit trail, so an unbounded table isn't worth the disk/scan cost.
         MAX_ENTRIES = 500
         try:
             conn = self._get_connection()
@@ -928,9 +906,6 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] Insert error: {e}")
             return None
-    # Shared by list_events()/count_filtered() below so the WHERE clause used to fetch a page and
-    # the one used to count how many rows exist in total (for pagination's "of N" / total-pages
-    # figure) can never drift out of sync with each other.
     def _build_where(self, rig: str = None, title_q: str = None, content_q: str = None, title_q_exclude: bool = False, content_q_exclude: bool = False, severity_include=None, severity_exclude=None):
         where_clauses = []
         params = []
@@ -944,11 +919,6 @@ class LocalStatusLogDB:
             where_clauses.append("NOT (details LIKE ? OR reasons LIKE ?)" if content_q_exclude else "(details LIKE ? OR reasons LIKE ?)")
             params.append(f"%{content_q}%")
             params.append(f"%{content_q}%")
-        # Same "[GOOD]"/"[WARN]"/"[IMPORTANT]"/"[CRITICAL]" title tag severity_flags_by_rig()
-        # and the client's renderStatusLogList() regex both key off - not a real column.
-        # severity_include: only rows tagged with one of these show up at all (OR'd together).
-        # severity_exclude: rows tagged with any of these are hidden regardless of include - lets
-        # someone e.g. "show everything except GOOD" without having to list the other three.
         if severity_include:
             or_clauses = " OR ".join(["title LIKE ?"] * len(severity_include))
             where_clauses.append(f"({or_clauses})")
@@ -982,8 +952,6 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] List error: {e}")
             return []
-    # Total rows matching the same rig/title_q/content_q/severity filters as list_events() - i.e.
-    # how many exist across ALL pages, not just how many came back on this one (len(items)).
     def count_filtered(self, rig: str = None, title_q: str = None, content_q: str = None, title_q_exclude: bool = False, content_q_exclude: bool = False, severity_include=None, severity_exclude=None):
         try:
             conn = self._get_connection()
@@ -1004,11 +972,6 @@ class LocalStatusLogDB:
         except Exception as e:
             log(f"[StatusLogDB] Count error: {e}")
             return {}
-    # Severity isn't its own column - it's a "[GOOD]"/"[WARN]"/"[IMPORTANT]"/"[CRITICAL]" tag
-    # baked into the title text by whatever wrote the event (matches the client-side regex in
-    # renderStatusLogList()). Used to color the per-worker status log badge - critical wins over
-    # warn if a worker has both, matching "worse severity always shows" everywhere else severity
-    # is displayed (statuslog-item-title, wdconfig severity select, etc).
     def severity_flags_by_rig(self):
         try:
             conn = self._get_connection()
@@ -2328,7 +2291,7 @@ def check_offline_rigs_and_notify():
             log(f"[Notifications] Docker state changed for {len(docker_state_changes)} rig(s) ({changed_rig_names}) "
                 f"but a dashboard client is connected - skipping the email/SMS, state is still visible live")
 async def handle_mqtt_message(topic: str, payload: bytes):
-    """Handles an incoming MQTT message on the main asyncio event loop, offloading the blocking SQLite write to a thread."""
+    """Handles an incoming MQTT message on the main asyncio event loop, offloading the blocking SQLite"""
     try:
         data = json.loads(payload.decode("utf-8"))
         now = time.time()
@@ -2461,7 +2424,7 @@ async def mqtt_publish(topic: str, payload: dict):
     except Exception as e:
         log(f"[MQTT] Publish error: {e}")
 async def mqtt_loop():
-    """Async MQTT client task on the main event loop; auto-reconnects with a 3s backoff on error."""
+    """Async MQTT client task on the main event loop; auto-reconnects with a 3s backoff on error"""
     global _mqtt_client_ref
     log(f"[MQTT] Mode={MQTT_MODE} Connecting to {MQTT_BROKER}:{MQTT_PORT} ...")
     tls_params = None
@@ -2525,7 +2488,7 @@ async def push_stats_response_to_ws(resp: dict):
         except:
             pass
 async def push_stats_response_progress_to_ws(req_id: str, rig: Optional[str], chunk_index: int, chunk_count: int):
-    """Sends a "receiving chunk N of M" progress update to the dashboard while a chunked stats response is still arriving."""
+    """Sends a "receiving chunk N of M" progress update to the dashboard while a chunked stats response is"""
     async with clients_lock:
         clients = list(connected_clients)
     if not clients:
@@ -2539,7 +2502,7 @@ async def push_stats_response_progress_to_ws(req_id: str, rig: Optional[str], ch
         except:
             pass
 async def handle_stats_response_chunk(data: dict):
-    """Reassembles chunked stats_response MQTT messages into one complete response before forwarding to the dashboard."""
+    """Reassembles chunked stats_response MQTT messages into one complete response before forwarding to"""
     chunk_count = data.get("chunk_count")
     if not chunk_count or chunk_count <= 1:
         await push_stats_response_to_ws(data)
@@ -2660,7 +2623,7 @@ async def broadcast_loop():
     finally:
         log("[Broadcast] Loop stopped")
 async def run_periodic_maintenance_sweep():
-    """Runs one pass of the periodic maintenance sweep, cleaning up stale IP histories, expired tokens, abandoned chunk buffers, and idle DB connections."""
+    """Runs one pass of the periodic maintenance sweep, cleaning up stale IP histories, expired tokens"""
     now = time.time()
     log("[Maintenance Sweep] Starting periodic cleanup pass")
     window_start = now - UNLOCK_ATTEMPTS_WINDOW_SECONDS
@@ -2699,7 +2662,7 @@ async def run_periodic_maintenance_sweep():
         f"expired_tokens={len(expired_tokens)}, stale_chunk_buffers={len(stale_chunk_ids)}, "
         f"idle_connections_closed={total_closed})")
 async def maintenance_sweep_loop():
-    """Dedicated always-on loop that calls run_periodic_maintenance_sweep() on its own schedule, independent of dashboard client connections."""
+    """Dedicated always-on loop that calls run_periodic_maintenance_sweep() on its own schedule"""
     log("[Maintenance Sweep] Loop started")
     global _last_periodic_sweep_ts
     try:
@@ -3334,9 +3297,6 @@ def get_status_log(rig: Optional[str] = None, limit: int = 200, offset: int = 0,
         content_exc = bool(content_q_exclude)
         items = local_status_log_db.list_events(rig=rig or None, limit=limit, offset=offset, title_q=title_q or None, content_q=content_q or None, title_q_exclude=title_exc, content_q_exclude=content_exc, severity_include=sev_inc, severity_exclude=sev_exc)
         total = local_status_log_db.count_filtered(rig=rig or None, title_q=title_q or None, content_q=content_q or None, title_q_exclude=title_exc, content_q_exclude=content_exc, severity_include=sev_inc, severity_exclude=sev_exc)
-        # {items, total} instead of a bare array - the Status Log tab's Prev/Next pagination needs
-        # the TRUE count matching the current rig/search filters (not just len(items), which is
-        # capped at `limit`) to compute how many pages exist.
         return {"items": items, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         log(f"[STATUSLOG GET ERROR] Exception: {e}")
@@ -4066,10 +4026,7 @@ async def import_access_keys(file: UploadFile = File(...)):
         raise HTTPException(500, f"Failed to save accessKeys.csv: {e}")
 @router.get("/api/templates-config")
 async def get_templates_config():
-    """Raw text of static/config/templates.json, for the Settings modal's Templates tab. Same
-    file the frontend already fetches directly on page load (TEMPLATES_CONFIG_URL in app.js) -
-    this route exists only so "Reload from Server" can force a fresh read (bypassing any browser
-    cache on the static mount) without a full page reload."""
+    """Raw text of static/config/templates.json, for the Settings modal's Templates tab"""
     path = STATIC_DIR / "config" / "templates.json"
     if not path.exists():
         raise HTTPException(404, "templates.json not found")
@@ -4081,11 +4038,7 @@ async def get_templates_config():
     return {"ok": True, "content": content}
 @router.post("/api/templates-config/save")
 async def save_templates_config(payload: dict):
-    """Writes the Settings modal's Templates tab content back to static/config/templates.json on
-    disk. Validates it's well-formed JSON first (a broken file here would silently break Flightsheet/
-    Overclock/Watchdog raw-content generation for every rig, since app.js re-fetches this file on
-    every page load) - a syntax error is rejected with the parser's own message instead of being
-    written."""
+    """Writes the Settings modal's Templates tab content back to static/config/templates.json on disk"""
     content = payload.get("content")
     if content is None or not isinstance(content, str) or not content.strip():
         raise HTTPException(400, "content is required")
@@ -4439,6 +4392,4 @@ else:
 if __name__ == "__main__":
     if MQTT_MODE == "local":
         start_mosquitto()
-    # Uvicorn's Windows "auto" mode chooses a Proactor loop, which is
-    # incompatible with aiomqtt. "none" keeps the selector policy above.
     uvicorn.run(app, host=API_BIND, port=API_PORT, log_level="info", loop="none")

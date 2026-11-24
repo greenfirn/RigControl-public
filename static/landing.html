@@ -226,12 +226,6 @@
         const algoTotals = {};
         const algoIsCpu = {};
         const algoShares = {};
-        // "Services Running" (CPU/GPU/AUX mining + service-active counts) intentionally ignores
-        // exclude_from_totals - it's an operational health check, not a hashrate/watts total, so
-        // an excluded rig's services should still be reflected here. Everything else below (GPU
-        // count, docker, watts, algo totals) still respects the exclude flag as before. Now that
-        // custom miners always report an explicit mining_type (CPU/GPU/AUX, never guessed), this
-        // no longer misclassifies AUX-slot miners as GPU.
         const allRigNames = Object.keys(rigs).filter((name) => name !== "rigs");
         const rigNames = allRigNames.filter((name) => !rigs[name]?.data?.exclude_from_totals);
         allRigNames.forEach((name) => {
