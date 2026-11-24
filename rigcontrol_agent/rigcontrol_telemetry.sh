@@ -351,7 +351,7 @@ def collect_nvidia_gpu_stats():
         "clocks.sm,clocks.mem,fan.speed,"
         "memory.total,memory.used,driver_version,"
         "name,pci.bus_id,vbios_version,"
-        "power.min_limit,power.default_limit,power.max_limit"
+        "power.min_limit,power.default_limit,power.max_limit,power.limit"
         " --format=csv,noheader,nounits"
     )
     rc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=GPU_TOOL_TIMEOUT_SECONDS)
@@ -371,6 +371,7 @@ def collect_nvidia_gpu_stats():
             pwr_min_raw = fields[16] if len(fields) > 16 else ""
             pwr_default_raw = fields[17] if len(fields) > 17 else ""
             pwr_max_raw = fields[18] if len(fields) > 18 else ""
+            pwr_cur_raw = fields[19] if len(fields) > 19 else ""
             try:
                 mem_temp_val = int(memtemp)
             except ValueError:
@@ -445,6 +446,7 @@ def collect_nvidia_gpu_stats():
                 "power_limit_min": power_limit_min,
                 "power_limit_default": power_limit_default,
                 "power_limit_max": power_limit_max,
+                "power_limit": _parse_float_or_none(pwr_cur_raw),  # currently SET power limit (W)
                 "pci_bus_id": pci_bus, "pci_slot": pci_slot,
             })
         except (ValueError, IndexError):

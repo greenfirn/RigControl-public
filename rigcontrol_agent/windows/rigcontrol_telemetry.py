@@ -692,7 +692,7 @@ def collect_gpu_stats():
             'nvidia-smi --query-gpu='
             'index,name,temperature.gpu,utilization.gpu,utilization.memory,'
             'power.draw,fan.speed,clocks.current.sm,clocks.current.memory,'
-            'memory.used,memory.total,driver_version,pci.bus_id '
+            'memory.used,memory.total,driver_version,pci.bus_id,power.limit '
             '--format=csv,noheader,nounits'
         )
         # no shell: a timeout can then kill nvidia-smi itself (with shell=True only cmd.exe dies)
@@ -719,6 +719,7 @@ def collect_gpu_stats():
                 vram_total = fields[10]
                 driver_version = fields[11]
                 pci_bus = fields[12] if len(fields) > 12 else ""
+                power_limit_cur = _parse_float_or_none(fields[13]) if len(fields) > 13 else None
                 pnp_id = None
                 if WMI_AVAILABLE:
                     try:
@@ -758,6 +759,7 @@ def collect_gpu_stats():
                     "util": util_val,
                     "mem_util": memutil_val,
                     "power_watts": watts_val,
+                    "power_limit": power_limit_cur,  # currently SET power limit (W); may be None
                     "fan_percent": fan_val,
                     "sm_clock": smclk_val,
                     "mem_clock": memclk_val,

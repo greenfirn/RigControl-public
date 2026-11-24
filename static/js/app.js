@@ -1546,7 +1546,13 @@ const DataHelper = {
             gpu.Power !== undefined ? gpu.Power :
             (gpu.power_consumption && gpu.power_consumption.watt !== undefined) ? gpu.power_consumption.watt :
             null;
+        if (power === -1) return "-1"; // agent could not read this GPU
         if (power !== null && typeof power === 'number' && !isNaN(power)) {
+            // current draw / currently SET power limit, e.g. "205/360" (limit omitted when the agent didn't report it)
+            const lim = gpu.power_limit;
+            if (typeof lim === 'number' && !isNaN(lim) && lim > 0) {
+                return `${Math.round(power)}/${Math.round(lim)}`;
+            }
             return power.toFixed(1);
         }
         return "--";
@@ -1585,7 +1591,7 @@ const DataHelper = {
         const totalPower = DataHelper.getTotalGpuPower(data);
         if (gpus.length === 0) {
             return {
-                count: 0, temp: null, memTemp: null, util: "--", power: totalPower, fan: "--",
+                count: 0, temp: null, memTemp: null, util: "--", power: totalPower, powerLimit: 0, fan: "--",
                 coreClock: "--", coreOffset: "--", memClock: "--",
                 vram: { used_gb: "--", total_gb: "--", percent: 0, string: "--" }
             };
@@ -1624,6 +1630,8 @@ const DataHelper = {
             memTemp,
             util: util !== null ? util : "--",
             power: totalPower,
+            // sum of the currently SET power limits (W) across GPUs; 0 when the agent doesn't report them
+            powerLimit: gpus.reduce((a, gpu) => a + ((typeof gpu.power_limit === "number" && gpu.power_limit > 0) ? gpu.power_limit : 0), 0),
             fan: fan !== null ? fan : "--",
             coreClock: coreClock !== null ? coreClock : "--",
             coreOffset,
@@ -4393,7 +4401,9 @@ function render() {
         const gpuMemTempStr = gpuMemTempFormatted.value;
         const gpuMemTempClass = gpuMemTempFormatted.class;
         const gpuUtil = gpuAgg.util;
-        const gpuPower = gpuAgg.power > 0 ? gpuAgg.power.toFixed(0) : "--";
+        const gpuPower = gpuAgg.power > 0
+            ? (gpuAgg.powerLimit > 0 ? `${gpuAgg.power.toFixed(0)}/${gpuAgg.powerLimit.toFixed(0)}` : gpuAgg.power.toFixed(0))
+            : "--";
         const gpuFan = gpuAgg.fan;
         const fanFormatted = DataHelper.getFormattedFan(gpuFan);
         const fanClass = fanFormatted.class;
