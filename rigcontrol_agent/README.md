@@ -74,10 +74,26 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 
 Useful commands:
 
+show service status:
+
+```bash
+systemctl status rigcontrol-agent.service --no-pager
+```
+
+ctrl+c to break/exit
+
 follow the agent log:
 
 ```bash
 journalctl -u rigcontrol-agent.service -f
+```
+
+ctrl+c to break/exit
+
+show the last 100 log lines:
+
+```bash
+journalctl -u rigcontrol-agent.service -n 100 --no-pager
 ```
 
 reload systemd after editing the service file:
