@@ -56,7 +56,13 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 ```
 
-2. download the needed files: [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh), [rigcontrol_agent.sh](rigcontrol_agent.sh), [rigcontrol_agent-service.sh](rigcontrol_agent-service.sh), [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh), [rigcontrol_cmd.sh](rigcontrol_cmd.sh), [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
+2. download the needed files:
+   - [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
+   - [rigcontrol_agent.sh](rigcontrol_agent.sh)
+   - [rigcontrol_agent-service.sh](rigcontrol_agent-service.sh)
+   - [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh)
+   - [rigcontrol_cmd.sh](rigcontrol_cmd.sh)
+   - [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
 3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
 4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
 5. 'generate-copy-paste-update.bat -> copy-paste-update.sh' then copy/paste contents to write the files to a rig
