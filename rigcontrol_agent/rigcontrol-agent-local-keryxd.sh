@@ -5,7 +5,7 @@ sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
-BROKER_PASS=********************
+BROKER_PASS=CHANGE_ME
 MQTT_TLS=1
 MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 #MQTT_CLIENT_CERT=

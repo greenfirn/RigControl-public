@@ -4,7 +4,7 @@ sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 BROKER_HOST=127.0.0.1
 BROKER_PORT=8883
 BROKER_USER=admin
-BROKER_PASS=*************
+BROKER_PASS=CHANGE_ME
 # MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
 MQTT_TLS=1
 MQTT_CA_FILE=/etc/rigcontrol/ca.crt
