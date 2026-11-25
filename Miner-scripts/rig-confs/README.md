@@ -4,7 +4,7 @@
 
 [04-algo_config.sh](../lib/04-algo_config.sh): bzminer... %WARTHOG_TARGET% in cmd
 
-[02-load_configs.sh](../lib/02-load_configs.sh): Worker name from hostname, upper case rig name x,t,s
+[02-load_configs.sh](../lib/02-load_configs.sh): Worker name from hostname, upper case worker name x,t,s
 
 ```bash
 WORKER_NAME="$(cat /etc/hostname)"

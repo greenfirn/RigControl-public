@@ -16,7 +16,7 @@ and no dependency on the GPU being idle to get manual fan control.
 
 The usual way to get custom fan curves on Linux (`nvidia-settings -a GPUTargetFanSpeed=...`)
 requires a running X server with `Coolbits` enabled via `NV-CONTROL`. On headless mining/compute
-rigs that means standing up a fake Xorg instance just for fan control — and under heavy
+workers that means standing up a fake Xorg instance just for fan control — and under heavy
 sustained compute load, repeated NV-CONTROL calls can destabilize the GPU's GSP firmware
 (observed as Xid 109/119/154 errors).
 
@@ -31,9 +31,9 @@ the GPU is idle or fully loaded.
 | `/usr/sbin/py-nvtool` | **Upstream** [Akisoft41/py-nvtool](https://github.com/Akisoft41/py-nvtool), not bundled here. Python NVML bindings plus a CLI (clocks, offsets, power limit, fan speed per GPU). Used from the command line by `gpu_reset_poststop.sh` and loaded as a library by `fan_curve.py`. |
 | `fan_curve.py` | The fan curve daemon. Polls GPU temps on an interval and drives fan speed via NVML according to a configurable temp→fan% curve. (written to `/usr/local/bin/` by [fan_curve.sh](py-nvtool/fan_curve.sh)) |
 | `fan-curve.service` | systemd unit to run the daemon on boot, with clean shutdown (resets fans to AUTO on stop). (written by [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) or [fan-curve.service.sh](py-nvtool/fan-curve.service.sh)) |
-| [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) | One-time full setup for a new rig: writes `fan_curve.py` and `fan-curve.service`, enables and starts the service. |
+| [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) | One-time full setup for a new worker: writes `fan_curve.py` and `fan-curve.service`, enables and starts the service. |
 | [fan_curve.sh](py-nvtool/fan_curve.sh) | Standalone script that just (re)writes `/usr/local/bin/fan_curve.py`. Re-run this alone when the daemon's Python logic changes, without touching the service config. |
-| [fan-curve.service.sh](py-nvtool/fan-curve.service.sh) | Standalone script that just (re)writes `fan-curve.service` and reloads/restarts it. Re-run this alone to tweak `--curve`, `--hysteresis`, `--cooldown-*`, etc. per rig. |
+| [fan-curve.service.sh](py-nvtool/fan-curve.service.sh) | Standalone script that just (re)writes `fan-curve.service` and reloads/restarts it. Re-run this alone to tweak `--curve`, `--hysteresis`, `--cooldown-*`, etc. per worker. |
 
 ## Requirements
 
@@ -44,7 +44,7 @@ the GPU is idle or fully loaded.
 
 ## Install
 
-**New rig — setup:**
+**New worker — setup:**
 
 ```bash
 # 1. install upstream py-nvtool (same binary gpu_reset_poststop.sh uses)

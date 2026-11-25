@@ -1,6 +1,6 @@
 # RigControl - Dashboard
 
-A self-hosted rig monitoring dashboard for Ubuntu Server / Windows rigs, Clore AI, Octaspace, Salad Hosts etc. Built with a Python telemetry agent, MQTT-based dashboard server, and a webpage frontend.
+A self-hosted worker monitoring dashboard for Ubuntu Server / Windows workers, Clore AI, Octaspace, Salad Hosts etc. Built with a Python telemetry agent, MQTT-based dashboard server, and a webpage frontend.
 
 --> [Design](#design)
 
@@ -82,7 +82,7 @@ Search workers multi term coma seperated
 
 ![search](images/Screenshot-search-multi.png)
 
-Rig Statistics -- saves to rig local db, skip gpu stats with override rules still apply
+Worker Statistics -- saves to worker local db, skip gpu stats with override rules still apply
 
 ![Dashboard Screenshot](images/Screenshot-rig-stats.png)
 

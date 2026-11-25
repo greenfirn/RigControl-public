@@ -50,7 +50,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 
 ## Setup
 
-1. install python on a client rig...
+1. install python on a client worker...
 
 ```
 sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
