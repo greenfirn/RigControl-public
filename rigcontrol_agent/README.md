@@ -80,13 +80,11 @@ show service status:
 systemctl status rigcontrol-agent.service --no-pager
 ```
 
-follow the agent log:
+follow the agent log: ctrl+c to break/exit
 
 ```bash
 journalctl -u rigcontrol-agent.service -f
 ```
-
-ctrl+c to break/exit
 
 show the last 100 log lines:
 
