@@ -4,6 +4,18 @@
 
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
+Ubuntu 24.04:
+
+```
+sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt --break-system-packages
+```
+
+Ubuntu 22.04:
+
+```
+sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
+```
+
 ## Telemetry flow (each poll)
 
 - **Agent start:** one full local GPU read (unless the GPUs are in passthrough / blocked), cached: power limits (min/default/max), vbios, board partner, architecture, PCI slot, VRAM total. Reused on every poll; never repeated on refresh.
@@ -35,18 +47,6 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `<NAME>_LOG_PATH` custom miner log file to scrape for stats when there is no API.
 - `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
-
-Ubuntu 24.04:
-
-```
-sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt --break-system-packages
-```
-
-Ubuntu 22.04:
-
-```
-sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
-```
 
 1. install python on a client rig...
 
