@@ -21,10 +21,16 @@ mkdir C:\mosquitto\data
 # move the newly created password file to new location
 move "C:\Program Files\mosquitto\pwfile" C:\mosquitto\
 
+# create the certificates first: see mosquitto-tls-setup.txt (TLS on port 8883 is the default, there is no plain 1883 listener)
 # replace contents of the conf file with below to use the password file and data location
 C:\Program Files\mosquitto\mosquitto.conf
 
-listener 1883
+listener 8883
+protocol mqtt
+cafile C:\mosquitto-certs\ca.crt
+certfile C:\mosquitto-certs\server.crt
+keyfile C:\mosquitto-certs\server.key
+tls_version tlsv1.2
 allow_anonymous false
 
 password_file C:\mosquitto\pwfile

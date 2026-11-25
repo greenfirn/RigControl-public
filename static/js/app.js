@@ -1128,13 +1128,22 @@ let selectedConfEditType = "agent.conf";
 const AGENT_CONF_DEFAULT_TEMPLATE =
     "# ===== SERVER SETTINGS (dashboard server MQTT broker) =====\n" +
     "BROKER_HOST=10.10.0.10\n" +
-    "BROKER_PORT=1883\n" +
+    "BROKER_PORT=8883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
+    "MQTT_TLS=1\n" +
+    "MQTT_CA_FILE=/etc/rigcontrol/ca.crt\n" +
+    "#MQTT_CLIENT_CERT=\n" +
+    "#MQTT_CLIENT_KEY=\n" +
+    "#MQTT_TLS_INSECURE=0\n" +
     "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
     "# ===== END SERVER SETTINGS =====\n" +
     "# ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====\n" +
     "# BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to\n" +
+    "# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)\n" +
+    "# MQTT_CA_FILE: CA certificate that signed the broker certificate (written above from the pasted ca.crt; empty = system CAs)\n" +
+    "# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them\n" +
+    "# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)\n" +
     "# MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls\n" +
     "# OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally\n" +
     "# OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless\n" +

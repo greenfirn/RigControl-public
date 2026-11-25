@@ -92,7 +92,7 @@ USE_AWS_DB = os.getenv("USE_AWS_DB", "false").lower() == "true"
 MQTT_MODE = os.getenv("MQTT_MODE", "local")
 if MQTT_MODE == "local":
     MQTT_BROKER = os.getenv("MQTT_HOST", "127.0.0.1")
-    MQTT_PORT   = int(os.getenv("MQTT_PORT", "1883"))
+    MQTT_PORT   = int(os.getenv("MQTT_PORT", "8883"))
     MQTT_USER   = os.getenv("MQTT_USER", "admin")
     MQTT_PASS   = os.getenv("MQTT_PASS", "******")
     MQTT_CERT = None
@@ -101,7 +101,7 @@ if MQTT_MODE == "local":
     BASE_PATH = os.getenv("BASE_PATH", "")
 elif MQTT_MODE == "pi":
     MQTT_BROKER = os.getenv("MQTT_HOST", "127.0.0.1")
-    MQTT_PORT   = int(os.getenv("MQTT_PORT", "1883"))
+    MQTT_PORT   = int(os.getenv("MQTT_PORT", "8883"))
     MQTT_USER   = os.getenv("MQTT_USER", "admin")
     MQTT_PASS   = os.getenv("MQTT_PASS", "******")
     MQTT_CERT = None
@@ -119,6 +119,11 @@ elif MQTT_MODE == "aws":
     BASE_PATH = os.getenv("BASE_PATH", "")
 else:
     raise RuntimeError(f"Invalid MQTT_MODE: {MQTT_MODE}")
+MQTT_TLS = os.getenv("MQTT_TLS", "true").lower() in ("1", "true", "yes", "on")
+MQTT_CA_FILE = os.getenv("MQTT_CA_FILE", "")
+MQTT_CLIENT_CERT = os.getenv("MQTT_CLIENT_CERT", "")
+MQTT_CLIENT_KEY = os.getenv("MQTT_CLIENT_KEY", "")
+MQTT_TLS_INSECURE = os.getenv("MQTT_TLS_INSECURE", "false").lower() in ("1", "true", "yes", "on")
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 API_BIND = os.getenv("API_BIND", "0.0.0.0")
@@ -2428,12 +2433,23 @@ async def mqtt_loop():
     global _mqtt_client_ref
     log(f"[MQTT] Mode={MQTT_MODE} Connecting to {MQTT_BROKER}:{MQTT_PORT} ...")
     tls_params = None
+    tls_insecure = False
     if MQTT_MODE == "aws":
         tls_params = aiomqtt.TLSParameters(
             ca_certs=MQTT_CA,
             certfile=MQTT_CERT,
             keyfile=MQTT_KEY,
         )
+    elif MQTT_TLS:
+        import ssl
+        tls_params = aiomqtt.TLSParameters(
+            ca_certs=MQTT_CA_FILE or None,
+            certfile=MQTT_CLIENT_CERT or None,
+            keyfile=MQTT_CLIENT_KEY or None,
+            cert_reqs=ssl.CERT_NONE if MQTT_TLS_INSECURE else ssl.CERT_REQUIRED,
+        )
+        tls_insecure = MQTT_TLS_INSECURE
+        log(f"[MQTT] TLS enabled (ca={MQTT_CA_FILE or 'system'}, verify={'off' if tls_insecure else 'on'})")
     keepalive = 30 if MQTT_MODE == "aws" else 60
     while not mqtt_stop.is_set():
         try:
@@ -2444,6 +2460,7 @@ async def mqtt_loop():
                 username=MQTT_USER if MQTT_MODE in ("local", "pi") else None,
                 password=MQTT_PASS if MQTT_MODE in ("local", "pi") else None,
                 tls_params=tls_params,
+                tls_insecure=tls_insecure,
                 keepalive=keepalive,
             ) as client:
                 _mqtt_client_ref = client

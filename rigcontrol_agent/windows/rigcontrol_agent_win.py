@@ -19,7 +19,7 @@ except ImportError as e:
     TELEMETRY_AVAILABLE = False
 # GLOBAL SETTINGS
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = os.path.join(os.path.dirname(__file__), "rigcontrol_cmd.bat")
@@ -107,6 +107,11 @@ cfg = load_broker_config()
 for _k, _v in cfg.items():
     os.environ[_k] = _v
 USE_AWS = "AWS_MQTT_HOST" in cfg
+MQTT_TLS = True
+MQTT_CA_FILE = ""
+MQTT_CLIENT_CERT = ""
+MQTT_CLIENT_KEY = ""
+MQTT_TLS_INSECURE = False
 if USE_AWS:
     BROKER_HOST = cfg["AWS_MQTT_HOST"]
     BROKER_PORT = int(cfg.get("AWS_MQTT_PORT", 8883))
@@ -122,6 +127,13 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
+    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
+    MQTT_CLIENT_CERT = cfg.get("MQTT_CLIENT_CERT", "").strip()
+    MQTT_CLIENT_KEY = cfg.get("MQTT_CLIENT_KEY", "").strip()
+    MQTT_TLS_INSECURE = cfg.get("MQTT_TLS_INSECURE", "0").strip().lower() in ("1", "true", "yes", "on")
+    if MQTT_TLS:
+        log(f"[Config] MQTT TLS = ON (ca={MQTT_CA_FILE or 'system'}, verify={'off' if MQTT_TLS_INSECURE else 'on'})")
 # CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
@@ -665,6 +677,20 @@ def main():
                 tls_version=ssl.PROTOCOL_TLSv1_2
             )
             log("TLS configured for AWS IoT")
+        except Exception as e:
+            log(f"TLS configuration failed: {e}")
+    elif MQTT_TLS:
+        try:
+            import ssl
+            mqtt_client.tls_set(
+                ca_certs=MQTT_CA_FILE or None,
+                certfile=MQTT_CLIENT_CERT or None,
+                keyfile=MQTT_CLIENT_KEY or None,
+                cert_reqs=ssl.CERT_NONE if MQTT_TLS_INSECURE else ssl.CERT_REQUIRED,
+            )
+            if MQTT_TLS_INSECURE:
+                mqtt_client.tls_insecure_set(True)
+            log("TLS configured for MQTT broker")
         except Exception as e:
             log(f"TLS configuration failed: {e}")
     threading.Thread(target=stats_db_periodic_loop, daemon=True).start()

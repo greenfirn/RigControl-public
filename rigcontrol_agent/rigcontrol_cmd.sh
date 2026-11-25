@@ -1,10 +1,6 @@
 sudo tee /usr/local/bin/rigcontrol_cmd.sh.new > /dev/null <<'EOF'
 #!/bin/bash
 set -e
-# The whole body is wrapped in ONE brace group so bash parses all of it before running
-# anything. Otherwise redeploying this file THROUGH itself (Send Cmd running
-# "sudo tee /usr/local/bin/rigcontrol_cmd.sh") rewrites the script under the running shell,
-# which then resumes at a stale byte offset and reports a bogus "unexpected EOF" (rc=2).
 {
 LOG="/var/lib/rigcontrol/rigcontrol_cmd.log"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
@@ -61,7 +57,6 @@ rc_miner_api_fetch() {
         echo "$body"
     fi
 }
-# Read entire command from STDIN (multi-line safe)
 RAW_CMD="$(cat)"
 if [[ -z "$RAW_CMD" ]]; then
     echo "No command received"
@@ -70,12 +65,10 @@ fi
 echo "==================================================" >> "$LOG"
 echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
 echo "$RAW_CMD" >> "$LOG"
-# Parse first line for structured commands
 FIRST_LINE="$(echo "$RAW_CMD" | head -n1)"
 CMD="$(echo "$FIRST_LINE" | awk '{print $1}')"
 ARG="$(echo "$FIRST_LINE" | cut -d' ' -f2-)"
 case "$CMD" in
-    # GPU Miner Controls
     gpu.start)
         systemctl start "$GPU_SERVICE"
         echo "Started $GPU_SERVICE"
@@ -88,7 +81,6 @@ case "$CMD" in
         systemctl restart "$GPU_SERVICE"
         echo "Restarted $GPU_SERVICE"
         ;;
-    # CPU Miner Controls
     cpu.start)
         systemctl start "$CPU_SERVICE"
         echo "Started $CPU_SERVICE"
@@ -101,7 +93,6 @@ case "$CMD" in
         systemctl restart "$CPU_SERVICE"
         echo "Restarted $CPU_SERVICE"
         ;;
-    # AUX Service Controls
     aux.start)
         systemctl start "$AUX_SERVICE"
         echo "Started $AUX_SERVICE"
@@ -114,7 +105,6 @@ case "$CMD" in
         systemctl restart "$AUX_SERVICE"
         echo "Restarted $AUX_SERVICE"
         ;;
-    # Watchdog Controls (single unified service - see WATCHDOG_SERVICE)
     watchdog.start)
         systemctl enable "$WATCHDOG_SERVICE"
         systemctl start "$WATCHDOG_SERVICE"
@@ -129,7 +119,6 @@ case "$CMD" in
         systemctl restart "$WATCHDOG_SERVICE"
         echo "Restarted $WATCHDOG_SERVICE"
         ;;
-    # MINER API CALL (Workers tab -> Logs -> CPU/GPU/AUX API)
     cpu.api)
         rc_miner_api_fetch CPU
         ;;
@@ -139,7 +128,6 @@ case "$CMD" in
     aux.api)
         rc_miner_api_fetch AUX
         ;;
-    # MODE SWITCHING
     mode.set)
         MODE="$(echo "$ARG" | tr '[:lower:]' '[:upper:]')"
         systemctl stop "$CPU_SERVICE" "$GPU_SERVICE"
@@ -157,25 +145,16 @@ case "$CMD" in
             exit 1
         fi
         ;;
-    # SYSTEM REBOOT
     reboot)
         echo "Rebooting system..."
         shutdown -r now
         ;;
-    # SYSTEM SHUTDOWN
     shutdown)
         echo "Shutting down system..."
         shutdown now
         ;;
-    # RAW MULTI-LINE SHELL COMMAND (DEFAULT)
     *)
         echo "[RAW EXECUTION]"
-        # Delivered via stdin (here-string), NOT as `bash -c "$RAW_CMD"` - passing the whole
-        # command as a single argv string hits the kernel's per-argument MAX_ARG_STRLEN cap
-        # (128 KB on x86_64) regardless of total ARG_MAX headroom, which a large pasted
-        # command (e.g. an entire source file) blows straight through, failing with
-        # "Argument list too long" (exit 126) before a single line of it ever runs. A
-        # here-string has no such size limit since it's just a pipe/temp-file under the hood.
         bash <<< "$RAW_CMD"
         ;;
 esac
@@ -183,6 +162,4 @@ exit $?
 }
 EOF
 sudo chmod +x /usr/local/bin/rigcontrol_cmd.sh.new
-# Atomic swap (rename, new inode): a copy of this script that is currently running keeps
-# reading its old file, so redeploying through Send Cmd cannot corrupt the running shell.
 sudo mv -f /usr/local/bin/rigcontrol_cmd.sh.new /usr/local/bin/rigcontrol_cmd.sh

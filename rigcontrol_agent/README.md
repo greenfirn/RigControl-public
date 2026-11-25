@@ -130,19 +130,45 @@ sudo systemctl restart rigcontrol-agent.service
 
 ![test-windows](../images/Screenshot-test-windows.png)
 
+## Recommended
+
+reserve the port range used for rental services (replace 51000-52000 with yours), so outgoing connections like the agent's mqtt never use a rental port. services can still bind these ports.
+
+```
+echo "net.ipv4.ip_local_reserved_ports = 51000-52000" | sudo tee /etc/sysctl.d/99-rental-ports.conf
+sudo sysctl --system
+cat /proc/sys/net/ipv4/ip_local_reserved_ports
+```
+
+mqtt is encrypted (TLS) by default: paste the broker's `ca.crt` into the `ca.crt` block of the script and set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` (see [mosquitto-tls-setup.txt](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt)). for plain mqtt set `MQTT_TLS=0` and `BROKER_PORT=1883`
+
 [rigcontrol-agent-local-keryxd.sh](rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
 
 ```
+sudo tee /etc/rigcontrol/ca.crt > /dev/null <<'EOF'
+-----BEGIN CERTIFICATE-----
+paste the contents of the broker's ca.crt here
+-----END CERTIFICATE-----
+EOF
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
-BROKER_PORT=1883
+BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=********************
+MQTT_TLS=1
+MQTT_CA_FILE=/etc/rigcontrol/ca.crt
+#MQTT_CLIENT_CERT=
+#MQTT_CLIENT_KEY=
+#MQTT_TLS_INSECURE=0
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
+# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
+# MQTT_CA_FILE: CA certificate that signed the broker certificate (written above from the pasted ca.crt; empty = system CAs)
+# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
+# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
 # OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
@@ -181,16 +207,30 @@ EOF
 [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)... KERYX_MINER_API
 
 ```
+sudo tee /etc/rigcontrol/ca.crt > /dev/null <<'EOF'
+-----BEGIN CERTIFICATE-----
+paste the contents of the broker's ca.crt here
+-----END CERTIFICATE-----
+EOF
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
-BROKER_PORT=1883
+BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=**********
+MQTT_TLS=1
+MQTT_CA_FILE=/etc/rigcontrol/ca.crt
+#MQTT_CLIENT_CERT=
+#MQTT_CLIENT_KEY=
+#MQTT_TLS_INSECURE=0
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
+# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
+# MQTT_CA_FILE: CA certificate that signed the broker certificate (written above from the pasted ca.crt; empty = system CAs)
+# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
+# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
 # OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless

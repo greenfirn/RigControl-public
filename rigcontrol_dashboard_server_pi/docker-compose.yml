@@ -83,6 +83,7 @@ services:
     restart: unless-stopped
     volumes:
       - /etc/rigcontrol/aws-certs:/certs:ro
+      - ./mosquitto/config/certs:/mqtt-certs:ro
       - /home/user/ha-docker/rigcontrol-ws/themes:/app/themes:rw
       - /home/user/ha-docker/rigcontrol-ws/rigcontrol_config.json:/app/rigcontrol_config.json:rw
       - /home/user/ha-docker/rigcontrol-ws/rigcontrol_saved_commands.db:/app/rigcontrol_saved_commands.db:rw
@@ -103,6 +104,11 @@ services:
       - MQTT_PORT=${MQTT_PORT}
       - MQTT_USER=${MQTT_USER}
       - MQTT_PASS=${MQTT_PASS}
+      - MQTT_TLS=${MQTT_TLS:-true}
+      - MQTT_CA_FILE=${MQTT_CA_FILE:-/mqtt-certs/ca.crt}
+      - MQTT_CLIENT_CERT=${MQTT_CLIENT_CERT:-}
+      - MQTT_CLIENT_KEY=${MQTT_CLIENT_KEY:-}
+      - MQTT_TLS_INSECURE=${MQTT_TLS_INSECURE:-false}
       - AWS_MQTT_HOST=${AWS_MQTT_HOST}
       - AWS_MQTT_PORT=${AWS_MQTT_PORT}
       - AWS_MQTT_CA=/certs/${AWS_MQTT_CA_FILENAME}

@@ -9,9 +9,10 @@ import time
 import urllib.request
 import os
 import datetime
-from aiomqtt import Client, MqttError
+import ssl
+from aiomqtt import Client, MqttError, TLSParameters
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = "/usr/local/bin/rigcontrol_cmd.sh"
@@ -43,9 +44,13 @@ def load_broker_config():
     except Exception as e:
         log(f"Config load error: {e}")
     return cfg
-# CONFIG - LOCAL MQTT OR AWS
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
+MQTT_TLS = True
+MQTT_CA_FILE = ""
+MQTT_CLIENT_CERT = ""
+MQTT_CLIENT_KEY = ""
+MQTT_TLS_INSECURE = False
 if USE_AWS:
     BROKER_HOST = cfg["AWS_MQTT_HOST"]
     BROKER_PORT = int(cfg.get("AWS_MQTT_PORT", 8883))
@@ -61,6 +66,13 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
+    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
+    MQTT_CLIENT_CERT = cfg.get("MQTT_CLIENT_CERT", "").strip()
+    MQTT_CLIENT_KEY = cfg.get("MQTT_CLIENT_KEY", "").strip()
+    MQTT_TLS_INSECURE = cfg.get("MQTT_TLS_INSECURE", "0").strip().lower() in ("1", "true", "yes", "on")
+    if MQTT_TLS:
+        log(f"[Config] MQTT TLS = ON (ca={MQTT_CA_FILE or 'system'}, verify={'off' if MQTT_TLS_INSECURE else 'on'})")
 telemetry.OVERRIDE_LIST = [
     s.strip().lower()
     for s in cfg.get("OVERRIDE_LIST", "").split(",")
@@ -68,9 +80,8 @@ telemetry.OVERRIDE_LIST = [
 ]
 if telemetry.OVERRIDE_LIST:
     log(f"[Config] OVERRIDE_LIST = {telemetry.OVERRIDE_LIST}")
-# CONFIG - CUSTOM MINER (unknown-API log-scraper) DETECTION
 def _read_conf_key(path, *keys, gpu_id="0"):
-    """Reads a KEY GPU_ID "value" row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY "value" variant, stored under an ALL fallback), returning the first key in priority order with a resolved value."""
+    """Reads a KEY GPU_ID 'value' row from rig-gpu.conf/rig-cpu.conf's 3-column format (or a 2-column KEY"""
     if not os.path.isfile(path):
         return ""
     def _strip_quotes(v):
@@ -106,7 +117,7 @@ def _read_conf_key(path, *keys, gpu_id="0"):
         log(f"[Config] Error reading {path}: {e}")
     return ""
 def _read_conf_key_json(path, *keys):
-    """JSON counterpart to _read_conf_key() for rigs with only rig-gpu.json/rig-cpu.json, mirroring 00-get_rig_conf.sh's miner/custom-miner resolution and returning the first key in priority order with a resolved value."""
+    """JSON counterpart to _read_conf_key() for rigs with only rig-gpu.json/rig-cpu.json, mirroring"""
     if not os.path.isfile(path):
         return ""
     try:
@@ -135,16 +146,7 @@ def _read_conf_key_json(path, *keys):
 _custom_miner_slots = {"cpu": "", "gpu": "", "aux": ""}
 _custom_miner_conf_paths = {"cpu": "", "gpu": "", "aux": ""}
 def resolve_custom_miner():
-    """Re-resolves the custom-miner slot/name/env vars for ALL THREE slots
-    (cpu/gpu/aux) independently - more than one slot can simultaneously run
-    a miner unrecognized by telemetry._BUILTIN_MINER_PROCESS_MAP (e.g. GPU
-    running keryx-miner while AUX runs keryxd), and each slot needs its own
-    registered custom-miner name so neither one starves the other out of
-    telemetry collection. Called once at startup, then re-run whenever
-    telemetry.consume_miners_changed_flag() reports the running-miner
-    process set changed (see publish_status / stats_db_periodic_loop) so a
-    miner binary/version change picked up while the agent is already
-    running doesn't require an agent restart to be detected."""
+    """Re-resolves the custom-miner slot/name/env vars for ALL THREE slots (cpu/gpu/aux) independently -"""
     global _custom_miner_slots, _custom_miner_conf_paths
     for _slot_name, _rig_conf_path in (
         ("gpu", "/etc/rigcontrol/rig-gpu.conf"),
@@ -199,7 +201,6 @@ def resolve_custom_miner():
             os.environ[f"{_miner_key}_LOG_PATH"] = f"/run/rigcontrol/{_slot_name}_miner.log"
             log(f"[Config] {_miner_key}_LOG_PATH (auto-derived from {_slot_name} slot) = {os.environ[f'{_miner_key}_LOG_PATH']}")
 resolve_custom_miner()
-# CONFIG - LOCAL STATS DB
 STATS_DB_ENABLED = cfg.get("STATS_DB_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 try:
     STATS_DB_MAX_HISTORY_DAYS = int(cfg.get("STATS_DB_MAX_HISTORY_DAYS", STATS_DB_MAX_HISTORY_DAYS))
@@ -221,7 +222,6 @@ log(f"[Config] Local stats DB enabled = {STATS_DB_ENABLED}")
 log(f"[Config] Local stats DB max history days = {STATS_DB_MAX_HISTORY_DAYS}")
 log(f"[Config] Local stats DB periodic save interval = {STATS_DB_INTERVAL_SECONDS}s")
 log(f"[Config] Minimum telemetry pull interval = {MIN_TELEMETRY_PULL_INTERVAL_SECONDS}s")
-# CONFIG - SERVICE NAMES
 CPU_SERVICE_NAME = cfg.get("CPU_SERVICE_NAME", "").strip() or "docker_events_cpu.service"
 GPU_SERVICE_NAME = cfg.get("GPU_SERVICE_NAME", "").strip() or "docker_events_gpu.service"
 WATCHDOG_SERVICE_NAME = cfg.get("WATCHDOG_SERVICE_NAME", "").strip() or "rigcontrol_watchdog.service"
@@ -278,7 +278,7 @@ def _stats_db_cleanup(conn, days_to_keep):
     if deleted:
         log(f"[StatsDB] Cleanup: removed {deleted} entries older than {days_to_keep} days")
 def save_stats_locally(payload):
-    """Writes one telemetry snapshot to the local SQLite history and prunes rows past the retention window at most once per day, using its own short-lived connection via asyncio.to_thread."""
+    """Writes one telemetry snapshot to the local SQLite history and prunes rows past the retention window"""
     global _stats_db_last_cleanup, _stats_db_last_save
     try:
         conn = _stats_db_connect()
@@ -298,7 +298,7 @@ def save_stats_locally(payload):
     except Exception as e:
         log(f"[StatsDB] Error saving local telemetry: {e}")
 def _iso_to_sqlite_utc(iso_str):
-    """Converts an ISO 8601 timestamp to the UTC "YYYY-MM-DD HH:MM:SS" format SQLite writes into rig_telemetry.timestamp."""
+    """Converts an ISO 8601 timestamp to the UTC 'YYYY-MM-DD HH:MM:SS' format SQLite writes into"""
     s = iso_str.strip()
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
@@ -307,7 +307,7 @@ def _iso_to_sqlite_utc(iso_str):
         dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 def query_stats_history(days, limit=None, start_date=None):
-    """Reads back locally-stored telemetry oldest first, either the last N days or a fixed window starting at start_date if given."""
+    """Reads back locally-stored telemetry oldest first, either the last N days or a fixed window starting"""
     conn = _stats_db_connect()
     try:
         cursor = conn.cursor()
@@ -347,7 +347,7 @@ def query_stats_history(days, limit=None, start_date=None):
             continue
     return entries
 def _conf_set_line(lines, key, value):
-    """Finds KEY= in a list of conf lines and updates it in place, appending a new line if the key isn't present."""
+    """Finds KEY= in a list of conf lines and updates it in place, appending a new line if the key isn't"""
     prefix = f"{key}="
     for i, line in enumerate(lines):
         if line.strip().upper().startswith(prefix.upper()):
@@ -356,7 +356,7 @@ def _conf_set_line(lines, key, value):
     lines.append(f"{key}={value}\n")
     return lines
 def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None):
-    """Live-updates stats DB settings and persists the new values back into rigcontrol-agent.conf in a single write."""
+    """Live-updates stats DB settings and persists the new values back into rigcontrol-agent.conf in a"""
     global STATS_DB_ENABLED, STATS_DB_MAX_HISTORY_DAYS, STATS_DB_INTERVAL_SECONDS
     changed_keys = {}
     if enabled is not None:
@@ -397,7 +397,7 @@ def set_stats_config(enabled=None, max_history_days=None, interval_seconds=None)
     except Exception as e:
         log(f"[StatsDB] Error persisting stats config to conf: {e}")
 async def mqtt_publish_resilient(mqtt, topic, payload_str, context):
-    """Wraps mqtt.publish() with one retry on a transient disconnect, logging which request failed and waiting briefly for the client's automatic reconnect before retrying."""
+    """Wraps mqtt.publish() with one retry on a transient disconnect, logging which request failed and"""
     try:
         await mqtt.publish(topic, payload_str)
         return True
@@ -428,15 +428,6 @@ async def publish_status(mqtt, reason="periodic", visible_groups=None):
         if STATS_DB_ENABLED and (time.time() - _stats_db_last_save) >= STATS_DB_INTERVAL_SECONDS:
             effective_visible_groups = None
         try:
-            # Unconditional every cycle (not gated behind telemetry.consume_miners_changed_flag())
-            # - that flag only flips when detect_running_miners()'s found-set changes, which
-            # requires a process to already be recognized (a registered custom slot, or a builtin)
-            # before its appearance/disappearance can register as a "change" at all. A brand-new
-            # custom-miner name configured while the agent is already running is invisible to that
-            # detection loop until IT'S resolved, so gating registration behind it is a chicken-
-            # and-egg that only self-heals via an unrelated flag flip or a full agent restart.
-            # resolve_custom_miner() itself is just a couple of small conf/json file reads (no
-            # network calls), cheap enough to run on every ~5s telemetry cycle unconditionally.
             await asyncio.to_thread(resolve_custom_miner)
         except Exception as e:
             log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
@@ -634,7 +625,7 @@ async def publish_check(mqtt, want_docker: bool = False):
     else:
         log("Offline ping check received - replied online (no telemetry collected)")
 async def stats_db_periodic_loop():
-    """Background loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS) independent of refresh/cmd-triggered publishes, skipping a cycle if a more recent row already exists."""
+    """Background loop that tops up the local stats DB on its own cadence (STATS_DB_INTERVAL_SECONDS)"""
     CHECK_EVERY = 5
     while True:
         await asyncio.sleep(CHECK_EVERY)
@@ -645,8 +636,6 @@ async def stats_db_periodic_loop():
             continue
         try:
             try:
-                # See the matching call in the main telemetry-pull path for why this is
-                # unconditional now instead of gated behind telemetry.consume_miners_changed_flag().
                 await asyncio.to_thread(resolve_custom_miner)
             except Exception as e:
                 log(f"[Config] custom miner re-resolve error (continuing with existing state): {e}")
@@ -668,12 +657,20 @@ async def mqtt_loop():
                 "port": BROKER_PORT,
             }
             if USE_AWS:
-                client_kwargs["tls_params"] = {
-                    "ca_certs": AWS_CA,
-                    "certfile": AWS_CERT,
-                    "keyfile": AWS_KEY,
-                }
+                client_kwargs["tls_params"] = TLSParameters(
+                    ca_certs=AWS_CA,
+                    certfile=AWS_CERT,
+                    keyfile=AWS_KEY,
+                )
             else:
+                if MQTT_TLS:
+                    client_kwargs["tls_params"] = TLSParameters(
+                        ca_certs=MQTT_CA_FILE or None,
+                        certfile=MQTT_CLIENT_CERT or None,
+                        keyfile=MQTT_CLIENT_KEY or None,
+                        cert_reqs=ssl.CERT_NONE if MQTT_TLS_INSECURE else ssl.CERT_REQUIRED,
+                    )
+                    client_kwargs["tls_insecure"] = MQTT_TLS_INSECURE
                 if BROKER_USER:
                     client_kwargs["username"] = BROKER_USER
                     client_kwargs["password"] = BROKER_PASS
@@ -727,3 +724,20 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 EOF
+AGENT_VENV="/usr/local/lib/rigcontrol-agent/.venv"
+if [ ! -x "$AGENT_VENV/bin/pip" ]; then
+    echo "Creating rigcontrol-agent virtual environment at $AGENT_VENV ..."
+    sudo mkdir -p "$(dirname "$AGENT_VENV")"
+    sudo apt-get update
+    sudo apt-get install -y python3-venv
+    sudo python3 -m venv --clear "$AGENT_VENV"
+    if [ ! -x "$AGENT_VENV/bin/pip" ]; then
+        echo "ERROR: $AGENT_VENV/bin/pip still doesn't exist after venv creation - see any ensurepip/apt-get error above. Not starting the agent under a broken interpreter; fix the venv (apt-get install python3-venv) and re-run this script."
+        exit 1
+    fi
+    sudo "$AGENT_VENV/bin/pip" install --upgrade pip
+    sudo "$AGENT_VENV/bin/pip" install aiomqtt typing_extensions paho-mqtt requests
+    echo "Virtual environment created and dependencies installed."
+else
+    echo "rigcontrol-agent virtual environment already exists at $AGENT_VENV - skipping dependency install."
+fi

@@ -1,0 +1,50 @@
+ENCRYPTED MQTT (TLS) - dashboard server on windows (mosquitto for windows), agents and server
+
+TLS is the default: the broker listens on 8883 only, the dashboard server and the agents connect with
+MQTT_TLS on and verify the broker certificate against your own CA (ca.crt). Do this once on a new install,
+before starting mosquitto. Replace 10.10.0.10 below with the ip agents use to reach the broker.
+
+1. create the certificates (openssl comes with Git for Windows: run in Git Bash)
+   (san.ext lists every address a client may use: the broker ip, 127.0.0.1 for a server on this pc, and a hostname if you use one: add ,DNS:yourhost)
+
+mkdir -p /c/mosquitto-certs && cd /c/mosquitto-certs
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
+printf "subjectAltName=IP:10.10.0.10,IP:127.0.0.1" > san.ext
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
+
+   keep ca.key private. only ca.crt is copied to workers.
+
+2. mosquitto.conf (see mosquitto-setup.txt) has the TLS listener and no plain 1883 listener:
+
+listener 8883
+protocol mqtt
+cafile C:\mosquitto-certs\ca.crt
+certfile C:\mosquitto-certs\server.crt
+keyfile C:\mosquitto-certs\server.key
+tls_version tlsv1.2
+
+   allow 8883 through the windows firewall, then restart the mosquitto service
+
+3. dashboard server (.env): MQTT_HOST must be an address in san.ext (10.10.0.10 or 127.0.0.1)
+
+MQTT_PORT=8883
+MQTT_TLS=true
+MQTT_CA_FILE=C:\mosquitto-certs\ca.crt
+
+4. each worker: the agent install scripts (rigcontrol-agent-local.sh / copy-paste-update.sh) already write BROKER_PORT=8883,
+   MQTT_TLS=1 and MQTT_CA_FILE=/etc/rigcontrol/ca.crt. paste the contents of ca.crt into the ca.crt block at the top of rigcontrol-agent-local.sh,
+   set BROKER_HOST / BROKER_USER / BROKER_PASS, regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
+
+   windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, MQTT_CA_FILE=C:\rigcontrol\ca.crt
+
+5. test
+
+openssl s_client -connect 10.10.0.10:8883 -CAfile ca.crt </dev/null | grep -i "verify return"
+   expect 'verify return:1'
+
+6. plain MQTT (no encryption) is still possible: set MQTT_TLS=0 and the plain port (1883) on the server and workers and add a
+   'listener 1883' (allow_anonymous false, same password_file) to mosquitto.conf.
+   MQTT_TLS_INSECURE=1 (workers) / MQTT_TLS_INSECURE=true (server) skips certificate and hostname checks: testing only.

@@ -36,3 +36,7 @@
 -- if not running on windows or dont want mosquitto to start with the server:
 
 remove the mosquitto start functions section near the top and if statement near bottom of .py
+
+## Encrypted MQTT (TLS)
+
+MQTT is encrypted (TLS) by default: the broker listens on 8883 with your own CA, and the server and agents verify it. create the certificates first, see [mosquitto-tls-setup.txt](mosquitto-tls-setup.txt) (plain MQTT: `MQTT_TLS=false`, `MQTT_PORT=1883` and a `listener 1883` in mosquitto.conf)

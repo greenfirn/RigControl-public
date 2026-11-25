@@ -1,14 +1,28 @@
 sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
+sudo tee /etc/rigcontrol/ca.crt > /dev/null <<'EOF'
+-----BEGIN CERTIFICATE-----
+paste the contents of the broker's ca.crt here
+-----END CERTIFICATE-----
+EOF
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
-BROKER_PORT=1883
+BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=**********
+MQTT_TLS=1
+MQTT_CA_FILE=/etc/rigcontrol/ca.crt
+#MQTT_CLIENT_CERT=
+#MQTT_CLIENT_KEY=
+#MQTT_TLS_INSECURE=0
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
+# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
+# MQTT_CA_FILE: CA certificate that signed the broker certificate (written above from the pasted ca.crt; empty = system CAs)
+# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
+# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
 # OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
@@ -74,6 +88,7 @@ import shutil
 # Conf keys (rigcontrol-agent.conf, read live):
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker the agent connects to
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
+# MQTT_TLS (default 1): 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT; MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
 # OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
 # DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running
@@ -3240,9 +3255,10 @@ import time
 import urllib.request
 import os
 import datetime
-from aiomqtt import Client, MqttError
+import ssl
+from aiomqtt import Client, MqttError, TLSParameters
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = "/usr/local/bin/rigcontrol_cmd.sh"
@@ -3276,6 +3292,11 @@ def load_broker_config():
     return cfg
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
+MQTT_TLS = True
+MQTT_CA_FILE = ""
+MQTT_CLIENT_CERT = ""
+MQTT_CLIENT_KEY = ""
+MQTT_TLS_INSECURE = False
 if USE_AWS:
     BROKER_HOST = cfg["AWS_MQTT_HOST"]
     BROKER_PORT = int(cfg.get("AWS_MQTT_PORT", 8883))
@@ -3291,6 +3312,13 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
+    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
+    MQTT_CLIENT_CERT = cfg.get("MQTT_CLIENT_CERT", "").strip()
+    MQTT_CLIENT_KEY = cfg.get("MQTT_CLIENT_KEY", "").strip()
+    MQTT_TLS_INSECURE = cfg.get("MQTT_TLS_INSECURE", "0").strip().lower() in ("1", "true", "yes", "on")
+    if MQTT_TLS:
+        log(f"[Config] MQTT TLS = ON (ca={MQTT_CA_FILE or 'system'}, verify={'off' if MQTT_TLS_INSECURE else 'on'})")
 telemetry.OVERRIDE_LIST = [
     s.strip().lower()
     for s in cfg.get("OVERRIDE_LIST", "").split(",")
@@ -3875,12 +3903,20 @@ async def mqtt_loop():
                 "port": BROKER_PORT,
             }
             if USE_AWS:
-                client_kwargs["tls_params"] = {
-                    "ca_certs": AWS_CA,
-                    "certfile": AWS_CERT,
-                    "keyfile": AWS_KEY,
-                }
+                client_kwargs["tls_params"] = TLSParameters(
+                    ca_certs=AWS_CA,
+                    certfile=AWS_CERT,
+                    keyfile=AWS_KEY,
+                )
             else:
+                if MQTT_TLS:
+                    client_kwargs["tls_params"] = TLSParameters(
+                        ca_certs=MQTT_CA_FILE or None,
+                        certfile=MQTT_CLIENT_CERT or None,
+                        keyfile=MQTT_CLIENT_KEY or None,
+                        cert_reqs=ssl.CERT_NONE if MQTT_TLS_INSECURE else ssl.CERT_REQUIRED,
+                    )
+                    client_kwargs["tls_insecure"] = MQTT_TLS_INSECURE
                 if BROKER_USER:
                     client_kwargs["username"] = BROKER_USER
                     client_kwargs["password"] = BROKER_PASS

@@ -293,10 +293,21 @@ def load_mqtt_login():
     if not host:
         return None
     try:
-        port = int(cfg.get("BROKER_PORT", 1883))
+        port = int(cfg.get("BROKER_PORT", 8883))
     except (TypeError, ValueError):
-        port = 1883
+        port = 8883
     return host, port, cfg.get("BROKER_USER"), cfg.get("BROKER_PASS")
+def _mqtt_tls_conf():
+    cfg = _load_kv_conf(AGENT_CONF_PATH)
+    on = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    if not on:
+        return None
+    return {
+        "ca": cfg.get("MQTT_CA_FILE", "").strip() or None,
+        "cert": cfg.get("MQTT_CLIENT_CERT", "").strip() or None,
+        "key": cfg.get("MQTT_CLIENT_KEY", "").strip() or None,
+        "insecure": cfg.get("MQTT_TLS_INSECURE", "0").strip().lower() in ("1", "true", "yes", "on"),
+    }
 def load_agent_service_names():
     cfg = _load_kv_conf(AGENT_CONF_PATH)
     return {
@@ -329,6 +340,13 @@ def publish_alert(rig, algo, reasons, actions, source="mining_watchdog"):
         client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         if user:
             client.username_pw_set(user, password)
+        tls = _mqtt_tls_conf()
+        if tls:
+            import ssl
+            client.tls_set(ca_certs=tls["ca"], certfile=tls["cert"], keyfile=tls["key"],
+                           cert_reqs=ssl.CERT_NONE if tls["insecure"] else ssl.CERT_REQUIRED)
+            if tls["insecure"]:
+                client.tls_insecure_set(True)
         client.connect(host, port, keepalive=10)
         client.loop_start()
         client.publish(WATCHDOG_ALERT_TOPIC, payload_text, qos=1)
