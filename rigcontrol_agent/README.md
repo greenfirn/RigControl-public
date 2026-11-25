@@ -68,7 +68,7 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 5. install / update
    - run 'generate-copy-paste-update.bat' to create/update 'copy-paste-update.sh'
    - open a ssh session on a worker (on a windows machine use putty or similar ssh client)
-   - copy/paste the contents of 'copy-paste-update.sh' into a worker ssh session and press enter to write the files
+   - copy/paste the contents of 'copy-paste-update.sh' into a worker ssh session and press enter to write the files and start/restart the agent
 
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
 
