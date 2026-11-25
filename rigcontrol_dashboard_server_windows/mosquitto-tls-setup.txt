@@ -35,8 +35,9 @@ MQTT_TLS=true
 MQTT_CA_FILE=C:\mosquitto-certs\ca.crt
 
 4. each worker: the agent install scripts (rigcontrol-agent-local.sh / copy-paste-update.sh) already write BROKER_PORT=8883,
-   MQTT_TLS=1 and MQTT_CA_FILE=/etc/rigcontrol/ca.crt. paste the contents of ca.crt into the ca.crt block at the top of rigcontrol-agent-local.sh,
-   set BROKER_HOST / BROKER_USER / BROKER_PASS, regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
+   MQTT_TLS=1 and MQTT_CA_FILE=/etc/rigcontrol/ca.crt. copy the broker's ca.crt to /etc/rigcontrol/ca.crt on each worker once (the scripts only warn if it is missing and never overwrite it):
+
+   then set BROKER_HOST / BROKER_USER / BROKER_PASS in the script, regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
 
    windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, MQTT_CA_FILE=C:\rigcontrol\ca.crt
 

@@ -1141,7 +1141,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "# ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====\n" +
     "# BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to\n" +
     "# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)\n" +
-    "# MQTT_CA_FILE: CA certificate that signed the broker certificate (written above from the pasted ca.crt; empty = system CAs)\n" +
+    "# MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = system CAs)\n" +
     "# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them\n" +
     "# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)\n" +
     "# MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls\n" +

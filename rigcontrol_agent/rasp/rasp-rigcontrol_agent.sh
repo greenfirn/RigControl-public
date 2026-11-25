@@ -8,11 +8,17 @@ import time
 import urllib.request
 import os
 import datetime
-from aiomqtt import Client, MqttError
+import ssl
+from aiomqtt import Client, MqttError, TLSParameters
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 BROKER_USER = None
 BROKER_PASS = None
+MQTT_TLS = True
+MQTT_CA_FILE = ""
+MQTT_CLIENT_CERT = ""
+MQTT_CLIENT_KEY = ""
+MQTT_TLS_INSECURE = False
 CMD_SCRIPT = "/usr/local/bin/rigcontrol_cmd.sh"
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS = 5
 def log(msg):
@@ -52,6 +58,13 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
+    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
+    MQTT_CLIENT_CERT = cfg.get("MQTT_CLIENT_CERT", "").strip()
+    MQTT_CLIENT_KEY = cfg.get("MQTT_CLIENT_KEY", "").strip()
+    MQTT_TLS_INSECURE = cfg.get("MQTT_TLS_INSECURE", "0").strip().lower() in ("1", "true", "yes", "on")
+    if MQTT_TLS:
+        log(f"[Config] MQTT TLS = ON (ca={MQTT_CA_FILE or 'system'}, verify={'off' if MQTT_TLS_INSECURE else 'on'})")
 try:
     MIN_TELEMETRY_PULL_INTERVAL_SECONDS = int(cfg.get("MIN_TELEMETRY_PULL_INTERVAL_SECONDS", MIN_TELEMETRY_PULL_INTERVAL_SECONDS))
     if MIN_TELEMETRY_PULL_INTERVAL_SECONDS < 0:
@@ -149,12 +162,20 @@ async def mqtt_loop():
                 "port": BROKER_PORT,
             }
             if USE_AWS:
-                client_kwargs["tls_params"] = {
-                    "ca_certs": AWS_CA,
-                    "certfile": AWS_CERT,
-                    "keyfile": AWS_KEY,
-                }
+                client_kwargs["tls_params"] = TLSParameters(
+                    ca_certs=AWS_CA,
+                    certfile=AWS_CERT,
+                    keyfile=AWS_KEY,
+                )
             else:
+                if MQTT_TLS:
+                    client_kwargs["tls_params"] = TLSParameters(
+                        ca_certs=MQTT_CA_FILE or None,
+                        certfile=MQTT_CLIENT_CERT or None,
+                        keyfile=MQTT_CLIENT_KEY or None,
+                        cert_reqs=ssl.CERT_NONE if MQTT_TLS_INSECURE else ssl.CERT_REQUIRED,
+                    )
+                    client_kwargs["tls_insecure"] = MQTT_TLS_INSECURE
                 if BROKER_USER:
                     client_kwargs["username"] = BROKER_USER
                     client_kwargs["password"] = BROKER_PASS

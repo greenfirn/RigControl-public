@@ -1,9 +1,5 @@
 sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
-sudo tee /etc/rigcontrol/ca.crt > /dev/null <<'EOF'
------BEGIN CERTIFICATE-----
-paste the contents of the broker's ca.crt here
------END CERTIFICATE-----
-EOF
+[ -s /etc/rigcontrol/ca.crt ] || echo "WARNING: /etc/rigcontrol/ca.crt is missing - copy the broker's ca.crt there once (see mosquitto-tls-setup.txt), otherwise the agent cannot verify the broker"
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
@@ -20,7 +16,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
 # MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
-# MQTT_CA_FILE: CA certificate that signed the broker certificate (written above from the pasted ca.crt; empty = system CAs)
+# MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = system CAs)
 # MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
 # MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
