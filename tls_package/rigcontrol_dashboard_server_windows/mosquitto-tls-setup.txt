@@ -1,0 +1,43 @@
+ENCRYPTED MQTT (TLS) - dashboard server on windows (mosquitto for windows), agents and server
+
+1. create the certificates (openssl comes with Git for Windows: run in Git Bash)
+   broker ip: 10.10.0.10 (if agents use a hostname instead, add DNS:yourhost to san.ext)
+
+mkdir -p /c/mosquitto-certs && cd /c/mosquitto-certs
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
+printf "subjectAltName=IP:10.10.0.10" > san.ext
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
+
+2. add to mosquitto.conf (keeps plain 1883), then restart the mosquitto service
+
+listener 8883
+protocol mqtt
+cafile C:\mosquitto-certs\ca.crt
+certfile C:\mosquitto-certs\server.crt
+keyfile C:\mosquitto-certs\server.key
+tls_version tlsv1.2
+
+   allow 8883 through the windows firewall
+
+3. dashboard server: set in .env, then restart the server
+
+MQTT_TLS=true
+MQTT_PORT=8883
+MQTT_CA_FILE=C:\mosquitto-certs\ca.crt
+
+4. each worker: copy ca.crt to the worker and set in the agent conf (/etc/rigcontrol/rigcontrol-agent.conf on linux), then restart the agent
+
+BROKER_HOST=10.10.0.10
+BROKER_PORT=8883
+MQTT_TLS=1
+MQTT_CA_FILE=/etc/rigcontrol/ca.crt
+
+5. test
+
+openssl s_client -connect 10.10.0.10:8883 -CAfile ca.crt
+
+   once everything connects on 8883 you can remove the plain 'listener 1883'
+   MQTT_TLS_INSECURE=1 skips certificate / hostname checks (testing only)
