@@ -72,6 +72,50 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
 
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
 
+Useful commands:
+
+follow the agent log:
+
+```bash
+journalctl -u rigcontrol-agent.service -f
+```
+
+reload systemd after editing the service file:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+enable start on boot:
+
+```bash
+sudo systemctl enable rigcontrol-agent.service
+```
+
+disable start on boot:
+
+```bash
+sudo systemctl disable rigcontrol-agent.service
+```
+
+start the agent:
+
+```bash
+sudo systemctl start rigcontrol-agent.service
+```
+
+stop the agent:
+
+```bash
+sudo systemctl stop rigcontrol-agent.service
+```
+
+restart the agent:
+
+```bash
+sudo systemctl restart rigcontrol-agent.service
+```
+
 ![test-windows](../images/Screenshot-test-windows.png)
 
 [rigcontrol-agent-local-keryxd.sh](rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
