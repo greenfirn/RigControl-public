@@ -48,6 +48,8 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
 
+## Setup
+
 1. install python on a client rig...
 
 ```
