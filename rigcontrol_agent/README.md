@@ -65,7 +65,7 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
    - [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
 3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
 4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
-5. install
+5. install / update
    - run 'generate-copy-paste-update.bat' to create/update 'copy-paste-update.sh'
    - open a ssh session on a worker (on a windows machine use putty or similar ssh client)
    - copy/paste the contents of 'copy-paste-update.sh' into a worker ssh session and press enter to write the files
