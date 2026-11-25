@@ -80,8 +80,6 @@ show service status:
 systemctl status rigcontrol-agent.service --no-pager
 ```
 
-ctrl+c to break/exit
-
 follow the agent log:
 
 ```bash
