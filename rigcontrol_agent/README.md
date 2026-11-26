@@ -1,15 +1,15 @@
 [Get started](../README.md#get-started)
 
-** update.. 'OSN_PRIMARY=0' (default): local GPU/CPU/memory stats. Set 'OSN_PRIMARY=1' to use OctaSpace node (osn) metrics instead. **
-
-** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
-
 ## Guides
 
 - [Agent setup](ubuntu/agent-setup-guide.md): install / update the agent on a worker
 - [Basic TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt): encrypted MQTT (the default)
 - [Advanced TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt): client certificates (mutual TLS)
 - [No TLS](../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt): plain MQTT
+
+** update.. 'OSN_PRIMARY=0' (default): local GPU/CPU/memory stats. Set 'OSN_PRIMARY=1' to use OctaSpace node (osn) metrics instead. **
+
+** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
 Ubuntu 24.04:
 
