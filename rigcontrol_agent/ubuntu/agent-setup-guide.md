@@ -37,7 +37,14 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 ## 2. Verified TLS (broker certificate checked)
 
-1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on the worker once ([basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), step 6)
+1. copy the broker's `ca.crt` (public) from the server's certificate folder (`~/ha-docker/mosquitto/config/certs/`) to `/etc/rigcontrol/ca.crt` on the worker once. run on the server, replace `user@WORKER` with the worker login:
+
+   ```
+   scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
+   ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt"
+   ```
+
+   (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
 2. in `rigcontrol-agent-local.sh` comment out `MQTT_TLS_INSECURE=1` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in the Windows conf)
 3. run the install / update again, the agent restarts and connects with the certificate verified
 
