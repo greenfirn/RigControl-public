@@ -47,6 +47,12 @@ MQTT_CA_FILE=/mqtt-certs/ca.crt
 5. each worker: the agent install scripts (rigcontrol-agent-local.sh / copy-paste-update.sh) already write BROKER_PORT=8883,
    MQTT_TLS=1 and MQTT_CA_FILE=/etc/rigcontrol/ca.crt. copy the broker's ca.crt to /etc/rigcontrol/ca.crt on each worker once (the scripts only warn if it is missing and never overwrite it):
 
+# run on the broker pi, once per worker (replace user@WORKER with the worker login)
+scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
+ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt"
+# check: the worker prints the same certificate
+ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate"
+
    then set BROKER_HOST / BROKER_USER / BROKER_PASS in the script, regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
 
    windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, MQTT_CA_FILE=C:\rigcontrol\ca.crt

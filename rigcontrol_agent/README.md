@@ -70,6 +70,15 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
    - open a ssh session on a worker (on a windows machine use putty or similar ssh client)
    - copy/paste the contents of 'copy-paste-update.sh' into a worker ssh session and press enter to write the files and start/restart the agent
 
+if copy/paste into the console fails (the file is about 4000 lines and a terminal can drop or corrupt lines, giving a SyntaxError or IndentationError in the agent log), copy the file to the worker and run it instead:
+
+```
+scp copy-paste-update.sh user@WORKER:~/
+ssh -t user@WORKER "bash ~/copy-paste-update.sh"
+```
+
+on a windows machine use `pscp copy-paste-update.sh user@WORKER:` (comes with putty) or winscp to copy the file, then run `bash ~/copy-paste-update.sh` in the ssh session
+
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
 
 Useful commands:

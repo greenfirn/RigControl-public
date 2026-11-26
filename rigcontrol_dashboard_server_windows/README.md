@@ -5,6 +5,7 @@
 ![python-install.png](../images/Screenshot-python-install.png)
 
 2. install x64 version of mqtt broker from https://mosquitto.org/download/
+
 3. setup password,config, and data folder see [mosquitto-setup.txt](mosquitto-setup.txt)
 
 ![mqtt-install](../images/Screenshot-mqtt-install.png)
@@ -12,11 +13,13 @@
 ![mqtt-test](../images/Screenshot-mqtt-test.png)
 
 4. create a folder to download and keep your server files
+
 5. download extract [static.zip](../static) to create static folder layout
 
 ![static-zip](../images/Screenshot-static-zip.png)
 
 6. download/replace latest [index.html](../static/index.html), [landing.html](../static/landing.html), [app.js](../static/js/app.js), [app.css](../static/css/app.css) from static locations
+
 7. download the other needed files: [.env.example](.env.example), [requirements.txt](requirements.txt), [rigcontrol_dashboard_server.py](rigcontrol_dashboard_server.py), [rigcontrol_config.json](rigcontrol_config.json), [run.bat](run.bat)
 
 (.env.example rename back to .env once downloaded)
