@@ -4,7 +4,7 @@
 
 start with the install in test mode (1), then verified TLS (2), then client certificates (3).
 
-## 1. Install / update (TLS, test mode: no certificate check)
+## 1. Install / update (user, password only, 'TLS - no certificate check')
 
 1. install python on a client worker...
 
