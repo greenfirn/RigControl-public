@@ -54,8 +54,6 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 ## 3. Advanced TLS (client certificates, mutual TLS)
 
-each worker gets its own certificate. skip this if the broker does not use `require_certificate true`.
-
 1. on the server create the client certificates and enable `require_certificate true`: [advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt)
 2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker
 3. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker uncomment:
