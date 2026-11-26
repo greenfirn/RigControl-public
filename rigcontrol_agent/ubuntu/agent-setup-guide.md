@@ -1,11 +1,11 @@
 # Agent setup
 
-[agent README](README.md)
+[agent README](../README.md)
 
 ## Basic setup
 
 1. install the agent on a worker (steps below)
-2. copy the broker's `ca.crt` to `/etc/rigcontrol/ca.crt` on the worker once ([basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt))
+2. copy the broker's `ca.crt` to `/etc/rigcontrol/ca.crt` on the worker once ([basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt))
 3. set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in `rigcontrol-agent-local.sh` (TLS is on by default: port 8883, `MQTT_TLS=1`)
 4. run the install / update, the agent starts and connects
 

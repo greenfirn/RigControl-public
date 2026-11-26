@@ -4,6 +4,13 @@
 
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
 
+## Guides
+
+- [Agent setup](ubuntu/agent-setup-guide.md): install / update the agent on a worker
+- [Basic TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt): encrypted MQTT (the default)
+- [Advanced TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt): client certificates (mutual TLS)
+- [No TLS](../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt): plain MQTT
+
 Ubuntu 24.04:
 
 ```
@@ -47,13 +54,6 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `<NAME>_LOG_PATH` custom miner log file to scrape for stats when there is no API.
 - `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
-
-## Guides
-
-- [Agent setup](agent-setup-guide.md): install / update the agent on a worker
-- [Basic TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt): encrypted MQTT (the default)
-- [Advanced TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt): client certificates (mutual TLS)
-- [No TLS](../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt): plain MQTT
 
 mqtt is encrypted (TLS) by default. copy the broker's `ca.crt` to each worker once (it is public, `ca.key` stays on the broker), then set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in the script. for plain mqtt set `MQTT_TLS=0` and `BROKER_PORT=1883`
 
@@ -125,7 +125,7 @@ sudo systemctl restart rigcontrol-agent.service
 
 ![test-windows](../images/Screenshot-test-windows.png)
 
-[rigcontrol-agent-local-keryxd.sh](rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
+[rigcontrol-agent-local-keryxd.sh](ubuntu/rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
 
 ```
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
@@ -188,7 +188,7 @@ KERYXD_LOG_STYLE=blocks
 EOF
 ```
 
-[rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)... KERYX_MINER_API
+[rigcontrol-agent-local.sh](ubuntu/rigcontrol-agent-local.sh)... KERYX_MINER_API
 
 ```
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
