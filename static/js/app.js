@@ -1131,11 +1131,17 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_PORT=8883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
+    "# --- BASIC TLS: broker certificate verified with ca.crt (mosquitto-tls-setup.txt) ---\n" +
     "MQTT_TLS=1\n" +
     "MQTT_CA_FILE=/etc/rigcontrol/ca.crt\n" +
-    "#MQTT_CLIENT_CERT=\n" +
-    "#MQTT_CLIENT_KEY=\n" +
-    "#MQTT_TLS_INSECURE=0\n" +
+    "# --- END BASIC TLS ---\n" +
+    "# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---\n" +
+    "#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt\n" +
+    "#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key\n" +
+    "# --- END ADVANCED TLS ---\n" +
+    "# --- TEST TLS: skip certificate and hostname verification, testing only ---\n" +
+    "#MQTT_TLS_INSECURE=1\n" +
+    "# --- END TEST TLS ---\n" +
     "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
     "# ===== END SERVER SETTINGS =====\n" +
     "# ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====\n" +

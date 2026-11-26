@@ -158,11 +158,17 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
+# --- BASIC TLS: broker certificate verified with ca.crt (mosquitto-tls-setup.txt) ---
 MQTT_TLS=1
 MQTT_CA_FILE=/etc/rigcontrol/ca.crt
-#MQTT_CLIENT_CERT=
-#MQTT_CLIENT_KEY=
-#MQTT_TLS_INSECURE=0
+# --- END BASIC TLS ---
+# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---
+#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
+#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
+# --- END ADVANCED TLS ---
+# --- TEST TLS: skip certificate and hostname verification, testing only ---
+#MQTT_TLS_INSECURE=1
+# --- END TEST TLS ---
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
@@ -215,11 +221,17 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
+# --- BASIC TLS: broker certificate verified with ca.crt (mosquitto-tls-setup.txt) ---
 MQTT_TLS=1
 MQTT_CA_FILE=/etc/rigcontrol/ca.crt
-#MQTT_CLIENT_CERT=
-#MQTT_CLIENT_KEY=
-#MQTT_TLS_INSECURE=0
+# --- END BASIC TLS ---
+# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---
+#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
+#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
+# --- END ADVANCED TLS ---
+# --- TEST TLS: skip certificate and hostname verification, testing only ---
+#MQTT_TLS_INSECURE=1
+# --- END TEST TLS ---
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====

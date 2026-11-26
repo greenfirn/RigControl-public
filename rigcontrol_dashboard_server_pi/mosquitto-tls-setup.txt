@@ -1,4 +1,4 @@
-ENCRYPTED MQTT (TLS) - dashboard server (docker mosquitto), agents and server
+ENCRYPTED MQTT (TLS) - BASIC - dashboard server (docker mosquitto), agents and server
 
 TLS is the default: the broker listens on 8883 only, the dashboard server and the agents connect with
 MQTT_TLS on and verify the broker certificate against your own CA (ca.crt). Do this once on a new install,
@@ -53,6 +53,12 @@ ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/ri
 # check: the worker prints the same certificate
 ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate"
 
+   or pull it from the worker instead (run on the worker; pi login user@pi5-ubuntu):
+
+scp user@pi5-ubuntu:~/ha-docker/mosquitto/config/certs/ca.crt /tmp/ca.crt
+sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt
+openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate
+
    then set BROKER_HOST / BROKER_USER / BROKER_PASS in the script, regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
 
    windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, MQTT_CA_FILE=C:\rigcontrol\ca.crt
@@ -60,3 +66,5 @@ ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddat
 6. plain MQTT (no encryption) is still possible: set MQTT_TLS=0 and the plain port (1883) on the server and workers and add a
    'listener 1883' (allow_anonymous false, same password_file) to mosquitto.conf.
    MQTT_TLS_INSECURE=1 (workers) / MQTT_TLS_INSECURE=true (server) skips certificate and hostname checks: testing only.
+
+advanced (optional): client certificates / mutual TLS, see mosquitto-tls-advanced.txt

@@ -1,0 +1,49 @@
+ENCRYPTED MQTT (TLS) - ADVANCED - client certificates (mutual TLS), dashboard server (docker mosquitto), agents and server
+
+optional extra on top of mosquitto-tls-setup.txt (basic TLS). finish and test the basic setup first: broker on 8883, workers and server
+connected with MQTT_TLS=1 and the CA.
+
+basic TLS: the clients verify the broker (ca.crt). advanced: the broker also requires every client to present a certificate signed by your CA,
+on top of BROKER_USER / BROKER_PASS. one certificate per worker, plus one for the dashboard server. the agent, server and watchdog already
+send MQTT_CLIENT_CERT / MQTT_CLIENT_KEY when they are set. until step 5 the broker accepts the certificates but does not require them, so nothing disconnects.
+
+1. create the certificates on the broker pi (mosquitto-client-cert.sh is in this folder)
+
+sudo bash mosquitto-client-cert.sh rigcontrol-dashboard
+sudo bash mosquitto-client-cert.sh WORKER_NAME
+   (repeat per worker, WORKER_NAME = its hostname. output: ~/ha-docker/mosquitto/config/certs/clients/<name>.crt and <name>.key)
+
+2. copy each worker's pair to it (the private key stays root-only on the worker)
+
+scp ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key user@WORKER:/tmp/
+ssh -t user@WORKER "sudo mv /tmp/WORKER_NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/WORKER_NAME.key /etc/rigcontrol/client.key && sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key"
+
+   or pull the pair from the worker instead (run on the worker; pi login user@pi5-ubuntu):
+
+scp user@pi5-ubuntu:~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt user@pi5-ubuntu:~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key /tmp/
+sudo mv /tmp/WORKER_NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/WORKER_NAME.key /etc/rigcontrol/client.key
+sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key
+
+3. worker config: /etc/rigcontrol/rigcontrol-agent.conf (the watchdog reads the same file), then restart the agent
+
+MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
+MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
+
+   windows worker: MQTT_CLIENT_CERT=C:\rigcontrol\client.crt and MQTT_CLIENT_KEY=C:\rigcontrol\client.key in rigcontrol_agent.conf
+
+4. dashboard server .env (docker-compose.yml already mounts the certs folder at /mqtt-certs), then recreate the container
+
+MQTT_CLIENT_CERT=/mqtt-certs/clients/rigcontrol-dashboard.crt
+MQTT_CLIENT_KEY=/mqtt-certs/clients/rigcontrol-dashboard.key
+
+cd ~/ha-docker && sudo docker compose up -d --force-recreate rigcontrol-ws
+
+5. require the certificates (only when every worker, the server and the watchdog are connected with theirs)
+
+   add 'require_certificate true' to the 8883 listener (mosquitto.conf, or conf.d/tls.conf), then:
+
+cd ~/ha-docker && sudo docker compose restart mosquitto
+
+   clients without a certificate are now refused. to roll back remove that line and restart mosquitto.
+
+6. keep ca.key on the broker only, and keep each client.key readable by root only (chmod 600).

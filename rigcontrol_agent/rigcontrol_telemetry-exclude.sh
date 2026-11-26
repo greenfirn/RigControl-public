@@ -28,7 +28,7 @@ import shutil
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker the agent connects to
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
 # MQTT_TLS (default 1): 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT; MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
-# OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
+# OSN_PRIMARY (default 0): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
 # DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running
 # BLOCK_LIST: docker image keywords that ALWAYS skip GPU stats while running (same match, values report 0)
@@ -2657,9 +2657,9 @@ def _block_list_match():
                 return f"{image.strip()} (BLOCK_LIST '{e}')"
     return ""
 def _osn_primary_enabled():
-    """OctaSpace node (osn) is the primary source of GPU and system stats (default ON)"""
+    """OctaSpace node (osn) is the primary source of GPU and system stats (default OFF)"""
     v = (_read_agent_conf_val("OSN_PRIMARY") or os.environ.get("OSN_PRIMARY", "")).strip().strip("\"'").lower()
-    return v not in ("0", "false", "no", "off")
+    return v in ("1", "true", "yes", "on")
 def _apply_osn_stats(stats, osn, active_groups):
     """osn -> the SAME universal fields the dashboard already reads (gpus[], cpu_usage, memory), so no"""
     if "cpu_usage" in active_groups and osn.get("cpu_load_pct") is not None:

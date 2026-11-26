@@ -1,4 +1,4 @@
-ENCRYPTED MQTT (TLS) - dashboard server on windows (mosquitto for windows), agents and server
+ENCRYPTED MQTT (TLS) - BASIC - dashboard server on windows (mosquitto for windows), agents and server
 
 TLS is the default: the broker listens on 8883 only, the dashboard server and the agents connect with
 MQTT_TLS on and verify the broker certificate against your own CA (ca.crt). Do this once on a new install,
@@ -55,3 +55,5 @@ openssl s_client -connect 10.10.0.10:8883 -CAfile ca.crt </dev/null | grep -i "v
 6. plain MQTT (no encryption) is still possible: set MQTT_TLS=0 and the plain port (1883) on the server and workers and add a
    'listener 1883' (allow_anonymous false, same password_file) to mosquitto.conf.
    MQTT_TLS_INSECURE=1 (workers) / MQTT_TLS_INSECURE=true (server) skips certificate and hostname checks: testing only.
+
+advanced (optional): client certificates / mutual TLS, see mosquitto-tls-advanced.txt

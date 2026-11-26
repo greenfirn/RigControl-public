@@ -6,11 +6,17 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
+# --- BASIC TLS: broker certificate verified with ca.crt (mosquitto-tls-setup.txt) ---
 MQTT_TLS=1
 MQTT_CA_FILE=/etc/rigcontrol/ca.crt
-#MQTT_CLIENT_CERT=
-#MQTT_CLIENT_KEY=
-#MQTT_TLS_INSECURE=0
+# --- END BASIC TLS ---
+# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---
+#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
+#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
+# --- END ADVANCED TLS ---
+# --- TEST TLS: skip certificate and hostname verification, testing only ---
+#MQTT_TLS_INSECURE=1
+# --- END TEST TLS ---
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
@@ -20,7 +26,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
 # MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
-# OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
+# OSN_PRIMARY (default 0): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
 # DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running
 # OVERRIDE_LIST: docker image keywords that are GPU-stats safe (keyword match anywhere in the image name)
@@ -30,7 +36,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # CUSTOM_MINER_BIN_GPU / _CPU / _AUX: custom miner binary per slot
 # <NAME>_BIN / _API_HOST / _API_PORT / _LOG_PATH / _LOG_STYLE: per custom miner, NAME = miner name as A-Z0-9_ (LOG_STYLE=blocks counts "Accepted N blocks")
 # ===== END USER FLAG DESCRIPTION =====
-OSN_PRIMARY=1
+OSN_PRIMARY=0
 #OSN_ALLOW_MISSING_GPU_STATS=1
 #DOCKER_SKIP_GPU_STATS=0
 OVERRIDE_LIST="miner/miner:latest"
