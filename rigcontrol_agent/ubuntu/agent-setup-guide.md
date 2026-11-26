@@ -2,7 +2,7 @@
 
 # Agent setup
 
-start with the plain install (1), then add TLS when it works (2), client certificates (3), and the insecure test mode only for troubleshooting (4).
+start with the plain install (1), then add TLS when it works (2, with the insecure test mode for troubleshooting), then client certificates (3).
 
 ## 1. Install / update (plain MQTT, no TLS)
 
@@ -43,6 +43,10 @@ on the broker follow the [basic TLS guide](../../rigcontrol_dashboard_server_pi/
 2. in `rigcontrol-agent-local.sh` set `BROKER_PORT=8883` and uncomment `MQTT_TLS=1` (`ca.crt` is found automatically at that path; `#MQTT_CA_FILE=` stays commented unless you need a different path)
 3. run the install / update again (step 5 above), the agent restarts and connects over TLS
 
+### Test mode (skip certificate checks)
+
+available as soon as TLS is on (needs `MQTT_TLS=1`). for troubleshooting only, e.g. to tell a certificate problem from a network problem: uncomment `#MQTT_TLS_INSECURE=1` in `rigcontrol-agent-local.sh` and run the install / update again. remove it afterwards.
+
 ## 3. Advanced TLS (client certificates, mutual TLS)
 
 only when the broker has `require_certificate true`: [advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt). per worker, copy its `client.crt` / `client.key` to `/etc/rigcontrol/` and uncomment in `rigcontrol-agent-local.sh`:
@@ -53,7 +57,3 @@ only when the broker has `require_certificate true`: [advanced TLS guide](../../
 ```
 
 then run the install / update again.
-
-## 4. Test mode (skip certificate checks)
-
-for troubleshooting only, uncomment `#MQTT_TLS_INSECURE=1` in `rigcontrol-agent-local.sh` and run the install / update again. remove it afterwards.
