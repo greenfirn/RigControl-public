@@ -6,9 +6,9 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
-# --- BASIC TLS: broker certificate verified with ca.crt (mosquitto-tls-setup.txt) ---
-MQTT_TLS=1
-MQTT_CA_FILE=/etc/rigcontrol/ca.crt
+# --- BASIC TLS: on by default, ca.crt found automatically at this path; uncomment only to change (mosquitto-tls-setup.txt) ---
+#MQTT_TLS=1
+#MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
 # --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---
 #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
@@ -22,7 +22,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
 # MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
-# MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = system CAs)
+# MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = /etc/rigcontrol/ca.crt if present, else system CAs)
 # MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
 # MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls

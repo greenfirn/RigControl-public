@@ -2,16 +2,9 @@
 
 # Agent setup
 
-## Basic setup
+start with the plain install (1), then add TLS when it works (2), client certificates (3), and the insecure test mode only for troubleshooting (4).
 
-1. install the agent on a worker (steps below)
-2. copy the broker's `ca.crt` to `/etc/rigcontrol/ca.crt` on the worker once ([basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt))
-3. set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in `rigcontrol-agent-local.sh` (TLS is on by default: port 8883, `MQTT_TLS=1`)
-4. run the install / update, the agent starts and connects
-
-> note: for an easier TLS setup, once a worker is connected the dashboard can edit its `rigcontrol-agent.conf` (TLS settings and the optional client certificate lines) from the browser, so you do not need to ssh in to change them. the agent must be restarted after a broker setting change.
-
-## Install / update steps
+## 1. Install / update (no TLS)
 
 1. install python on a client worker...
 
@@ -26,7 +19,14 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
    - [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh)
    - [rigcontrol_cmd.sh](rigcontrol_cmd.sh)
    - [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
-3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh)
+3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh): `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS`, and for this first install without TLS also set the port and turn TLS off (the conf defaults to TLS on, port 8883):
+
+   ```
+   BROKER_PORT=1883
+   MQTT_TLS=0
+   ```
+
+   the broker must have a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt)
 4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
 5. install / update
    - run 'generate-copy-paste-update.bat' to create/update 'copy-paste-update.sh'
@@ -41,3 +41,26 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 ```
 
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
+
+## 2. Basic TLS (encrypted, broker certificate verified)
+
+on the broker follow the [basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), then on each worker:
+
+1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on the worker once
+2. in `rigcontrol-agent-local.sh` set `BROKER_PORT=8883` and remove the `MQTT_TLS=0` line (TLS is the agent default, `ca.crt` is found automatically at that path; the `#MQTT_TLS=1` / `#MQTT_CA_FILE=` lines stay commented unless you need a different path)
+3. run the install / update again (step 5 above), the agent restarts and connects over TLS
+
+## 3. Advanced TLS (client certificates, mutual TLS)
+
+only when the broker has `require_certificate true`: [advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt). per worker, copy its `client.crt` / `client.key` to `/etc/rigcontrol/` and uncomment in `rigcontrol-agent-local.sh`:
+
+```
+#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
+#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
+```
+
+then run the install / update again.
+
+## 4. Test mode (skip certificate checks)
+
+for troubleshooting only, uncomment `#MQTT_TLS_INSECURE=1` in `rigcontrol-agent-local.sh` and run the install / update again. remove it afterwards.

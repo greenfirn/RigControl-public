@@ -68,6 +68,8 @@ else:
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
     MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
     MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
+    if not MQTT_CA_FILE and os.path.isfile("/etc/rigcontrol/ca.crt"):
+        MQTT_CA_FILE = "/etc/rigcontrol/ca.crt"
     MQTT_CLIENT_CERT = cfg.get("MQTT_CLIENT_CERT", "").strip()
     MQTT_CLIENT_KEY = cfg.get("MQTT_CLIENT_KEY", "").strip()
     MQTT_TLS_INSECURE = cfg.get("MQTT_TLS_INSECURE", "0").strip().lower() in ("1", "true", "yes", "on")
