@@ -1145,7 +1145,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them\n" +
     "# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)\n" +
     "# MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls\n" +
-    "# OSN_PRIMARY (default 1): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally\n" +
+    "# OSN_PRIMARY (default 0): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally\n" +
     "# OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless\n" +
     "# DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running\n" +
     "# OVERRIDE_LIST: docker image keywords that are GPU-stats safe (keyword match anywhere in the image name)\n" +
@@ -1155,7 +1155,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "# CUSTOM_MINER_BIN_GPU / _CPU / _AUX: custom miner binary per slot\n" +
     "# <NAME>_BIN / _API_HOST / _API_PORT / _LOG_PATH / _LOG_STYLE: per custom miner, NAME = miner name as A-Z0-9_ (LOG_STYLE=blocks counts \"Accepted N blocks\")\n" +
     "# ===== END USER FLAG DESCRIPTION =====\n" +
-    "OSN_PRIMARY=1\n" +
+    "OSN_PRIMARY=0\n" +
     "#OSN_ALLOW_MISSING_GPU_STATS=1\n" +
     "#DOCKER_SKIP_GPU_STATS=0\n" +
     "OVERRIDE_LIST=\"miner/miner:latest\"\n" +
