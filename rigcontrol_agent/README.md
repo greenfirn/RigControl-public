@@ -7,6 +7,8 @@
 - [Advanced TLS](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt): client certificates (mutual TLS)
 - [No TLS](../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt): plain MQTT
 
+## Updates
+
 ** update.. 'OSN_PRIMARY=0' (default): local GPU/CPU/memory stats. Set 'OSN_PRIMARY=1' to use OctaSpace node (osn) metrics instead. **
 
 ** updated agent to use .venv virtual environment, uninstall not needed requirements from system **
