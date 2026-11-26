@@ -45,8 +45,12 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
    ```
 
    (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
-2. in `rigcontrol-agent-local.sh` set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in the Windows conf)
-3. run the install / update again, the agent restarts and connects with the certificate verified
+2. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in `C:\rigcontrol\rigcontrol_agent.conf` on a windows worker)
+3. restart the agent:
+
+   ```
+   sudo systemctl restart rigcontrol-agent.service
+   ```
 
 ## 3. Advanced TLS (client certificates, mutual TLS)
 
