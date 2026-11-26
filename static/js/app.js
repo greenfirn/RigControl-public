@@ -1131,7 +1131,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_PORT=1883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
-    "# --- BASIC TLS: encrypted connection on the broker's TLS port, ca.crt is used from this path when it exists (copy it to the worker for verified TLS) (mosquitto-tls-setup.txt) ---\n" +
+    "# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.txt) ---\n" +
     "#MQTT_TLS=1\n" +
     "#MQTT_CA_FILE=/etc/rigcontrol/ca.crt\n" +
     "# --- END BASIC TLS ---\n" +
@@ -1139,7 +1139,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt\n" +
     "#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key\n" +
     "# --- END ADVANCED TLS ---\n" +
-    "# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out once ca.crt is copied (verified TLS) ---\n" +
+    "# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out when verified TLS is used ---\n" +
     "#MQTT_TLS_INSECURE=1\n" +
     "# --- END TEST TLS ---\n" +
     "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +

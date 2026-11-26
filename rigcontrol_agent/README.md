@@ -57,7 +57,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
 
-mqtt is encrypted (TLS, port 8883) by default and starts in test mode (`MQTT_TLS_INSECURE=1`: no certificate check, nothing to copy to the workers), set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in the script. for verified TLS copy the broker's `ca.crt` to each worker once (it is public, `ca.key` stays on the broker) and comment out `MQTT_TLS_INSECURE=1`. for plain mqtt set `MQTT_TLS=0` and `BROKER_PORT=1883`
+mqtt is encrypted (TLS, port 8883) by default and starts in test mode (`MQTT_TLS_INSECURE=1`: no certificate check, nothing to copy to the workers), set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in the script. for verified TLS copy the broker's `ca.crt` to each worker once (it is public, `ca.key` stays on the broker) comment out `MQTT_TLS_INSECURE=1` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (Windows conf: `#MQTT_CA_FILE=C:\rigcontrol\ca.crt`). for plain mqtt set `MQTT_TLS=0` and `BROKER_PORT=1883`
 
 ## Recommended
 
@@ -136,7 +136,7 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
-# --- BASIC TLS: encrypted connection on the broker's TLS port, ca.crt is used from this path when it exists (copy it to the worker for verified TLS) (mosquitto-tls-setup.txt) ---
+# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.txt) ---
 MQTT_TLS=1
 #MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
@@ -144,7 +144,7 @@ MQTT_TLS=1
 #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
 #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
 # --- END ADVANCED TLS ---
-# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out once ca.crt is copied (verified TLS) ---
+# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out when verified TLS is used ---
 MQTT_TLS_INSECURE=1
 # --- END TEST TLS ---
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
@@ -199,7 +199,7 @@ BROKER_HOST=10.10.0.10
 BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
-# --- BASIC TLS: encrypted connection on the broker's TLS port, ca.crt is used from this path when it exists (copy it to the worker for verified TLS) (mosquitto-tls-setup.txt) ---
+# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.txt) ---
 MQTT_TLS=1
 #MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
@@ -207,7 +207,7 @@ MQTT_TLS=1
 #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
 #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
 # --- END ADVANCED TLS ---
-# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out once ca.crt is copied (verified TLS) ---
+# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out when verified TLS is used ---
 MQTT_TLS_INSECURE=1
 # --- END TEST TLS ---
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5

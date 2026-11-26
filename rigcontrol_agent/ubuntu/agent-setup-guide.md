@@ -38,7 +38,7 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 ## 2. Verified TLS (broker certificate checked)
 
 1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on the worker once ([basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), step 6)
-2. in `rigcontrol-agent-local.sh` comment out `MQTT_TLS_INSECURE=1` (`ca.crt` is found automatically at that path; `#MQTT_CA_FILE=` stays commented unless you need a different path)
+2. in `rigcontrol-agent-local.sh` comment out `MQTT_TLS_INSECURE=1` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in the Windows conf)
 3. run the install / update again, the agent restarts and connects with the certificate verified
 
 ## 3. Advanced TLS (client certificates, mutual TLS)

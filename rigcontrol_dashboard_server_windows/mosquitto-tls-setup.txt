@@ -53,7 +53,7 @@ ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/ri
 # check: the worker prints the same certificate
 ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate"
 
-   then comment out MQTT_TLS_INSECURE=1 in rigcontrol-agent-local.sh (ca.crt is found at /etc/rigcontrol/ca.crt, MQTT_CA_FILE only to use another path), regenerate copy-paste-update.sh and run it on the worker
+   then comment out MQTT_TLS_INSECURE=1 and uncomment #MQTT_CA_FILE=/etc/rigcontrol/ca.crt in rigcontrol-agent-local.sh (windows conf: #MQTT_CA_FILE=C:\rigcontrol\ca.crt), regenerate copy-paste-update.sh and run it on the worker
    as a file. on the server set MQTT_TLS_INSECURE=false and MQTT_CA_FILE=C:\mosquitto-certs\ca.crt in .env, then restart it.
 
    windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, ca.crt at C:\rigcontrol\ca.crt
