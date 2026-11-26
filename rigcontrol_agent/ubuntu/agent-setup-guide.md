@@ -2,7 +2,7 @@
 
 # Agent setup
 
-start with the install in test mode (1), then verified TLS (2), then client certificates (3). the port stays 8883 throughout.
+start with the install in test mode (1), then verified TLS (2), then client certificates (3).
 
 ## 1. Install / update (TLS, test mode: no certificate check)
 
