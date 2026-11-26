@@ -27,7 +27,7 @@ import shutil
 # Conf keys (rigcontrol-agent.conf, read live):
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker the agent connects to
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
-# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883); MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
+# MQTT_TLS (default 1): 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883); MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
 # OSN_PRIMARY (default 0): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
 # DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running

@@ -2,25 +2,25 @@ sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
-BROKER_PORT=1883
+BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
-# --- BASIC TLS: off by default. to enable set BROKER_PORT=8883 and uncomment MQTT_TLS=1, ca.crt is found at this path (mosquitto-tls-setup.txt) ---
-#MQTT_TLS=1
+# --- BASIC TLS: encrypted connection on the broker's TLS port, ca.crt is used from this path when it exists (copy it to the worker for verified TLS) (mosquitto-tls-setup.txt) ---
+MQTT_TLS=1
 #MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
 # --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---
 #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
 #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
 # --- END ADVANCED TLS ---
-# --- TEST TLS: skip certificate and hostname verification, testing only ---
-#MQTT_TLS_INSECURE=1
+# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out once ca.crt is copied (verified TLS) ---
+MQTT_TLS_INSECURE=1
 # --- END TEST TLS ---
 MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
-# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883)
+# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
 # MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = /etc/rigcontrol/ca.crt if present, else system CAs)
 # MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
 # MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
@@ -89,7 +89,7 @@ import shutil
 # Conf keys (rigcontrol-agent.conf, read live):
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker the agent connects to
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
-# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883); MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
+# MQTT_TLS (default 1): 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883); MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
 # OSN_PRIMARY (default 0): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
 # DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running
@@ -3259,7 +3259,7 @@ import datetime
 import ssl
 from aiomqtt import Client, MqttError, TLSParameters
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = "/usr/local/bin/rigcontrol_cmd.sh"
@@ -3293,7 +3293,7 @@ def load_broker_config():
     return cfg
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
-MQTT_TLS = False
+MQTT_TLS = True
 MQTT_CA_FILE = ""
 MQTT_CLIENT_CERT = ""
 MQTT_CLIENT_KEY = ""
@@ -3313,7 +3313,7 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
-    MQTT_TLS = cfg.get("MQTT_TLS", "0").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
     MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
     if not MQTT_CA_FILE and os.path.isfile("/etc/rigcontrol/ca.crt"):
         MQTT_CA_FILE = "/etc/rigcontrol/ca.crt"

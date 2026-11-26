@@ -294,13 +294,13 @@ def load_mqtt_login():
     if not host:
         return None
     try:
-        port = int(cfg.get("BROKER_PORT", 1883))
+        port = int(cfg.get("BROKER_PORT", 8883))
     except (TypeError, ValueError):
-        port = 1883
+        port = 8883
     return host, port, cfg.get("BROKER_USER"), cfg.get("BROKER_PASS")
 def _mqtt_tls_conf():
     cfg = _load_kv_conf(AGENT_CONF_PATH)
-    on = cfg.get("MQTT_TLS", "0").strip().lower() in ("1", "true", "yes", "on")
+    on = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
     if not on:
         return None
     return {

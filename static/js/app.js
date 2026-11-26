@@ -1131,7 +1131,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_PORT=1883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
-    "# --- BASIC TLS: off by default. to enable set BROKER_PORT=8883 and uncomment MQTT_TLS=1, ca.crt is found at this path (mosquitto-tls-setup.txt) ---\n" +
+    "# --- BASIC TLS: encrypted connection on the broker's TLS port, ca.crt is used from this path when it exists (copy it to the worker for verified TLS) (mosquitto-tls-setup.txt) ---\n" +
     "#MQTT_TLS=1\n" +
     "#MQTT_CA_FILE=/etc/rigcontrol/ca.crt\n" +
     "# --- END BASIC TLS ---\n" +
@@ -1139,14 +1139,14 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt\n" +
     "#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key\n" +
     "# --- END ADVANCED TLS ---\n" +
-    "# --- TEST TLS: skip certificate and hostname verification, testing only ---\n" +
+    "# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out once ca.crt is copied (verified TLS) ---\n" +
     "#MQTT_TLS_INSECURE=1\n" +
     "# --- END TEST TLS ---\n" +
     "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
     "# ===== END SERVER SETTINGS =====\n" +
     "# ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====\n" +
     "# BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to\n" +
-    "# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883)\n" +
+    "# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)\n" +
     "# MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = /etc/rigcontrol/ca.crt if present, else system CAs)\n" +
     "# MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them\n" +
     "# MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)\n" +

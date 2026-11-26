@@ -40,4 +40,4 @@ docker logs -f rigcontrol-ws
 
 ## Encrypted MQTT (TLS)
 
-MQTT is plain (no TLS) by default: port 1883, login with BROKER_USER / BROKER_PASS, see [mosquitto-no-tls-setup.txt](mosquitto-no-tls-setup.txt). to encrypt it, see [mosquitto-tls-setup.txt](mosquitto-tls-setup.txt) (basic, broker on 8883 with your own CA) and, optionally, [mosquitto-tls-advanced.txt](mosquitto-tls-advanced.txt) (client certificates)
+MQTT is encrypted (TLS) by default: the broker listens on 8883 with your own certificate. quickest start: create the server certificate and run the workers in test mode (`MQTT_TLS_INSECURE`, no file to copy to the workers), see [mosquitto-tls-setup.txt](mosquitto-tls-setup.txt) (then verified TLS with `ca.crt`), optionally [mosquitto-tls-advanced.txt](mosquitto-tls-advanced.txt) (client certificates). plain MQTT, no TLS: [mosquitto-no-tls-setup.txt](mosquitto-no-tls-setup.txt)

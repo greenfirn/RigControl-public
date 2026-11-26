@@ -11,10 +11,10 @@ import datetime
 import ssl
 from aiomqtt import Client, MqttError, TLSParameters
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_PORT = 8883
 BROKER_USER = None
 BROKER_PASS = None
-MQTT_TLS = False
+MQTT_TLS = True
 MQTT_CA_FILE = ""
 MQTT_CLIENT_CERT = ""
 MQTT_CLIENT_KEY = ""
@@ -58,7 +58,7 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
-    MQTT_TLS = cfg.get("MQTT_TLS", "0").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
     MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
     if not MQTT_CA_FILE and os.path.isfile("/etc/rigcontrol/ca.crt"):
         MQTT_CA_FILE = "/etc/rigcontrol/ca.crt"
