@@ -7,7 +7,7 @@ basic TLS: the clients verify the broker (ca.crt). advanced: the broker also req
 on top of BROKER_USER / BROKER_PASS. one certificate per worker, plus one for the dashboard server. the agent, server and watchdog already
 send MQTT_CLIENT_CERT / MQTT_CLIENT_KEY when they are set. until step 5 the broker accepts the certificates but does not require them, so nothing disconnects.
 
-1. create the certificates in Git Bash (mosquitto-client-cert.sh is in the Pi server folder; copy it to this pc)
+1. create the certificates in Git Bash (save the script text between the 'EOF' lines of rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh as mosquitto-client-cert.sh on this pc)
 
 CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh rigcontrol-dashboard
 CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh WORKER_NAME

@@ -1,3 +1,4 @@
+sudo tee ~/ha-docker/mosquitto-client-cert.sh > /dev/null <<'EOF'
 #!/bin/bash
 # advanced TLS, see mosquitto-tls-advanced.txt
 # Creates a client certificate (mutual TLS) signed by the broker CA: sudo ./mosquitto-client-cert.sh <name>
@@ -30,3 +31,5 @@ chmod 600 "$OUT/$NAME.key"
 chmod 644 "$OUT/$NAME.crt"
 openssl verify -CAfile "$CERT_DIR/ca.crt" -purpose sslclient "$OUT/$NAME.crt"
 echo "created $OUT/$NAME.crt and $OUT/$NAME.key"
+EOF
+sudo chmod +x ~/ha-docker/mosquitto-client-cert.sh

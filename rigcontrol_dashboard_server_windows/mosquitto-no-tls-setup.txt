@@ -1,0 +1,41 @@
+PLAIN MQTT (NO TLS) - dashboard server on windows (mosquitto for windows), agents and server
+
+the default setup is encrypted (see mosquitto-tls-setup.txt). this guide is the plain option: port 1883, no certificates, only the
+BROKER_USER / BROKER_PASS login. user, password and all telemetry are sent unencrypted, so only use it on a network you trust.
+
+1. install mosquitto and create the password file as in mosquitto-setup.txt, then use this mosquitto.conf (no TLS listener):
+
+listener 1883
+allow_anonymous false
+
+password_file C:\mosquitto\pwfile
+
+persistence true
+persistence_location C:\mosquitto\data\
+
+log_dest file C:\mosquitto\mosquitto.log
+log_type all
+
+   allow 1883 through the windows firewall, then restart the mosquitto service.
+
+2. dashboard server .env (TLS is on by default, so MQTT_TLS=false must be set), then restart the server
+
+MQTT_MODE=local
+MQTT_HOST=127.0.0.1
+MQTT_PORT=1883
+MQTT_TLS=false
+MQTT_USER=admin
+MQTT_PASS=YOUR_PASSWORD
+
+3. each worker: the install scripts default to TLS, so in the conf block of rigcontrol-agent-local.sh (BASIC TLS block) set
+
+BROKER_HOST=YOUR_PC_IP
+BROKER_PORT=1883
+BROKER_USER=admin
+BROKER_PASS=YOUR_PASSWORD
+MQTT_TLS=0
+
+   (no ca.crt needed, leave MQTT_CA_FILE commented out). regenerate copy-paste-update.sh and run it on the worker as a file
+   (scp + bash, do not paste it into the terminal). windows worker: the same keys in C:\rigcontrol\rigcontrol_agent.conf.
+
+4. later switch to encrypted MQTT: see mosquitto-tls-setup.txt

@@ -52,7 +52,7 @@ ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddat
 openssl s_client -connect 10.10.0.10:8883 -CAfile ca.crt </dev/null | grep -i "verify return"
    expect 'verify return:1'
 
-6. plain MQTT (no encryption) is still possible: set MQTT_TLS=0 and the plain port (1883) on the server and workers and add a
+6. plain MQTT (no encryption) is still possible, see mosquitto-no-tls-setup.txt. short version: set MQTT_TLS=0 and the plain port (1883) on the server and workers and add a
    'listener 1883' (allow_anonymous false, same password_file) to mosquitto.conf.
    MQTT_TLS_INSECURE=1 (workers) / MQTT_TLS_INSECURE=true (server) skips certificate and hostname checks: testing only.
 

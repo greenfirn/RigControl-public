@@ -7,8 +7,9 @@ basic TLS: the clients verify the broker (ca.crt). advanced: the broker also req
 on top of BROKER_USER / BROKER_PASS. one certificate per worker, plus one for the dashboard server. the agent, server and watchdog already
 send MQTT_CLIENT_CERT / MQTT_CLIENT_KEY when they are set. until step 5 the broker accepts the certificates but does not require them, so nothing disconnects.
 
-1. create the certificates on the broker pi (mosquitto-client-cert.sh is in this folder)
+1. create the certificates on the broker pi. first write the helper script once (paste the contents of mosquitto-client-cert.sh from this folder, it writes ~/ha-docker/mosquitto-client-cert.sh), then:
 
+cd ~/ha-docker
 sudo bash mosquitto-client-cert.sh rigcontrol-dashboard
 sudo bash mosquitto-client-cert.sh WORKER_NAME
    (repeat per worker, WORKER_NAME = its hostname. output: ~/ha-docker/mosquitto/config/certs/clients/<name>.crt and <name>.key)
