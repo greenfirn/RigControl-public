@@ -37,7 +37,7 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 ## 2. Verified TLS (broker certificate checked)
 
-1. copy the broker's `ca.crt` (public) from the server's certificate folder (`~/ha-docker/mosquitto/config/certs/`) to `/etc/rigcontrol/ca.crt` on the worker once. run on the server, replace `user@WORKER` with the worker login:
+1. copy the broker's `ca.crt` (public) from the server's certificate folder (`~/ha-docker/mosquitto/config/certs/`) to `/etc/rigcontrol/ca.crt` on each worker. run on the server for every worker, replace `user@WORKER` with the worker login:
 
    ```
    scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
