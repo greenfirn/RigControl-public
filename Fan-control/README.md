@@ -20,16 +20,15 @@ workers that means standing up a fake Xorg instance just for fan control — and
 sustained compute load, repeated NV-CONTROL calls can destabilize the GPU's GSP firmware
 (observed as Xid 109/119/154 errors).
 
-This project instead calls `nvmlDeviceSetFanSpeed_v2` straight into the driver's NVML library, through
-the NVML bindings in upstream py-nvtool (which wrap `libnvidia-ml` with `ctypes`) — the same
-library `nvidia-smi` itself uses. No X server required, and it works identically whether
+This project instead calls `nvmlDeviceSetFanSpeed_v2` directly via `ctypes`, the same
+interface `nvidia-smi` itself uses. No X server required, and it works identically whether
 the GPU is idle or fully loaded.
 
 ## Files - py-nvtool/
 
 | File | Purpose |
 |---|---|
-| `/usr/sbin/py-nvtool` | **Upstream** [Akisoft41/py-nvtool](https://github.com/Akisoft41/py-nvtool), not bundled here. Python NVML bindings plus a CLI (clocks, offsets, power limit, fan speed per GPU). Used from the command line by `gpu_reset_poststop.sh` (written by [gpu_reset - Nvidia(py-nvtool).sh](<../Overclocks/gpu_reset - Nvidia(py-nvtool).sh>)) and loaded as a library by `fan_curve.py`. |
+| `/usr/sbin/py-nvtool` | **Upstream** [Akisoft41/py-nvtool](https://github.com/Akisoft41/py-nvtool), not bundled here. Python NVML bindings plus a CLI (clocks, offsets, power limit, fan speed per GPU). Used from the command line by `gpu_reset_poststop.sh` and loaded as a library by `fan_curve.py`. |
 | `fan_curve.py` | The fan curve daemon. Polls GPU temps on an interval and drives fan speed via NVML according to a configurable temp→fan% curve. (written to `/usr/local/bin/` by [fan_curve.sh](py-nvtool/fan_curve.sh)) |
 | `fan-curve.service` | systemd unit to run the daemon on boot, with clean shutdown (resets fans to AUTO on stop). (written by [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) or [fan-curve.service.sh](py-nvtool/fan-curve.service.sh)) |
 | [install_fan-curve.sh](py-nvtool/install_fan-curve.sh) | One-time full setup for a new worker: writes `fan_curve.py` and `fan-curve.service`, enables and starts the service. |
@@ -89,7 +88,7 @@ sudo python3 fan_curve.py --curve "30:30,40:55,50:65,55:90,65:100"
 | `--index` | `-1` (all GPUs) | GPU index to control, or `-1` for all |
 | `--interval` | `2` | Seconds between temperature checks |
 | `--hysteresis` | `2` | Minimum fan% change required before re-issuing a fan-speed write, prevents fan "hunting" on small temp noise |
-| `--curve` | built-in `30:30,45:35,55:45,65:55,75:75,83:100` | Temp(°C):Fan(%) points, comma-separated, linearly interpolated between points. The unit written by [fan-curve.service.sh](py-nvtool/fan-curve.service.sh) overrides it with `30:30,40:45,50:65,55:90,65:100`. |
+| `--curve` | `30:30,40:55,50:65,55:90,65:100` | Temp(°C):Fan(%) points, comma-separated, linearly interpolated between points |
 | `--cooldown-delta` | `10` | Temp drop (°C) below the recent peak that triggers a hold before lowering the fan. `0` disables holding. |
 | `--cooldown-seconds` | `15` | How long a drop must persist before the fan is actually lowered |
 | `--nvtool` | `/usr/sbin/py-nvtool` | Path to upstream py-nvtool (or set `NVTOOL_PATH`) |
@@ -111,8 +110,6 @@ sudo bash fan-curve.service.sh
 
 This rewrites `fan-curve.service`, reloads systemd, and restarts the daemon —
 no need to touch `py-nvtool` or `fan_curve.py`.
-
-The unit runs as `Type=notify` with `WatchdogSec=15`: `fan_curve.py` pings systemd every loop, and if it hangs systemd sends SIGTERM (fans are reset to AUTO first) and restarts it. Keep `WatchdogSec` above `--interval` plus the cooldown time.
 
 On `systemctl stop`/`restart`, fans are reset to automatic control before exit:
 

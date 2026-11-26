@@ -79,6 +79,8 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 'EXCLUDE_FROM_TOTALS = True' in [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh) for dashboard host to not be included in status totals, select
 
+mqtt is encrypted (TLS) by default. copy the broker's `ca.crt` to each worker once (it is public, `ca.key` stays on the broker), then set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in the script (see [mosquitto-tls-setup.txt](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt)). for plain mqtt set `MQTT_TLS=0` and `BROKER_PORT=1883`
+
 ## Recommended
 
 reserve the port range used for rental services (replace 51000-52000 with yours), so outgoing connections like the agent's mqtt never use a rental port. services can still bind these ports.
@@ -146,8 +148,6 @@ sudo systemctl restart rigcontrol-agent.service
 ```
 
 ![test-windows](../images/Screenshot-test-windows.png)
-
-mqtt is encrypted (TLS) by default. copy the broker's `ca.crt` to each worker once (it is public, `ca.key` stays on the broker), then set `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` in the script (see [mosquitto-tls-setup.txt](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt)). for plain mqtt set `MQTT_TLS=0` and `BROKER_PORT=1883`
 
 [rigcontrol-agent-local-keryxd.sh](rigcontrol-agent-local-keryxd.sh)... keryxd node: aux service name,binary location,log,log type
 
