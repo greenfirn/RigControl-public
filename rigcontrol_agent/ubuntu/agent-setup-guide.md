@@ -54,15 +54,23 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 ## 3. Advanced TLS (client certificates, mutual TLS)
 
-only when the broker has `require_certificate true`: [advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt). per worker, copy its `client.crt` / `client.key` to `/etc/rigcontrol/` and uncomment in `rigcontrol-agent-local.sh`:
+each worker gets its own certificate. skip this if the broker does not use `require_certificate true`.
 
-```
-#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
-#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
-```
+1. on the server create the client certificates and enable `require_certificate true`: [advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt)
+2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker
+3. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker uncomment:
 
-then run the install / update again.
+   ```
+   #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
+   #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
+   ```
+
+4. restart the agent:
+
+   ```
+   sudo systemctl restart rigcontrol-agent.service
+   ```
 
 ## Plain MQTT (no TLS, optional)
 
-for a network you trust: set `BROKER_PORT=1883` and `MQTT_TLS=0` (leave `MQTT_TLS_INSECURE` alone, it only applies with TLS) in `rigcontrol-agent-local.sh`. the broker needs a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt).
+for a network you trust: set `BROKER_PORT=1883` and `MQTT_TLS=0` (leave `MQTT_TLS_INSECURE` alone, it only applies with TLS) in `/etc/rigcontrol/rigcontrol-agent.conf`, then restart the agent (`sudo systemctl restart rigcontrol-agent.service`). the broker needs a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt).
