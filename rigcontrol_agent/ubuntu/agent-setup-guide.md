@@ -6,6 +6,23 @@ start with the install in test mode (1), then verified TLS (2), then client cert
 
 ## 1. Install / update (user, password only, 'TLS - no certificate check')
 
+0. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). replace `10.10.0.10` with the ip the workers use to reach the broker:
+
+   ```
+   openssl version || (sudo apt update && sudo apt install -y openssl)
+   sudo mkdir -p ~/ha-docker/mosquitto/config/certs && cd ~/ha-docker/mosquitto/config/certs
+   sudo openssl genrsa -out ca.key 4096
+   sudo openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
+   sudo openssl genrsa -out server.key 2048
+   sudo openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
+   printf "subjectAltName=IP:10.10.0.10,IP:127.0.0.1" | sudo tee san.ext > /dev/null
+   sudo openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
+   sudo chown 1883:1883 server.key server.crt ca.crt
+   sudo chmod 640 server.key
+   cd ~/ha-docker && sudo docker compose up -d mosquitto
+   ```
+
+   (windows server: [Windows basic TLS guide](../../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.txt))
 1. install python on a client worker...
 
 ```
