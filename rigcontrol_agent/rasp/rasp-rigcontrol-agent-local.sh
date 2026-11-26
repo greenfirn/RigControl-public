@@ -13,7 +13,7 @@ MQTT_TLS=1
 #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
 #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
 # --- END ADVANCED TLS ---
-# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out when verified TLS is used ---
+# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. set to 0 when verified TLS is used ---
 MQTT_TLS_INSECURE=1
 # --- END TEST TLS ---
 # Minimum seconds between telemetry pulls, prevents overlapping collection calls

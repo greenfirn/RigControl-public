@@ -45,7 +45,7 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
    ```
 
    (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
-2. in `rigcontrol-agent-local.sh` comment out `MQTT_TLS_INSECURE=1` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in the Windows conf)
+2. in `rigcontrol-agent-local.sh` set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in the Windows conf)
 3. run the install / update again, the agent restarts and connects with the certificate verified
 
 ## 3. Advanced TLS (client certificates, mutual TLS)
@@ -61,4 +61,4 @@ then run the install / update again.
 
 ## Plain MQTT (no TLS, optional)
 
-for a network you trust: set `BROKER_PORT=1883` and `MQTT_TLS=0` (comment out `MQTT_TLS_INSECURE=1`) in `rigcontrol-agent-local.sh`. the broker needs a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt).
+for a network you trust: set `BROKER_PORT=1883` and `MQTT_TLS=0` (leave `MQTT_TLS_INSECURE` alone, it only applies with TLS) in `rigcontrol-agent-local.sh`. the broker needs a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt).

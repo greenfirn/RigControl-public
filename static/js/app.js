@@ -1139,7 +1139,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt\n" +
     "#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key\n" +
     "# --- END ADVANCED TLS ---\n" +
-    "# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. comment out when verified TLS is used ---\n" +
+    "# --- TEST TLS: skip certificate and hostname verification, no ca.crt needed on the worker. set to 0 when verified TLS is used ---\n" +
     "#MQTT_TLS_INSECURE=1\n" +
     "# --- END TEST TLS ---\n" +
     "MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5\n" +
