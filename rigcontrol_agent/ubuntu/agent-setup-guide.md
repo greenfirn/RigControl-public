@@ -1,6 +1,6 @@
-# Agent setup
-
 [agent README](../README.md)
+
+# Agent setup
 
 ## Basic setup
 
