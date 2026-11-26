@@ -6,7 +6,7 @@ start with the install in test mode (1), then verified TLS (2), then client cert
 
 ## 1. Install / update (user, password only, 'TLS - no certificate check')
 
-0. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). replace `10.10.0.10` with the ip the workers use to reach the broker:
+0. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). replace `10.10.0.10` with the ip of your dashboard server:
 
    ```
    openssl version || (sudo apt update && sudo apt install -y openssl)
