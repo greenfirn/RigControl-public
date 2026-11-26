@@ -19,7 +19,7 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
    - [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh)
    - [rigcontrol_cmd.sh](rigcontrol_cmd.sh)
    - [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
-3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh): `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS`. the conf already uses port 8883 with `MQTT_TLS=1` and `MQTT_TLS_INSECURE=1` (test mode: encrypted, no certificate check, no file to copy to the worker), so no ports change later. the broker needs the TLS listener and a server certificate first: [basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-4
+3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh): `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS`
 4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
 5. install / update
    - run 'generate-copy-paste-update.bat' to create/update 'copy-paste-update.sh'
