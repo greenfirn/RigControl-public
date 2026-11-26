@@ -104,7 +104,7 @@ services:
       - MQTT_PORT=${MQTT_PORT}
       - MQTT_USER=${MQTT_USER}
       - MQTT_PASS=${MQTT_PASS}
-      - MQTT_TLS=${MQTT_TLS:-true}
+      - MQTT_TLS=${MQTT_TLS:-false}
       - MQTT_CA_FILE=${MQTT_CA_FILE:-/mqtt-certs/ca.crt}
       - MQTT_CLIENT_CERT=${MQTT_CLIENT_CERT:-}
       - MQTT_CLIENT_KEY=${MQTT_CLIENT_KEY:-}

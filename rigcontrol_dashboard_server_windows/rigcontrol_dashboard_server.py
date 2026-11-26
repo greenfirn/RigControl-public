@@ -92,7 +92,7 @@ USE_AWS_DB = os.getenv("USE_AWS_DB", "false").lower() == "true"
 MQTT_MODE = os.getenv("MQTT_MODE", "local")
 if MQTT_MODE == "local":
     MQTT_BROKER = os.getenv("MQTT_HOST", "127.0.0.1")
-    MQTT_PORT   = int(os.getenv("MQTT_PORT", "8883"))
+    MQTT_PORT   = int(os.getenv("MQTT_PORT", "1883"))
     MQTT_USER   = os.getenv("MQTT_USER", "admin")
     MQTT_PASS   = os.getenv("MQTT_PASS", "******")
     MQTT_CERT = None
@@ -101,7 +101,7 @@ if MQTT_MODE == "local":
     BASE_PATH = os.getenv("BASE_PATH", "")
 elif MQTT_MODE == "pi":
     MQTT_BROKER = os.getenv("MQTT_HOST", "127.0.0.1")
-    MQTT_PORT   = int(os.getenv("MQTT_PORT", "8883"))
+    MQTT_PORT   = int(os.getenv("MQTT_PORT", "1883"))
     MQTT_USER   = os.getenv("MQTT_USER", "admin")
     MQTT_PASS   = os.getenv("MQTT_PASS", "******")
     MQTT_CERT = None
@@ -119,7 +119,7 @@ elif MQTT_MODE == "aws":
     BASE_PATH = os.getenv("BASE_PATH", "")
 else:
     raise RuntimeError(f"Invalid MQTT_MODE: {MQTT_MODE}")
-MQTT_TLS = os.getenv("MQTT_TLS", "true").lower() in ("1", "true", "yes", "on")
+MQTT_TLS = os.getenv("MQTT_TLS", "false").lower() in ("1", "true", "yes", "on")
 MQTT_CA_FILE = os.getenv("MQTT_CA_FILE", "")
 MQTT_CLIENT_CERT = os.getenv("MQTT_CLIENT_CERT", "")
 MQTT_CLIENT_KEY = os.getenv("MQTT_CLIENT_KEY", "")

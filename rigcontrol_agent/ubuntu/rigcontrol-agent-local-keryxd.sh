@@ -1,12 +1,11 @@
 sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
-[ -s /etc/rigcontrol/ca.crt ] || echo "WARNING: /etc/rigcontrol/ca.crt is missing - copy the broker's ca.crt there once (see mosquitto-tls-setup.txt), otherwise the agent cannot verify the broker"
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
-BROKER_PORT=8883
+BROKER_PORT=1883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
-# --- BASIC TLS: on by default, ca.crt found automatically at this path; uncomment only to change (mosquitto-tls-setup.txt) ---
+# --- BASIC TLS: off by default. to enable set BROKER_PORT=8883 and uncomment MQTT_TLS=1, ca.crt is found at this path (mosquitto-tls-setup.txt) ---
 #MQTT_TLS=1
 #MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
@@ -21,7 +20,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
-# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
+# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883)
 # MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = /etc/rigcontrol/ca.crt if present, else system CAs)
 # MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
 # MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)

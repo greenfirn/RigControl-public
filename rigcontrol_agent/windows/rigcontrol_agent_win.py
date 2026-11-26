@@ -19,7 +19,7 @@ except ImportError as e:
     TELEMETRY_AVAILABLE = False
 # GLOBAL SETTINGS
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 8883
+BROKER_PORT = 1883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = os.path.join(os.path.dirname(__file__), "rigcontrol_cmd.bat")
@@ -107,7 +107,7 @@ cfg = load_broker_config()
 for _k, _v in cfg.items():
     os.environ[_k] = _v
 USE_AWS = "AWS_MQTT_HOST" in cfg
-MQTT_TLS = True
+MQTT_TLS = False
 MQTT_CA_FILE = ""
 MQTT_CLIENT_CERT = ""
 MQTT_CLIENT_KEY = ""
@@ -127,7 +127,7 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
-    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_TLS = cfg.get("MQTT_TLS", "0").strip().lower() in ("1", "true", "yes", "on")
     MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
     if not MQTT_CA_FILE and os.path.isfile(r"C:\rigcontrol\ca.crt"):
         MQTT_CA_FILE = r"C:\rigcontrol\ca.crt"

@@ -4,7 +4,7 @@
 
 start with the plain install (1), then add TLS when it works (2), client certificates (3), and the insecure test mode only for troubleshooting (4).
 
-## 1. Install / update (no TLS)
+## 1. Install / update (plain MQTT, no TLS)
 
 1. install python on a client worker...
 
@@ -19,14 +19,7 @@ sudo apt update; sudo apt install -y python3 python3-venv ca-certificates
    - [rigcontrol_telemetry.sh](rigcontrol_telemetry.sh)
    - [rigcontrol_cmd.sh](rigcontrol_cmd.sh)
    - [generate-copy-paste-update.bat](generate-copy-paste-update.bat)
-3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh): `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS`, and for this first install without TLS also set the port and turn TLS off (the conf defaults to TLS on, port 8883):
-
-   ```
-   BROKER_PORT=1883
-   MQTT_TLS=0
-   ```
-
-   the broker must have a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt)
+3. set the server details in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh): `BROKER_HOST`, `BROKER_USER`, `BROKER_PASS` (plain MQTT on port 1883 is the default, the broker needs a plain 1883 listener: [no TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt))
 4. for custom service names set them in [rigcontrol-agent-local.sh](rigcontrol-agent-local.sh) -- 'AUX_SERVICE_NAME=keryxd.service'
 5. install / update
    - run 'generate-copy-paste-update.bat' to create/update 'copy-paste-update.sh'
@@ -47,7 +40,7 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 on the broker follow the [basic TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), then on each worker:
 
 1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on the worker once
-2. in `rigcontrol-agent-local.sh` set `BROKER_PORT=8883` and remove the `MQTT_TLS=0` line (TLS is the agent default, `ca.crt` is found automatically at that path; the `#MQTT_TLS=1` / `#MQTT_CA_FILE=` lines stay commented unless you need a different path)
+2. in `rigcontrol-agent-local.sh` set `BROKER_PORT=8883` and uncomment `MQTT_TLS=1` (`ca.crt` is found automatically at that path; `#MQTT_CA_FILE=` stays commented unless you need a different path)
 3. run the install / update again (step 5 above), the agent restarts and connects over TLS
 
 ## 3. Advanced TLS (client certificates, mutual TLS)

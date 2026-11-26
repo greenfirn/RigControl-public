@@ -1,12 +1,11 @@
 sudo mkdir -p /etc/rigcontrol /var/lib/rigcontrol /run/rigcontrol
-[ -s /etc/rigcontrol/ca.crt ] || echo "WARNING: /etc/rigcontrol/ca.crt is missing - copy the broker's ca.crt there once (see mosquitto-tls-setup.txt), otherwise the agent cannot verify the broker"
 sudo tee /etc/rigcontrol/rigcontrol-agent.conf > /dev/null <<'EOF'
 # ===== SERVER SETTINGS (dashboard server MQTT broker) =====
 BROKER_HOST=10.10.0.10
-BROKER_PORT=8883
+BROKER_PORT=1883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
-# --- BASIC TLS: on by default, ca.crt found automatically at this path; uncomment only to change (mosquitto-tls-setup.txt) ---
+# --- BASIC TLS: off by default. to enable set BROKER_PORT=8883 and uncomment MQTT_TLS=1, ca.crt is found at this path (mosquitto-tls-setup.txt) ---
 #MQTT_TLS=1
 #MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
@@ -21,7 +20,7 @@ MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5
 # ===== END SERVER SETTINGS =====
 # ===== USER FLAG DESCRIPTION (rigcontrol-agent.conf, read live) =====
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker (dashboard server) the agent connects to
-# MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
+# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883)
 # MQTT_CA_FILE: CA certificate that signed the broker certificate (copy the broker's ca.crt to this path once; empty = /etc/rigcontrol/ca.crt if present, else system CAs)
 # MQTT_CLIENT_CERT / MQTT_CLIENT_KEY: client certificate and key, only if the broker requires them
 # MQTT_TLS_INSECURE (default 0): 1 = skip certificate/hostname verification (testing only)
@@ -90,7 +89,7 @@ import shutil
 # Conf keys (rigcontrol-agent.conf, read live):
 # BROKER_HOST / BROKER_PORT / BROKER_USER / BROKER_PASS: MQTT broker the agent connects to
 # MIN_TELEMETRY_PULL_INTERVAL_SECONDS: minimum seconds between telemetry pulls
-# MQTT_TLS (default 1): 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT; MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
+# MQTT_TLS (default 0): 0 = plain MQTT (BROKER_PORT 1883), 1 = encrypted broker connection (BROKER_PORT = broker TLS port, 8883); MQTT_CA_FILE, MQTT_CLIENT_CERT / MQTT_CLIENT_KEY, MQTT_TLS_INSECURE
 # OSN_PRIMARY (default 0): 1 = GPU + CPU/memory from OctaSpace osn only, no local GPU fallback; 0 = ignore osn, collect locally
 # OSN_ALLOW_MISSING_GPU_STATS (default 1): with osn, also fetch what it leaves out without nvidia-smi (mem temp, lspci/proc); the start-up read happens regardless
 # DOCKER_SKIP_GPU_STATS (default 0): 1 = skip GPU stats while a non-miner docker container is running
@@ -3260,7 +3259,7 @@ import datetime
 import ssl
 from aiomqtt import Client, MqttError, TLSParameters
 BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 8883
+BROKER_PORT = 1883
 BROKER_USER = None
 BROKER_PASS = None
 CMD_SCRIPT = "/usr/local/bin/rigcontrol_cmd.sh"
@@ -3294,7 +3293,7 @@ def load_broker_config():
     return cfg
 cfg = load_broker_config()
 USE_AWS = "AWS_MQTT_HOST" in cfg
-MQTT_TLS = True
+MQTT_TLS = False
 MQTT_CA_FILE = ""
 MQTT_CLIENT_CERT = ""
 MQTT_CLIENT_KEY = ""
@@ -3314,7 +3313,7 @@ else:
     BROKER_PASS = cfg.get("BROKER_PASS")
     log("[Config] MQTT Mode = LOCAL")
     log(f"[Config] Broker = {BROKER_HOST}:{BROKER_PORT}")
-    MQTT_TLS = cfg.get("MQTT_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+    MQTT_TLS = cfg.get("MQTT_TLS", "0").strip().lower() in ("1", "true", "yes", "on")
     MQTT_CA_FILE = cfg.get("MQTT_CA_FILE", "").strip()
     if not MQTT_CA_FILE and os.path.isfile("/etc/rigcontrol/ca.crt"):
         MQTT_CA_FILE = "/etc/rigcontrol/ca.crt"

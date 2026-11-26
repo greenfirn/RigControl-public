@@ -1,8 +1,8 @@
 ENCRYPTED MQTT (TLS) - BASIC - dashboard server on windows (mosquitto for windows), agents and server
 
-TLS is the default: the broker listens on 8883 only, the dashboard server and the agents connect with
-MQTT_TLS on and verify the broker certificate against your own CA (ca.crt). Do this once on a new install,
-before starting mosquitto. Replace 10.10.0.10 below with the ip agents use to reach the broker.
+TLS is optional (plain MQTT on 1883 is the default, see mosquitto-no-tls-setup.txt). With TLS the broker gets an 8883 listener and
+the dashboard server and the agents connect with MQTT_TLS on and verify the broker certificate against your own CA (ca.crt).
+The 1883 listener can stay open while the workers move over, so nothing disconnects. Replace 10.10.0.10 below with the ip agents use to reach the broker.
 
 1. create the certificates (openssl comes with Git for Windows: run in Git Bash)
    (san.ext lists every address a client may use: the broker ip, 127.0.0.1 for a server on this pc, and a hostname if you use one: add ,DNS:yourhost)
@@ -17,7 +17,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out s
 
    keep ca.key private. only ca.crt is copied to workers.
 
-2. mosquitto.conf (see mosquitto-setup.txt) has the TLS listener and no plain 1883 listener:
+2. mosquitto.conf (see mosquitto-setup.txt): keep the 1883 listener and add the TLS listener:
 
 listener 8883
 protocol mqtt
@@ -26,6 +26,7 @@ certfile C:\mosquitto-certs\server.crt
 keyfile C:\mosquitto-certs\server.key
 tls_version tlsv1.2
 
+   (the options after 'listener 8883' apply to that listener, so add allow_anonymous false and the same password_file line after it too)
    allow 8883 through the windows firewall, then restart the mosquitto service
 
 3. dashboard server (.env): MQTT_HOST must be an address in san.ext (10.10.0.10 or 127.0.0.1)
@@ -34,8 +35,7 @@ MQTT_PORT=8883
 MQTT_TLS=true
 MQTT_CA_FILE=C:\mosquitto-certs\ca.crt
 
-4. each worker: the agent install scripts (rigcontrol-agent-local.sh / copy-paste-update.sh) already write BROKER_PORT=8883,
-   MQTT_TLS=1 and MQTT_CA_FILE=/etc/rigcontrol/ca.crt. copy the broker's ca.crt to /etc/rigcontrol/ca.crt on each worker once (the scripts only warn if it is missing and never overwrite it):
+4. each worker: copy the broker's ca.crt to /etc/rigcontrol/ca.crt on each worker once, then enable TLS in the conf (below):
 
 # run in Git Bash on this pc, once per worker (replace user@WORKER with the worker login)
 scp /c/mosquitto-certs/ca.crt user@WORKER:/tmp/ca.crt
@@ -43,17 +43,16 @@ ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/ri
 # check: the worker prints the same certificate
 ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate"
 
-   then set BROKER_HOST / BROKER_USER / BROKER_PASS in the script, regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
+   then in rigcontrol-agent-local.sh set BROKER_PORT=8883 and uncomment MQTT_TLS=1 (ca.crt is found at /etc/rigcontrol/ca.crt, MQTT_CA_FILE only to use another path), regenerate copy-paste-update.sh and run it on the worker as a file (scp + bash, do not paste it into the terminal).
 
-   windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, MQTT_CA_FILE=C:\rigcontrol\ca.crt
+   windows worker: same keys in C:\rigcontrol\rigcontrol_agent.conf, ca.crt at C:\rigcontrol\ca.crt
 
 5. test
 
 openssl s_client -connect 10.10.0.10:8883 -CAfile ca.crt </dev/null | grep -i "verify return"
    expect 'verify return:1'
 
-6. plain MQTT (no encryption) is still possible, see mosquitto-no-tls-setup.txt. short version: set MQTT_TLS=0 and the plain port (1883) on the server and workers and add a
-   'listener 1883' (allow_anonymous false, same password_file) to mosquitto.conf.
+6. once every worker and the server use 8883, remove the 1883 listener from mosquitto.conf and restart the broker.
    MQTT_TLS_INSECURE=1 (workers) / MQTT_TLS_INSECURE=true (server) skips certificate and hostname checks: testing only.
 
 advanced (optional): client certificates / mutual TLS, see mosquitto-tls-advanced.txt
