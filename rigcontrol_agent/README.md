@@ -41,23 +41,6 @@ sudo python3 -m pip uninstall -y aiomqtt typing_extensions paho-mqtt
 
 Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLOCK_LIST`), `-1` = read failed, `--` = not reported.
 
-## USER FLAG DESCRIPTION (`/etc/rigcontrol/rigcontrol-agent.conf`, read live)
-
-- `OSN_PRIMARY=0` (default): local GPU/CPU/memory stats. Set `OSN_PRIMARY=1` to use OctaSpace node (osn) metrics instead.
-- `OSN_ALLOW_MISSING_GPU_STATS=1` also fetch what osn leaves out and needs no `nvidia-smi` (live mem temp via gputemps, lspci/proc fallbacks); `0` skips that. The start-up read happens regardless.
-- `DOCKER_SKIP_GPU_STATS=0` (default off) skip GPU stats while a non-miner container is running. Passthrough always skips.
-- `OVERRIDE_LIST=""` docker images that are "GPU stats safe" and ignored by the docker rule (keyword match anywhere in the image name, case-insensitive).
-- `BLOCK_LIST=""` docker images that ALWAYS skip GPU stats while running (same keyword match as `OVERRIDE_LIST`).
-- `STATS_DB_ENABLED`, `STATS_DB_MAX_HISTORY_DAYS`, `STATS_DB_INTERVAL_SECONDS` local stats history.
-- `MIN_TELEMETRY_PULL_INTERVAL_SECONDS=5` minimum gap between telemetry pulls.
-- `CPU_SERVICE_NAME`, `GPU_SERVICE_NAME`, `AUX_SERVICE_NAME`, `WATCHDOG_SERVICE_NAME` custom agent service names for dashboard control.
-- `CUSTOM_MINER_BIN_GPU` / `_CPU` / `_AUX` custom miner binaries to detect.
-- `<NAME>_BIN` binary for a custom miner, keyed by the miner's own name (`CUSTOM_MINER` in `rig-gpu/cpu/aux.conf` or `.json`, sanitized to A-Z0-9_).
-- `<NAME>_API_HOST` / `<NAME>_API_PORT` custom miner JSON stats API (e.g. `KERYX_MINER_API_PORT=3338`, `SUPRMINER_NEPTUNE_API_PORT=4068`).
-- `<NAME>_LOG_PATH` custom miner log file to scrape for stats when there is no API.
-- `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
-- `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
-
 ## Server certificate
 
 1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. replace `10.10.0.10` with the ip of your dashboard server:
