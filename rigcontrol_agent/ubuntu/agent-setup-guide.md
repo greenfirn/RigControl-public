@@ -71,8 +71,18 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 ## 3. Advanced TLS (client certificates, mutual TLS)
 
-1. on the server create the client certificates and enable `require_certificate true`: [advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt)
-2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker
+1. on the server create the worker's client certificate. `WORKER_NAME` = the worker's hostname, one certificate per worker. needs the helper script [mosquitto-client-cert.sh](../../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) in `~/ha-docker` ([advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1). the dashboard server needs its own certificate too (`rigcontrol-dashboard`, same guide, step 4):
+
+   ```
+   cd ~/ha-docker
+   sudo bash mosquitto-client-cert.sh WORKER_NAME
+   ```
+2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. run on the server, replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
+
+   ```
+   scp ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key user@WORKER:/tmp/
+   ssh -t user@WORKER "sudo mv /tmp/WORKER_NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/WORKER_NAME.key /etc/rigcontrol/client.key && sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key"
+   ```
 3. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker uncomment:
 
    ```
@@ -85,6 +95,8 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
    ```
    sudo systemctl restart rigcontrol-agent.service
    ```
+
+5. when every worker and the server are connected with their certificates, enable `require_certificate true` on the broker ([advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 5)
 
 ## Plain MQTT (no TLS, optional)
 
