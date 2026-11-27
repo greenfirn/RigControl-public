@@ -1,7 +1,9 @@
 {
   "broadcast_interval": 10.0,
-  "offline_ping_interval": 15.0,
+  "offline_ping_interval": 10.0,
   "offline_threshold": 60.0,
+  "ws_push_min_interval": 2.0,
+  "missed_refresh_threshold": 3,
   "notification_settings": {
     "email_enabled": true,
     "sms_primary_enabled": false,

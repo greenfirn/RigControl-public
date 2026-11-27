@@ -1168,7 +1168,7 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "BLOCK_LIST=\"\"\n" +
     "STATS_DB_ENABLED=true\n" +
     "STATS_DB_MAX_HISTORY_DAYS=7\n" +
-    "STATS_DB_INTERVAL_SECONDS=90\n" +
+    "STATS_DB_INTERVAL_SECONDS=10\n" +
     "#CPU_SERVICE_NAME=docker_events_cpu.service\n" +
     "#GPU_SERVICE_NAME=docker_events_gpu.service\n" +
     "#AUX_SERVICE_NAME=keryxd.service\n" +
@@ -6323,7 +6323,7 @@ function openRefreshModal() {
         input.select();
     }
     if (offlinePingInput) {
-        const savedOfflinePing = localStorage.getItem("offlinePingInterval") || "3600";
+        const savedOfflinePing = localStorage.getItem("offlinePingInterval") || "10";
         offlinePingInput.value = parseInt(savedOfflinePing, 10);
         offlinePingInput.style.borderColor = "#333";
     }
@@ -6952,7 +6952,7 @@ function updateServerInterval(seconds) {
 function updateRefreshTimerUI() {
     const btn = document.getElementById("btn-refresh-timer");
     if (!btn) return;
-    const offlinePing = localStorage.getItem("offlinePingInterval") || "3600";
+    const offlinePing = localStorage.getItem("offlinePingInterval") || "10";
     const offlineThreshold = localStorage.getItem("offlineThreshold") || "3600";
     btn.title = "Settings: notification - stats";
     btn.style.opacity = "1";

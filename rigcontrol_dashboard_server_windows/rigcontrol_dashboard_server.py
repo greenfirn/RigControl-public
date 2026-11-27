@@ -130,7 +130,7 @@ API_BIND = os.getenv("API_BIND", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8765"))
 MQTT_TOPIC_FILTER = os.getenv("MQTT_TOPIC_FILTER", "rigcontrol/+/+")
 BROADCAST_INTERVAL = float(os.getenv("BROADCAST_INTERVAL", "10"))
-OFFLINE_PING_INTERVAL = float(os.getenv("OFFLINE_PING_INTERVAL", "30"))
+OFFLINE_PING_INTERVAL = float(os.getenv("OFFLINE_PING_INTERVAL", "10"))
 OFFLINE_THRESHOLD = float(os.getenv("OFFLINE_THRESHOLD", "90"))
 TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
 TRUSTED_PROXY_HOPS = max(1, int(os.getenv("TRUSTED_PROXY_HOPS", "1")))
@@ -182,7 +182,7 @@ broadcast_loop_lock = asyncio.Lock()
 last_refresh_ts = 0.0
 OFFLINE_GRACE_PERIOD = 60
 last_ws_push = 0.0
-WS_PUSH_MIN_INTERVAL = 1.2
+WS_PUSH_MIN_INTERVAL = 2.0
 ws_broadcast_pending = False
 rigs: Dict[str, Dict[str, Any]] = {}
 rigs_lock = threading.Lock()
@@ -228,7 +228,7 @@ rig_docker_state: Dict[str, bool] = {}
 rig_docker_state_lock = threading.Lock()
 rig_missed_refreshes: Dict[str, int] = {}
 rig_missed_refreshes_lock = threading.Lock()
-MISSED_REFRESH_THRESHOLD = 2
+MISSED_REFRESH_THRESHOLD = 3
 def log(msg: str) -> None:
     now = time.time()
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now))
@@ -1343,10 +1343,10 @@ def stop_notification_workers():
 CONFIG_FILE = BASE_DIR / "rigcontrol_config.json"
 default_config = {
     "broadcast_interval": 10.0,
-    "offline_ping_interval": 30.0,
+    "offline_ping_interval": 10.0,
     "offline_threshold": 90.0,
-    "ws_push_min_interval": 1.2,
-    "missed_refresh_threshold": 2,
+    "ws_push_min_interval": 2.0,
+    "missed_refresh_threshold": 3,
     "notification_settings": {
         "email_enabled": True,
         "sms_primary_enabled": False,
