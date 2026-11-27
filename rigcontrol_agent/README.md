@@ -2,6 +2,7 @@
 
 ## Guides
 
+- [Server certificate](#server-certificate)
 - [Agent setup](#agent-setup)
 - [Basic TLS](#basic-tls)
 - [Advanced TLS](#advanced-tls)
@@ -57,9 +58,29 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 - `<NAME>_LOG_STYLE` how that log is read: `blocks` counts keryxd-style "Accepted N blocks"; unset uses generic hashrate scraping.
 - `EXCLUDE_FROM_TOTALS = True` (in `rigcontrol_telemetry.sh`) leaves a dashboard host out of the status totals.
 
+## Server certificate
+
+1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. replace `10.10.0.10` with the ip of your dashboard server:
+
+   ```
+   openssl version || (sudo apt update && sudo apt install -y openssl)
+   sudo mkdir -p ~/ha-docker/mosquitto/config/certs && cd ~/ha-docker/mosquitto/config/certs
+   sudo openssl genrsa -out ca.key 4096
+   sudo openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
+   sudo openssl genrsa -out server.key 2048
+   sudo openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
+   printf "subjectAltName=IP:10.10.0.10,IP:127.0.0.1" | sudo tee san.ext > /dev/null
+   sudo openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
+   sudo chown 1883:1883 server.key server.crt ca.crt
+   sudo chmod 640 server.key
+   cd ~/ha-docker && sudo docker compose up -d mosquitto
+   ```
+
+   (windows server: [Windows basic TLS guide](../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.txt))
+
 ## Agent setup
 
-the broker needs its server certificate first, see [Basic TLS](#basic-tls) step 1 (or [No TLS](#no-tls) for plain mqtt).
+the broker needs its server certificate first, see [Server certificate](#server-certificate) (or [No TLS](#no-tls) for plain mqtt).
 
 1. install python on a client worker...
 
@@ -95,25 +116,7 @@ the broker needs its server certificate first, see [Basic TLS](#basic-tls) step 
 
 ## Basic TLS
 
-1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. replace `10.10.0.10` with the ip of your dashboard server:
-
-   ```
-   openssl version || (sudo apt update && sudo apt install -y openssl)
-   sudo mkdir -p ~/ha-docker/mosquitto/config/certs && cd ~/ha-docker/mosquitto/config/certs
-   sudo openssl genrsa -out ca.key 4096
-   sudo openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
-   sudo openssl genrsa -out server.key 2048
-   sudo openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
-   printf "subjectAltName=IP:10.10.0.10,IP:127.0.0.1" | sudo tee san.ext > /dev/null
-   sudo openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
-   sudo chown 1883:1883 server.key server.crt ca.crt
-   sudo chmod 640 server.key
-   cd ~/ha-docker && sudo docker compose up -d mosquitto
-   ```
-
-   (windows server: [Windows basic TLS guide](../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.txt))
-
-2. copy the broker's `ca.crt` (public) from the server's certificate folder (`~/ha-docker/mosquitto/config/certs/`) to `/etc/rigcontrol/ca.crt` on each worker. run on the server for every worker, replace `user@WORKER` with the worker login:
+1. copy the broker's `ca.crt` (public) from the server's certificate folder (`~/ha-docker/mosquitto/config/certs/`) to `/etc/rigcontrol/ca.crt` on each worker. run on the server for every worker, replace `user@WORKER` with the worker login:
 
    ```
    scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
@@ -122,9 +125,9 @@ the broker needs its server certificate first, see [Basic TLS](#basic-tls) step 
 
    (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
 
-3. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in `C:\rigcontrol\rigcontrol_agent.conf` on a windows worker)
+2. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in `C:\rigcontrol\rigcontrol_agent.conf` on a windows worker)
 
-4. restart the agent, it now verifies the broker certificate:
+3. restart the agent, it now verifies the broker certificate:
 
    ```
    sudo systemctl restart rigcontrol-agent.service
