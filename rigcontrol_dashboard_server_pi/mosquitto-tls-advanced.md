@@ -4,7 +4,7 @@ optional extra on top of [mosquitto-tls-setup.md](mosquitto-tls-setup.md) (basic
 
 basic TLS: the clients verify the broker (`ca.crt`). advanced: the broker also requires every client to present a certificate signed by your CA, on top of `BROKER_USER` / `BROKER_PASS`. one certificate per worker, plus one for the dashboard server. the agent, server and watchdog already send `MQTT_CLIENT_CERT` / `MQTT_CLIENT_KEY` when they are set. until step 5 the broker accepts the certificates but does not require them, so nothing disconnects.
 
-1. create the certificates on the broker pi. first open the parent folder of mosquitto and write the helper script once (paste the contents of `mosquitto-client-cert.sh` from this folder, it writes `mosquitto-client-cert.sh` in the current folder), then:
+1. create the certificates on the broker pi. first open the parent folder of mosquitto and write the helper script once (paste the contents of [`mosquitto-client-cert.sh`](mosquitto-client-cert.sh), it writes [`mosquitto-client-cert.sh`](mosquitto-client-cert.sh) in the current folder), then:
 
    ```
    sudo bash mosquitto-client-cert.sh rigcontrol-dashboard
@@ -19,7 +19,7 @@ basic TLS: the clients verify the broker (`ca.crt`). advanced: the broker also r
    bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
    ```
 
-   (helper script from this folder, `mosquitto-client-cert-copy.sh`: paste it once in the same parent folder of mosquitto like step 1, run it from there. or run the commands below by hand)
+   (helper script [`mosquitto-client-cert-copy.sh`](mosquitto-client-cert-copy.sh): paste it once in the same parent folder of mosquitto like step 1, run it from there. or run the commands below by hand)
 
    ```
    scp ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key user@WORKER:/tmp/

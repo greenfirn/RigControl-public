@@ -30,7 +30,7 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
    MQTT_PASS=YOUR_PASSWORD
    ```
 
-3. each worker: the install scripts default to TLS, so in the conf block of `rigcontrol-agent-local.sh` set
+3. each worker: the install scripts default to TLS, so in the conf block of [`rigcontrol-agent-local.sh`](../rigcontrol_agent/ubuntu/rigcontrol-agent-local.sh) set
 
    ```
    BROKER_HOST=YOUR_PC_IP
@@ -40,7 +40,7 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
    MQTT_TLS=0
    ```
 
-   (`MQTT_TLS_INSECURE` is ignored without TLS, no `ca.crt` needed). regenerate `copy-paste-update.sh` and run it on the worker as a file
+   (`MQTT_TLS_INSECURE` is ignored without TLS, no `ca.crt` needed). regenerate [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh) and run it on the worker as a file
    (scp + bash, do not paste it into the terminal). windows worker: the same keys in `C:\rigcontrol\rigcontrol_agent.conf`.
 
 4. later switch to encrypted MQTT: see [mosquitto-tls-setup.md](mosquitto-tls-setup.md)

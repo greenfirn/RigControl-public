@@ -44,8 +44,8 @@ Replace 10.10.0.10 below with the ip agents use to reach the broker.
    MQTT_TLS_INSECURE=true
    ```
 
-4. each worker (stage A, nothing to copy): the agent install scripts (`rigcontrol-agent-local.sh` / `copy-paste-update.sh`) already write `BROKER_PORT=8883`,
-   `MQTT_TLS=1` and `MQTT_TLS_INSECURE=1`. just set `BROKER_HOST` / `BROKER_USER` / `BROKER_PASS` in the script, regenerate `copy-paste-update.sh` and run it on the worker
+4. each worker (stage A, nothing to copy): the agent install scripts ([`rigcontrol-agent-local.sh`](../rigcontrol_agent/ubuntu/rigcontrol-agent-local.sh) / [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh)) already write `BROKER_PORT=8883`,
+   `MQTT_TLS=1` and `MQTT_TLS_INSECURE=1`. just set `BROKER_HOST` / `BROKER_USER` / `BROKER_PASS` in the script, regenerate [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh) and run it on the worker
    as a file (scp + bash, do not paste it into the terminal). windows worker: same keys in `C:\rigcontrol\rigcontrol_agent.conf`.
 
 5. test
@@ -66,7 +66,7 @@ Replace 10.10.0.10 below with the ip agents use to reach the broker.
    ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate"
    ```
 
-   then set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` in `rigcontrol-agent-local.sh` (windows conf: `#MQTT_CA_FILE=C:\rigcontrol\ca.crt`), regenerate `copy-paste-update.sh` and run it on the worker
+   then set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` in [`rigcontrol-agent-local.sh`](../rigcontrol_agent/ubuntu/rigcontrol-agent-local.sh) (windows conf: `#MQTT_CA_FILE=C:\rigcontrol\ca.crt`), regenerate [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh) and run it on the worker
    as a file. on the server set `MQTT_TLS_INSECURE=false` and `MQTT_CA_FILE=C:\mosquitto-certs\ca.crt` in `.env`, then restart it.
 
    windows worker: same keys in `C:\rigcontrol\rigcontrol_agent.conf`, `ca.crt` at `C:\rigcontrol\ca.crt`

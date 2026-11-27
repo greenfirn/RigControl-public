@@ -62,7 +62,7 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
 
    (expect `Mode=pi Connecting to 10.10.0.10:1883`)
 
-6. each worker: the install scripts default to TLS, so in the conf block of `rigcontrol-agent-local.sh` set
+6. each worker: the install scripts default to TLS, so in the conf block of [`rigcontrol-agent-local.sh`](../rigcontrol_agent/ubuntu/rigcontrol-agent-local.sh) set
 
    ```
    BROKER_HOST=10.10.0.10
@@ -72,7 +72,7 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
    MQTT_TLS=0
    ```
 
-   (`MQTT_TLS_INSECURE` is ignored without TLS, no `ca.crt` needed). regenerate `copy-paste-update.sh` and run it on the worker as a file
+   (`MQTT_TLS_INSECURE` is ignored without TLS, no `ca.crt` needed). regenerate [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh) and run it on the worker as a file
    (scp + bash, do not paste it into the terminal). the watchdog reads the same conf. windows worker: the same keys in `C:\rigcontrol\rigcontrol_agent.conf`.
 
    the agent log should show `[Config] Broker = 10.10.0.10:1883` and no `[Config] MQTT TLS = ON` line.

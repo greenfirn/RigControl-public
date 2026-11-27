@@ -13,7 +13,7 @@ install openssl if missing (skip if `openssl version` works):
 openssl version || (sudo apt update && sudo apt install -y openssl)
 ```
 
-1. create the certificates in `mosquitto/config/certs` (shortcut: the helper script `mosquitto-server-cert.sh` from this folder, paste it once in the parent folder of mosquitto and run it from there with `sudo bash mosquitto-server-cert.sh 10.10.0.10`. or run the commands below by hand)
+1. create the certificates in `mosquitto/config/certs` (shortcut: the helper script [`mosquitto-server-cert.sh`](mosquitto-server-cert.sh), paste it once in the parent folder of mosquitto and run it from there with `sudo bash mosquitto-server-cert.sh 10.10.0.10`. or run the commands below by hand)
 
    (`san.ext` lists every address a client may use: the broker ip, 127.0.0.1 for the server on the same pi, and a hostname if you use one: add ,DNS:yourhost)
 
@@ -62,8 +62,8 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
 
    `docker-compose.yml` already mounts `./mosquitto/config/certs` at `/mqtt-certs`
 
-5. each worker (stage A, nothing to copy): the agent install scripts (`rigcontrol-agent-local.sh` / `copy-paste-update.sh`) already write `BROKER_PORT=8883`,
-   `MQTT_TLS=1` and `MQTT_TLS_INSECURE=1`. just set `BROKER_HOST` / `BROKER_USER` / `BROKER_PASS` in the script, regenerate `copy-paste-update.sh` and run it on the worker
+5. each worker (stage A, nothing to copy): the agent install scripts ([`rigcontrol-agent-local.sh`](../rigcontrol_agent/ubuntu/rigcontrol-agent-local.sh) / [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh)) already write `BROKER_PORT=8883`,
+   `MQTT_TLS=1` and `MQTT_TLS_INSECURE=1`. just set `BROKER_HOST` / `BROKER_USER` / `BROKER_PASS` in the script, regenerate [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh) and run it on the worker
    as a file (scp + bash, do not paste it into the terminal). windows worker: same keys in `C:\rigcontrol\rigcontrol_agent.conf`.
 
 6. verified TLS (stage B), when stage A works: copy the broker's `ca.crt` to `/etc/rigcontrol/ca.crt` on each worker once (the install scripts never overwrite it):
@@ -85,7 +85,7 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
    openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate
    ```
 
-   then set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` in `rigcontrol-agent-local.sh` (windows conf: `#MQTT_CA_FILE=C:\rigcontrol\ca.crt`), regenerate `copy-paste-update.sh` and run it on the worker
+   then set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` in [`rigcontrol-agent-local.sh`](../rigcontrol_agent/ubuntu/rigcontrol-agent-local.sh) (windows conf: `#MQTT_CA_FILE=C:\rigcontrol\ca.crt`), regenerate [`copy-paste-update.sh`](../rigcontrol_agent/ubuntu/copy-paste-update.sh) and run it on the worker
    as a file. on the server set `MQTT_TLS_INSECURE=false` and uncomment `MQTT_CA_FILE=/mqtt-certs/ca.crt` in `.env`, then recreate the container.
 
    windows worker: same keys in `C:\rigcontrol\rigcontrol_agent.conf`, `ca.crt` at `C:\rigcontrol\ca.crt`
