@@ -9,8 +9,8 @@ send MQTT_CLIENT_CERT / MQTT_CLIENT_KEY when they are set. until step 5 the brok
 
 1. create the certificates in Git Bash (save the script text between the 'EOF' lines of rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh as mosquitto-client-cert.sh on this pc)
 
-CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh rigcontrol-dashboard
-CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh WORKER_NAME
+CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh . rigcontrol-dashboard
+CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh . WORKER_NAME
    (repeat per worker, WORKER_NAME = its hostname. output: /c/mosquitto-certs/clients/<name>.crt and <name>.key)
 
 2. copy each worker's pair to it (the private key stays root-only on the worker)

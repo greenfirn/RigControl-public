@@ -1,19 +1,19 @@
 sudo tee ~/ha-docker/mosquitto-client-cert.sh > /dev/null <<'EOF'
 #!/bin/bash
 # advanced TLS, see mosquitto-tls-advanced.txt
-# Creates a client certificate (mutual TLS) signed by the broker CA: sudo ./mosquitto-client-cert.sh <name>
+# Creates a client certificate (mutual TLS) signed by the broker CA: sudo bash mosquitto-client-cert.sh <root-path> <name>
+# <root-path> = the folder that holds mosquitto/ (e.g. ~/ha-docker), certificates are read from <root-path>/mosquitto/config/certs
 # <name> = worker hostname, or rigcontrol-dashboard for the dashboard server. Output: <certs>/clients/<name>.crt + .key
-# CERT_DIR=/path/to/certs overrides the default ~/ha-docker/mosquitto/config/certs (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh <name>)
+# CERT_DIR=/path/to/certs overrides the certificate folder (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-client-cert.sh . <name>)
 set -e
-NAME="$1"
-if [ -z "$NAME" ]; then
-    echo "usage: sudo $0 <name>   (e.g. 5900x-3-4070tis, or rigcontrol-dashboard)"
+if [ $# -lt 2 ]; then
+    echo "usage: sudo $0 <root-path> <name>   (e.g. ~/ha-docker 5900x-3-4070tis, or rigcontrol-dashboard)"
     exit 1
 fi
+ROOT="$1"
+NAME="$2"
 OWNER="${SUDO_USER:-$USER}"
-OWNER_HOME=$(getent passwd "$OWNER" 2>/dev/null | cut -d: -f6 || true)
-OWNER_HOME="${OWNER_HOME:-$HOME}"
-CERT_DIR="${CERT_DIR:-$OWNER_HOME/ha-docker/mosquitto/config/certs}"
+CERT_DIR="${CERT_DIR:-$ROOT/mosquitto/config/certs}"
 OUT="$CERT_DIR/clients"
 if [ ! -f "$CERT_DIR/ca.crt" ] || [ ! -f "$CERT_DIR/ca.key" ]; then
     echo "ca.crt / ca.key not found in $CERT_DIR (see mosquitto-tls-setup.txt step 1)"

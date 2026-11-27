@@ -1,24 +1,23 @@
 sudo tee ~/ha-docker/mosquitto-server-cert.sh > /dev/null <<'EOF'
 #!/bin/bash
 # TLS, see mosquitto-tls-setup.txt
-# Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <dashboard-server-ip> [more ips or hostnames]
-# the first argument is the ip workers use to reach the broker, 127.0.0.1 is always added. Output: <certs>/ca.crt ca.key server.crt server.key
-# CERT_DIR=/path/to/certs overrides the default ~/ha-docker/mosquitto/config/certs (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-server-cert.sh <ip>)
+# Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <root-path> <dashboard-server-ip> [more ips or hostnames]
+# <root-path> = the folder that holds mosquitto/ (e.g. ~/ha-docker), certificates go to <root-path>/mosquitto/config/certs
+# <dashboard-server-ip> = the ip workers use to reach the broker, 127.0.0.1 is always added. Output: ca.crt ca.key server.crt server.key
+# CERT_DIR=/path/to/certs overrides the certificate folder (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-server-cert.sh . <ip>)
 set -e
-if [ $# -lt 1 ]; then
-    echo "usage: sudo $0 <dashboard-server-ip> [more ips or hostnames]   (e.g. 10.10.0.10)"
+if [ $# -lt 2 ]; then
+    echo "usage: sudo $0 <root-path> <dashboard-server-ip> [more ips or hostnames]   (e.g. ~/ha-docker 10.10.0.10)"
     exit 1
 fi
-IP="$1"
+ROOT="$1"
+IP="$2"
 SAN="IP:$IP,IP:127.0.0.1"
-shift
+shift 2
 for A in "$@"; do
     if [[ "$A" =~ ^[0-9.]+$ ]]; then SAN="$SAN,IP:$A"; else SAN="$SAN,DNS:$A"; fi
 done
-OWNER="${SUDO_USER:-$USER}"
-OWNER_HOME=$(getent passwd "$OWNER" 2>/dev/null | cut -d: -f6 || true)
-OWNER_HOME="${OWNER_HOME:-$HOME}"
-CERT_DIR="${CERT_DIR:-$OWNER_HOME/ha-docker/mosquitto/config/certs}"
+CERT_DIR="${CERT_DIR:-$ROOT/mosquitto/config/certs}"
 if [ -f "$CERT_DIR/ca.key" ] || [ -f "$CERT_DIR/server.crt" ]; then
     echo "certificates already exist in $CERT_DIR, not overwriting (workers would need the new ca.crt). remove the files first to recreate them"
     exit 1

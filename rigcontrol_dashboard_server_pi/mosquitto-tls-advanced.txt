@@ -9,15 +9,13 @@ send MQTT_CLIENT_CERT / MQTT_CLIENT_KEY when they are set. until step 5 the brok
 
 1. create the certificates on the broker pi. first write the helper script once (paste the contents of mosquitto-client-cert.sh from this folder, it writes ~/ha-docker/mosquitto-client-cert.sh), then:
 
-cd ~/ha-docker
-sudo bash mosquitto-client-cert.sh rigcontrol-dashboard
-sudo bash mosquitto-client-cert.sh WORKER_NAME
+sudo bash ~/ha-docker/mosquitto-client-cert.sh ~/ha-docker rigcontrol-dashboard
+sudo bash ~/ha-docker/mosquitto-client-cert.sh ~/ha-docker WORKER_NAME
    (repeat per worker, WORKER_NAME = its hostname. output: ~/ha-docker/mosquitto/config/certs/clients/<name>.crt and <name>.key)
 
 2. copy each worker's pair to it (the private key stays root-only on the worker)
 
-cd ~/ha-docker
-bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
+bash ~/ha-docker/mosquitto-client-cert-copy.sh ~/ha-docker WORKER_NAME user@WORKER
    (helper script from this folder, mosquitto-client-cert-copy.sh: paste it once like step 1. or run the commands below by hand)
 
 scp ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key user@WORKER:/tmp/
