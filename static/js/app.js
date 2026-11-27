@@ -1311,7 +1311,8 @@ const CONF_EDIT_TYPES = {
         postCmd: () => "sudo chmod +x /usr/local/bin/gpu_reset_poststop.sh",
     },
 };
-const DEFAULT_QUICK_ACTIONS = { a: "", b: "", c: "" };
+const DEFAULT_QUICK_ACTION_A = "# update miner version\nsudo tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'\nXMRIG_VERSION \"6.26.0\"\nBZMINER_VERSION \"v100.82\"\nWILDRIG_VERSION \"0.52.3\"\nSRBMINER_VERSION \"3.8.9\"\nSRBMINER-CPU_VERSION \"3.8.9\"\nRIGEL_VERSION \"1.23.2\"\nLOLMINER_VERSION \"1.98a\"\nONEZEROMINER_VERSION \"1.8.7\"\nGMINER_VERSION \"3.44\"\nTEAMREDMINER_VERSION \"0.10.21\"\nTREXMINER_VERSION \"0.26.8\"\nEOF";
+const DEFAULT_QUICK_ACTIONS = { a: DEFAULT_QUICK_ACTION_A, b: "", c: "" };
 let quickActionsConfig = { ...DEFAULT_QUICK_ACTIONS };
 const DataHelper = {
     getCpuTemp: (data) => {

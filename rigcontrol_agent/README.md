@@ -162,7 +162,13 @@ the broker needs its server certificate first, see [Server certificate](#server-
    bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
    ```
 
-   from a windows pc (certificates in `C:\temp\clients`) use [copy-client-cert.bat](ubuntu/copy-client-cert.bat) instead:
+   for a windows worker run [get-client-cert.bat](windows/get-client-cert.bat) in cmd on that pc to copy its certificate from the server, replace `WORKER_NAME` with the certificate name, `user@SERVER` with the server login and `PARENT_FOLDER` with the parent folder of mosquitto on the server (an optional 4th argument sets the destination folder, default `C:\rigcontrol`):
+
+   ```
+   get-client-cert.bat WORKER_NAME user@SERVER PARENT_FOLDER
+   ```
+
+   with the certificates already on a windows pc (in `C:\temp\clients`) push them to a linux worker with [copy-client-cert.bat](ubuntu/copy-client-cert.bat):
 
    ```
    copy-client-cert.bat WORKER_NAME user@WORKER
@@ -174,6 +180,8 @@ the broker needs its server certificate first, see [Server certificate](#server-
    #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
    #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
    ```
+
+   (windows worker: in `C:\rigcontrol\rigcontrol_agent.conf` uncomment `#MQTT_CLIENT_CERT=C:\rigcontrol\client.crt` and `#MQTT_CLIENT_KEY=C:\rigcontrol\client.key`)
 
 4. restart the agent:
 
