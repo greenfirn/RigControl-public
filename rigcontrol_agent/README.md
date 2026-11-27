@@ -3,7 +3,7 @@
 ## Guides
 
 - [Server certificate](#server-certificate)
-- [Agent setup](#agent-setup)
+- [Agent setup ( Get worker connected first )](#agent-setup--get-worker-connected-first-)
 - [Basic TLS](#basic-tls)
 - [Advanced TLS](#advanced-tls)
 - [No TLS](#no-tls)
@@ -94,7 +94,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 
    (windows server: [Windows basic TLS guide](../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.md))
 
-## Agent setup
+## Agent setup ( Get worker connected first )
 
 the broker needs its server certificate first, see [Server certificate](#server-certificate) (or [No TLS](#no-tls) for plain mqtt).
 
