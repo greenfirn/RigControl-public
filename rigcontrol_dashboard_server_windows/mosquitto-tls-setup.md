@@ -9,7 +9,7 @@ Replace 10.10.0.10 below with the ip agents use to reach the broker.
 
 1. create the certificates (openssl comes with Git for Windows: run in Git Bash)
 
-   (`san.ext` lists every address a client may use: the broker ip, 127.0.0.1 for a server on this pc, and a hostname if you use one: add ,DNS:yourhost)
+   (`san.ext` lists every address a client may use: the broker ip (use it everywhere, also for a server on this pc) and a hostname if you use one: add ,DNS:yourhost)
 
    ```
    mkdir -p /c/mosquitto-certs && cd /c/mosquitto-certs
@@ -17,7 +17,7 @@ Replace 10.10.0.10 below with the ip agents use to reach the broker.
    openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
    openssl genrsa -out server.key 2048
    openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
-   printf "subjectAltName=IP:10.10.0.10,IP:127.0.0.1" > san.ext
+   printf "subjectAltName=IP:10.10.0.10" > san.ext
    openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
    ```
 
@@ -36,7 +36,7 @@ Replace 10.10.0.10 below with the ip agents use to reach the broker.
 
    allow 8883 through the windows firewall, then restart the mosquitto service
 
-3. dashboard server (`.env`): `MQTT_HOST` must be an address in `san.ext` (10.10.0.10 or 127.0.0.1). the defaults already are:
+3. dashboard server (`.env`): `MQTT_HOST` must be the broker ip from `san.ext` (10.10.0.10). the defaults already are:
 
    ```
    MQTT_PORT=8883

@@ -15,15 +15,15 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
 
 1. create the certificates in `mosquitto/config/certs` (shortcut: the helper script [`mosquitto-server-cert.sh`](mosquitto-server-cert.sh), paste it once in the parent folder of mosquitto and run it from there with `sudo bash mosquitto-server-cert.sh 10.10.0.10`. or run the commands below by hand)
 
-   (`san.ext` lists every address a client may use: the broker ip, 127.0.0.1 for the server on the same pi, and a hostname if you use one: add ,DNS:yourhost)
+   (`san.ext` lists every address a client may use: the broker ip (use it everywhere, also for the server on the same pi) and a hostname if you use one: add ,DNS:yourhost)
 
    ```
-   sudo mkdir -p ~/ha-docker/mosquitto/config/certs && cd ~/ha-docker/mosquitto/config/certs
+   sudo mkdir -p ~/rigcontrol-server/mosquitto/config/certs && cd ~/rigcontrol-server/mosquitto/config/certs
    sudo openssl genrsa -out ca.key 4096
    sudo openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
    sudo openssl genrsa -out server.key 2048
    sudo openssl req -new -key server.key -subj "/CN=10.10.0.10" -out server.csr
-   printf "subjectAltName=IP:10.10.0.10,IP:127.0.0.1" | sudo tee san.ext > /dev/null
+   printf "subjectAltName=IP:10.10.0.10" | sudo tee san.ext > /dev/null
    sudo openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 -sha256 -extfile san.ext
    sudo chown 1883:1883 server.key server.crt ca.crt
    sudo chmod 640 server.key
@@ -35,7 +35,7 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
    create the mosquitto password file if you have not already, then `start/restart`:
 
    ```
-   cd ~/ha-docker && sudo docker compose up -d mosquitto
+   cd ~/rigcontrol-server && sudo docker compose up -d mosquitto
    ```
 
 3. test the broker (2 checks)
@@ -47,12 +47,12 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
    expect the certificate (CN = 10.10.0.10, issuer RigControl MQTT CA) and `verify error:num=19:self-signed certificate in certificate chain` (no CA given)
 
    ```
-   openssl s_client -connect 10.10.0.10:8883 -CAfile ~/ha-docker/mosquitto/config/certs/ca.crt </dev/null | grep -i "verify return\|Verify return code"
+   openssl s_client -connect 10.10.0.10:8883 -CAfile ~/rigcontrol-server/mosquitto/config/certs/ca.crt </dev/null | grep -i "verify return\|Verify return code"
    ```
 
    expect `verify return:1` and `Verify return code: 0 (ok)`
 
-4. dashboard server (`.env`): `MQTT_HOST` must be an address in `san.ext` (10.10.0.10 or 127.0.0.1). the defaults already are:
+4. dashboard server (`.env`): `MQTT_HOST` must be the broker ip from `san.ext` (10.10.0.10). the defaults already are:
 
    ```
    MQTT_PORT=8883
@@ -71,7 +71,7 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
    ```
    # or with the helper script mosquitto-ca-copy.sh (open the parent folder of mosquitto, paste it once there like mosquitto-server-cert.sh and run it from there): bash mosquitto-ca-copy.sh user@WORKER [user@WORKER2 ...]
    # run on the broker pi, once per worker (replace user@WORKER with the worker login)
-   scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
+   scp ~/rigcontrol-server/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
    ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt"
    # check: the worker prints the same certificate
    ssh user@WORKER "openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate"
@@ -80,7 +80,7 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
    or pull it from the worker instead (run on the worker; pi login user@pi5-ubuntu):
 
    ```
-   scp user@pi5-ubuntu:~/ha-docker/mosquitto/config/certs/ca.crt /tmp/ca.crt
+   scp user@pi5-ubuntu:~/rigcontrol-server/mosquitto/config/certs/ca.crt /tmp/ca.crt
    sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt
    openssl x509 -in /etc/rigcontrol/ca.crt -noout -subject -enddate
    ```

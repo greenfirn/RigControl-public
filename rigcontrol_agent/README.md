@@ -53,7 +53,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
    # TLS, see mosquitto-tls-setup.md
    # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <dashboard-server-ip> [more ips or hostnames]
    # run it from the parent folder of mosquitto, certificates go to ./mosquitto/config/certs
-   # <dashboard-server-ip> = the ip workers use to reach the broker, 127.0.0.1 is always added. Output: ca.crt ca.key server.crt server.key
+   # <dashboard-server-ip> = the ip workers and the dashboard server use to reach the broker. Output: ca.crt ca.key server.crt server.key
    # CERT_DIR=/path/to/certs overrides the certificate folder (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-server-cert.sh <ip>)
    set -e
    if [ $# -lt 1 ]; then
@@ -61,7 +61,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
        exit 1
    fi
    IP="$1"
-   SAN="IP:$IP,IP:127.0.0.1"
+   SAN="IP:$IP"
    shift
    for A in "$@"; do
        if [[ "$A" =~ ^[0-9.]+$ ]]; then SAN="$SAN,IP:$A"; else SAN="$SAN,DNS:$A"; fi

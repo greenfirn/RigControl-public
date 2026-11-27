@@ -1,6 +1,6 @@
-sudo mkdir /home/user/ha-docker/mosquitto/config/conf.d/
+sudo mkdir /home/user/rigcontrol-server/mosquitto/config/conf.d/
 
-sudo nano /home/user/ha-docker/mosquitto/config/conf.d/bridge-windows.conf
+sudo nano /home/user/rigcontrol-server/mosquitto/config/conf.d/bridge-windows.conf
 
 connection win-mqtt
 address 10.20.0.100:1883
@@ -16,7 +16,7 @@ remote_password YOUR_PASSWORD
 
 
 
-sudo nano /home/user/ha-docker/mosquitto/config/mosquitto.conf
+sudo nano /home/user/rigcontrol-server/mosquitto/config/mosquitto.conf
 
 include_dir /mosquitto/config/conf.d
 

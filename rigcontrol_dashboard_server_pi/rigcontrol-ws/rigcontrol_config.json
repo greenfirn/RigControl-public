@@ -1,21 +1,23 @@
 {
   "broadcast_interval": 10.0,
-  "offline_ping_interval": 15.0,
+  "offline_ping_interval": 10.0,
   "offline_threshold": 60.0,
+  "ws_push_min_interval": 2.0,
+  "missed_refresh_threshold": 3,
   "notification_settings": {
     "email_enabled": true,
     "sms_primary_enabled": false,
     "sms_secondary_enabled": false,
     "sms_primary_number": "1234567890",
     "sms_secondary_number": "",
-    "docker_email_enabled": true,
+    "docker_email_enabled": false,
     "docker_sms_primary_enabled": false,
     "docker_sms_secondary_enabled": false
   },
   "quick_actions": {
-    "a": "journalctl -u docker_events_gpu.service -n 30 --no-pager",
-    "b": "sudo cp -v /home/user/index.html /home/user/ha-docker/rigcontrol-ws/static/\n#sudo cp -v /home/user/app.css /home/user/ha-docker/rigcontrol-ws/static/css/\n#sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/ha-docker/rigcontrol-ws/\ncd /home/user/ha-docker/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws",
-    "c": "sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/ha-docker/rigcontrol-ws/\nsudo cp -v /home/user/index.html /home/user/ha-docker/rigcontrol-ws/static/\nsudo cp -v /home/user/app.js /home/user/ha-docker/rigcontrol-ws/static/js/\nsudo cp -v /home/user/app.css /home/user/ha-docker/rigcontrol-ws/static/css/\ncd /home/user/ha-docker/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws"
+    "a": "tee /etc/rigcontrol/miner.conf > /dev/null <<'EOF'\nXMRIG_VERSION \"6.26.0\"\nBZMINER_VERSION \"v100.82\"\nWILDRIG_VERSION \"0.52.3\"\nSRBMINER_VERSION \"3.8.9\"\nSRBMINER-CPU_VERSION \"3.8.9\"\nRIGEL_VERSION \"1.23.2\"\nLOLMINER_VERSION \"1.98a\"\nONEZEROMINER_VERSION \"1.8.7\"\nGMINER_VERSION \"3.44\"\nTEAMREDMINER_VERSION \"0.10.21\"\nTREXMINER_VERSION \"0.26.8\"\nEOF",
+    "b": "#sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/rigcontrol-server/rigcontrol-ws/\nsudo cp -v /home/user/index.html /home/user/rigcontrol-server/rigcontrol-ws/static/\nsudo cp -v /home/user/app.js /home/user/rigcontrol-server/rigcontrol-ws/static/js/\nsudo cp -v /home/user/app.css /home/user/rigcontrol-server/rigcontrol-ws/static/css/\n#sudo cp -v /home/user/landing.html /home/user/rigcontrol-server/rigcontrol-ws/static/\n#sudo cp -v /home/user/templates.json /home/user/rigcontrol-server/rigcontrol-ws/static/config/\ncd /home/user/rigcontrol-server/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\n#docker logs -f rigcontrol-ws",
+    "c": "sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/rigcontrol-server/rigcontrol-ws/\nsudo cp -v /home/user/index.html /home/user/rigcontrol-server/rigcontrol-ws/static/\nsudo cp -v /home/user/app.js /home/user/rigcontrol-server/rigcontrol-ws/static/js/\nsudo cp -v /home/user/app.css /home/user/rigcontrol-server/rigcontrol-ws/static/css/\nsudo cp -v /home/user/landing.html /home/user/rigcontrol-server/rigcontrol-ws/static/\nsudo cp -v /home/user/templates.json /home/user/rigcontrol-server/rigcontrol-ws/static/config/\ncd /home/user/rigcontrol-server/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\n#docker logs -f rigcontrol-ws"
   },
   "telemetry_visible_groups": [
     "cpu_temp",
@@ -31,5 +33,5 @@
     "aux_service",
     "watchdog_service"
   ],
-  "last_updated": 1786165292.0476043
+  "last_updated": 1795797287.7539513
 }

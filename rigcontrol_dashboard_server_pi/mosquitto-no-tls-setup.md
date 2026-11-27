@@ -2,10 +2,10 @@
 
 this is the optional plain setup: port 1883, no certificates, only the `BROKER_USER` / `BROKER_PASS` login. the default is encrypted (see [mosquitto-tls-setup.md](mosquitto-tls-setup.md)). user, password and all telemetry are sent unencrypted, so only use it on a network you trust.
 
-1. broker config: replace `~/ha-docker/mosquitto/config/mosquitto.conf` (the one in the repo has the TLS listener) with:
+1. broker config: replace `~/rigcontrol-server/mosquitto/config/mosquitto.conf` (the one in the repo has the TLS listener) with:
 
    ```
-   sudo tee ~/ha-docker/mosquitto/config/mosquitto.conf > /dev/null <<'EOF'
+   sudo tee ~/rigcontrol-server/mosquitto/config/mosquitto.conf > /dev/null <<'EOF'
    persistence false
    persistence_location /mosquitto/data/
 
@@ -20,18 +20,18 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
 
    if a conf.d/`tls.conf` exists from an earlier TLS setup, remove or rename it (it would also open 8883).
 
-2. password file (skip if `~/ha-docker/mosquitto/config/passwd` already exists)
+2. password file (skip if `~/rigcontrol-server/mosquitto/config/passwd` already exists)
 
    ```
-   sudo docker run --rm -it -v ~/ha-docker/mosquitto/config:/mosquitto/config eclipse-mosquitto:2 mosquitto_passwd -c /mosquitto/config/passwd admin
-   sudo chown 1883:1883 ~/ha-docker/mosquitto/config/passwd
-   sudo chmod 600 ~/ha-docker/mosquitto/config/passwd
+   sudo docker run --rm -it -v ~/rigcontrol-server/mosquitto/config:/mosquitto/config eclipse-mosquitto:2 mosquitto_passwd -c /mosquitto/config/passwd admin
+   sudo chown 1883:1883 ~/rigcontrol-server/mosquitto/config/passwd
+   sudo chmod 600 ~/rigcontrol-server/mosquitto/config/passwd
    ```
 
 3. start / restart the broker
 
    ```
-   cd ~/ha-docker && sudo docker compose up -d --force-recreate mosquitto
+   cd ~/rigcontrol-server && sudo docker compose up -d --force-recreate mosquitto
    ```
 
 4. test the broker
@@ -56,7 +56,7 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
    ```
 
    ```
-   cd ~/ha-docker && sudo docker compose up -d --force-recreate rigcontrol-ws
+   cd ~/rigcontrol-server && sudo docker compose up -d --force-recreate rigcontrol-ws
    sudo docker logs rigcontrol-ws 2>&1 | grep "Mode="
    ```
 

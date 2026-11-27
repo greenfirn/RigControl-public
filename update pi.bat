@@ -27,16 +27,16 @@ REM      containers other than rigcontrol-ws (caddy, mosquitto) that are
 REM      also running on this same Pi. ====
 
 REM -- docker-compose.yml --
-REM scp "%REPO%\rigcontrol_dashboard_server_pi\docker-compose.yml" %PI%:/home/user/ha-docker/
-REM ssh %PI% "cd /home/user/ha-docker && docker compose up -d"
+REM scp "%REPO%\rigcontrol_dashboard_server_pi\docker-compose.yml" %PI%:/home/user/rigcontrol-server/
+REM ssh %PI% "cd /home/user/rigcontrol-server && docker compose up -d"
 
 REM -- Caddyfile --
-REM scp "%REPO%\rigcontrol_dashboard_server_pi\caddy\Caddyfile" %PI%:/home/user/ha-docker/caddy/
-REM ssh %PI% "docker compose -f /home/user/ha-docker/docker-compose.yml restart caddy"
+REM scp "%REPO%\rigcontrol_dashboard_server_pi\caddy\Caddyfile" %PI%:/home/user/rigcontrol-server/caddy/
+REM ssh %PI% "docker compose -f /home/user/rigcontrol-server/docker-compose.yml restart caddy"
 
 REM -- mosquitto bridge conf --
-REM scp "%REPO%\rigcontrol_dashboard_server_pi\mosquitto\bridge-windows.conf" %PI%:/home/user/ha-docker/mosquitto/config/conf.d/
-REM ssh %PI% "docker compose -f /home/user/ha-docker/docker-compose.yml restart mosquitto"
+REM scp "%REPO%\rigcontrol_dashboard_server_pi\mosquitto\bridge-windows.conf" %PI%:/home/user/rigcontrol-server/mosquitto/config/conf.d/
+REM ssh %PI% "docker compose -f /home/user/rigcontrol-server/docker-compose.yml restart mosquitto"
 
 REM -- themes --
-REM scp -r "%REPO%\rigcontrol_dashboard_server_pi\rigcontrol-ws\themes\*" %PI%:/home/user/ha-docker/rigcontrol-ws/themes/
+REM scp -r "%REPO%\rigcontrol_dashboard_server_pi\rigcontrol-ws\themes\*" %PI%:/home/user/rigcontrol-server/rigcontrol-ws/themes/

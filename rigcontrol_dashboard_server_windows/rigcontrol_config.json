@@ -14,8 +14,8 @@
   },
   "quick_actions": {
     "a": "journalctl -u docker_events_gpu.service -n 30 --no-pager",
-    "b": "sudo cp -v /home/user/index.html /home/user/ha-docker/rigcontrol-ws/static/\n#sudo cp -v /home/user/app.css /home/user/ha-docker/rigcontrol-ws/static/css/\n#sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/ha-docker/rigcontrol-ws/\ncd /home/user/ha-docker/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws",
-    "c": "sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/ha-docker/rigcontrol-ws/\nsudo cp -v /home/user/index.html /home/user/ha-docker/rigcontrol-ws/static/\nsudo cp -v /home/user/app.js /home/user/ha-docker/rigcontrol-ws/static/js/\nsudo cp -v /home/user/app.css /home/user/ha-docker/rigcontrol-ws/static/css/\ncd /home/user/ha-docker/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws"
+    "b": "sudo cp -v /home/user/index.html /home/user/rigcontrol-server/rigcontrol-ws/static/\n#sudo cp -v /home/user/app.css /home/user/rigcontrol-server/rigcontrol-ws/static/css/\n#sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/rigcontrol-server/rigcontrol-ws/\ncd /home/user/rigcontrol-server/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws",
+    "c": "sudo cp -v /home/user/rigcontrol_dashboard_server.py /home/user/rigcontrol-server/rigcontrol-ws/\nsudo cp -v /home/user/index.html /home/user/rigcontrol-server/rigcontrol-ws/static/\nsudo cp -v /home/user/app.js /home/user/rigcontrol-server/rigcontrol-ws/static/js/\nsudo cp -v /home/user/app.css /home/user/rigcontrol-server/rigcontrol-ws/static/css/\ncd /home/user/rigcontrol-server/rigcontrol-ws\ndocker stop rigcontrol-ws\ndocker rm rigcontrol-ws\ndocker compose build rigcontrol-ws\ndocker compose up -d rigcontrol-ws\ndocker logs -f rigcontrol-ws"
   },
   "telemetry_visible_groups": [
     "cpu_temp",

@@ -12,7 +12,7 @@ echo ============================================================
 set OK=1
 scp "%AGENT_DIR%rigcontrol_agent.sh" "%AGENT_DIR%rigcontrol_agent-service.sh" "%AGENT_DIR%rigcontrol_cmd.sh" "%AGENT_DIR%rigcontrol_agent_install.sh" %REMOTE_USER%@%IP%:%REMOTE_DEST%/
 if errorlevel 1 set OK=0
-scp "%AGENT_DIR%rigcontrol-agent-local-keryxd.sh" %REMOTE_USER%@%IP%:%REMOTE_DEST%/rigcontrol-agent-local.sh
+scp "%AGENT_DIR%rigcontrol-agent-local.sh" %REMOTE_USER%@%IP%:%REMOTE_DEST%/rigcontrol-agent-local.sh
 if errorlevel 1 set OK=0
 scp "%AGENT_DIR%rigcontrol_telemetry-exclude.sh" %REMOTE_USER%@%IP%:%REMOTE_DEST%/rigcontrol_telemetry.sh
 if errorlevel 1 set OK=0

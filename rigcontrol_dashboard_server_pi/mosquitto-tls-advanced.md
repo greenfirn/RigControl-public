@@ -11,7 +11,7 @@ basic TLS: the clients verify the broker (`ca.crt`). advanced: the broker also r
    sudo bash mosquitto-client-cert.sh WORKER_NAME
    ```
 
-   (repeat per worker, `WORKER_NAME` = its hostname. output: `~/ha-docker/mosquitto/config/certs/clients/<name>.crt` and `<name>.key`)
+   (repeat per worker, `WORKER_NAME` = its hostname. output: `~/rigcontrol-server/mosquitto/config/certs/clients/<name>.crt` and `<name>.key`)
 
 2. copy each worker's pair to it (the private key stays root-only on the worker)
 
@@ -38,7 +38,7 @@ basic TLS: the clients verify the broker (`ca.crt`). advanced: the broker also r
    ```
 
    ```
-   cd ~/ha-docker && sudo docker compose up -d --force-recreate rigcontrol-ws
+   cd ~/rigcontrol-server && sudo docker compose up -d --force-recreate rigcontrol-ws
    ```
 
 5. require the certificates (only when every worker, the server and the watchdog are connected with theirs)
@@ -46,7 +46,7 @@ basic TLS: the clients verify the broker (`ca.crt`). advanced: the broker also r
    add `require_certificate true` to the 8883 listener (`mosquitto.conf`, or conf.d/`tls.conf`), then:
 
    ```
-   cd ~/ha-docker && sudo docker compose restart mosquitto
+   cd ~/rigcontrol-server && sudo docker compose restart mosquitto
    ```
 
    clients without a certificate are now refused. to roll back remove that line and restart mosquitto.

@@ -23,7 +23,7 @@ openssl version || (sudo apt update && sudo apt install -y openssl)
 ### 1.1 Create the certificates
 
 ```
-sudo mkdir -p ~/ha-docker/mosquitto/config/certs && cd ~/ha-docker/mosquitto/config/certs
+sudo mkdir -p ~/rigcontrol-server/mosquitto/config/certs && cd ~/rigcontrol-server/mosquitto/config/certs
 sudo openssl genrsa -out ca.key 4096
 sudo openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=RigControl MQTT CA" -out ca.crt
 sudo openssl genrsa -out server.key 2048
@@ -40,10 +40,10 @@ Keep `ca.key` private. Only `ca.crt` is copied to workers.
 
 ### 1.2 Enable the TLS listener (port 8883)
 
-Create `~/ha-docker/mosquitto/config/conf.d/tls.conf` (your existing `mosquitto.conf` already includes that folder, keeps its 1883 listener, and its `allow_anonymous false` / `password_file` settings apply to the new listener too):
+Create `~/rigcontrol-server/mosquitto/config/conf.d/tls.conf` (your existing `mosquitto.conf` already includes that folder, keeps its 1883 listener, and its `allow_anonymous false` / `password_file` settings apply to the new listener too):
 
 ```
-sudo tee ~/ha-docker/mosquitto/config/conf.d/tls.conf > /dev/null <<'EOF'
+sudo tee ~/rigcontrol-server/mosquitto/config/conf.d/tls.conf > /dev/null <<'EOF'
 listener 8883
 protocol mqtt
 cafile /mosquitto/config/certs/ca.crt
@@ -56,7 +56,7 @@ EOF
 ### 1.3 Restart the broker
 
 ```
-cd ~/ha-docker && sudo docker compose restart mosquitto
+cd ~/rigcontrol-server && sudo docker compose restart mosquitto
 ```
 
 Plain 1883 stays open, so all workers and the server reconnect on their old settings within seconds. Compose warnings about `SMTP_SERVER` / `SMTP_PORT` not set are harmless.
@@ -74,7 +74,7 @@ Expected: `depth=0 CN = 10.10.0.10`, certificate chain with issuer `CN = RigCont
 Check 2: the certificate chain verifies against your CA:
 
 ```
-openssl s_client -connect 10.10.0.10:8883 -CAfile ~/ha-docker/mosquitto/config/certs/ca.crt </dev/null | grep -i "verify return\|Verify return code"
+openssl s_client -connect 10.10.0.10:8883 -CAfile ~/rigcontrol-server/mosquitto/config/certs/ca.crt </dev/null | grep -i "verify return\|Verify return code"
 ```
 
 Expected: every `verify return:1` and `Verify return code: 0 (ok)`.
@@ -228,7 +228,7 @@ Both checks pass -> repeat for the remaining workers. If a worker stays offline:
 
 ## 3. Dashboard server (last, after all workers are on 8883)
 
-Two files in `~/ha-docker`.
+Two files in `~/rigcontrol-server`.
 
 ### 3.0 Update the server files first (required)
 
@@ -255,7 +255,7 @@ In the `rigcontrol-ws:` service, add one line to its existing `volumes:` list an
   rigcontrol-ws:
     volumes:
       - /etc/rigcontrol/aws-certs:/certs:ro                                        # already there
-      - /home/user/ha-docker/mosquitto/config/certs:/mqtt-certs:ro                 # ADD
+      - /home/user/rigcontrol-server/mosquitto/config/certs:/mqtt-certs:ro                 # ADD
     environment:
       - MQTT_PORT=${MQTT_PORT}                                                     # already there
       - MQTT_TLS=${MQTT_TLS:-false}                                                # ADD
@@ -268,7 +268,7 @@ The `# ADD` lines are the new ones; the rest of the service stays as it is. The 
 ### 3.3 Rebuild and check
 
 ```
-cd ~/ha-docker && sudo docker compose up -d --build rigcontrol-ws
+cd ~/rigcontrol-server && sudo docker compose up -d --build rigcontrol-ws
 sudo docker logs rigcontrol-ws --tail 30
 ```
 
@@ -281,7 +281,7 @@ Check that the log shows a successful MQTT connection on 8883 and that all worke
 Remove the plain `listener 1883` from `mosquitto.conf`, then:
 
 ```
-cd ~/ha-docker && sudo docker compose restart mosquitto
+cd ~/rigcontrol-server && sudo docker compose restart mosquitto
 ```
 
 Anything still on 1883 loses its connection at this point.

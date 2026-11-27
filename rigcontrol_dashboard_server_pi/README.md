@@ -2,10 +2,7 @@
 
 website host/backend, mqtt, caddy
 
-[docker-compose.yml](docker-compose.yml) not needed extras:
-- homeassistant:
-- nodered:
-- zigbee2mqtt:
+[docker-compose.yml](docker-compose.yml) only has the RigControl containers: mosquitto, rigcontrol-ws, caddy, duckdns. Home Assistant, node-red and zigbee2mqtt run from their own compose: [ha-docker](ha-docker/README.md). Caddy's default route still proxies to Home Assistant on `127.0.0.1:8123` (see `caddy/Caddyfile`).
 
 [bridge-windows.conf](mosquitto/config/conf.d/bridge-windows.conf) - [mosquitto-bridge mode.txt](mosquitto-bridge%20mode.txt)
 - forwards mqtt data to another mqtt broker on windows for development/testing a dashboard server on windows
@@ -27,7 +24,7 @@ sudo chown user:user *.db
 ```
 to update server:
 ```
-cd ~/ha-docker/rigcontrol-ws
+cd ~/rigcontrol-server/rigcontrol-ws
 docker stop rigcontrol-ws
 docker rm rigcontrol-ws
 docker compose build rigcontrol-ws
