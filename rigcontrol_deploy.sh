@@ -11,7 +11,7 @@ sudo cp -v /home/user/landing.html /home/user/rigcontrol-server/rigcontrol-ws/st
 sudo cp -v /home/user/app.js /home/user/rigcontrol-server/rigcontrol-ws/static/js/
 sudo cp -v /home/user/app.css /home/user/rigcontrol-server/rigcontrol-ws/static/css/
 
-cd /home/user/rigcontrol-server/rigcontrol-ws
+cd /home/user/rigcontrol-server
 docker stop rigcontrol-ws
 docker rm rigcontrol-ws
 docker compose build --no-cache rigcontrol-ws
