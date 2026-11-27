@@ -1,18 +1,17 @@
 @echo off
 rem Copies a worker's client certificate pair (mutual TLS) from a windows pc to a linux worker.
-rem usage: copy-client-cert.bat WORKER_NAME user@WORKER [CERT_DIR]
+rem usage: copy-client-cert.bat WORKER_NAME user@WORKER   (run from the folder with the certificate files)
 rem   WORKER_NAME = certificate name (the name used with mosquitto-client-cert.sh)
 rem   user@WORKER = ssh login of the worker
-rem   CERT_DIR    = folder with WORKER_NAME.crt / WORKER_NAME.key (default C:\temp\clients)
+rem   the certificate files WORKER_NAME.crt / WORKER_NAME.key are read from the current folder
 if "%~2"=="" (
-    echo usage: %~nx0 WORKER_NAME user@WORKER [CERT_DIR]
-    echo example: %~nx0 rig01 user@192.168.1.50 C:\temp\clients
+    echo usage: %~nx0 WORKER_NAME user@WORKER   (run from the folder with the certificate files)
+    echo example: %~nx0 rig01 user@192.168.1.50
     exit /b 1
 )
 set NAME=%~1
 set TARGET=%~2
-set CERT_DIR=%~3
-if "%CERT_DIR%"=="" set CERT_DIR=C:\temp\clients
+set CERT_DIR=%CD%
 if "%CERT_DIR:~-1%"=="\" set CERT_DIR=%CERT_DIR:~0,-1%
 if not exist "%CERT_DIR%\%NAME%.crt" (
     echo not found: %CERT_DIR%\%NAME%.crt

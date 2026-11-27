@@ -168,7 +168,7 @@ the broker needs its server certificate first, see [Server certificate](#server-
    get-client-cert.bat WORKER_NAME user@SERVER PARENT_FOLDER
    ```
 
-   with the certificates already on a windows pc (in `C:\temp\clients`) push them to a linux worker with [copy-client-cert.bat](ubuntu/copy-client-cert.bat):
+   to push certificates from a windows pc to a linux worker, run [copy-client-cert.bat](ubuntu/copy-client-cert.bat) from the folder with the certificate files:
 
    ```
    copy-client-cert.bat WORKER_NAME user@WORKER
