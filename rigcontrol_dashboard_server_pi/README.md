@@ -9,9 +9,22 @@ website host/backend, mqtt, caddy
 
 # Web address (encrypted)
 
-- LAN: `https://10.10.0.10:8081/dashboard/` (Caddy, TLS with the broker's `server.crt`; use the ip, install `mosquitto/config/certs/ca.crt` as a trusted root CA on the PC so the browser shows it as secure: windows, admin cmd: `certutil -addstore -f "Root" C:\temp\ca.crt`, then restart the browser)
+- LAN: `https://10.10.0.10:8081/dashboard/` (Caddy, TLS with the broker's `server.crt`, use the ip)
 - remote: `https://YOUR_DOMAIN/dashboard/` (Caddy, Let's Encrypt, basic auth)
 - the api itself (`8765`) is plain http: `.env` has `API_BIND=127.0.0.1` so only Caddy can reach it. `API_PORT` must match `reverse_proxy 127.0.0.1:8765` in `caddy/Caddyfile`
+
+for the browser to show the LAN address as secure, install the broker's `ca.crt` (public) as a trusted root CA on each windows pc. run in cmd on the pc (copies the file from the pi, adds it for your user only, no admin needed, then deletes the file: windows keeps its own copy in the certificate store), then restart the browser:
+
+```
+scp user@10.10.0.10:~/rigcontrol-server/mosquitto/config/certs/ca.crt %USERPROFILE%\ca.crt
+certutil -user -addstore Root %USERPROFILE%\ca.crt
+certutil -user -store Root | findstr /i "RigControl"
+del %USERPROFILE%\ca.crt
+```
+
+the `findstr` line should print `RigControl MQTT CA` (imported ok). to check the file is yours before importing compare `certutil -hashfile %USERPROFILE%\ca.crt SHA256` with `openssl x509 -in ~/rigcontrol-server/mosquitto/config/certs/ca.crt -noout -fingerprint -sha256` on the pi. for all users on the pc use an administrator cmd and `certutil -addstore -f "Root"` instead of the `-user` one.
+
+(firefox has its own store: Settings, Privacy & Security, Certificates, View Certificates, Authorities, Import)
 
 # IMPORTANT 
 
