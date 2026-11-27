@@ -205,57 +205,32 @@ cat /proc/sys/net/ipv4/ip_local_reserved_ports
 
 Useful commands:
 
-show service status:
-
 ```bash
+# show service status
 systemctl status rigcontrol-agent.service --no-pager
-```
 
-follow the agent log: ctrl+c to break/exit
-
-```bash
+# follow the agent log: ctrl+c to break/exit
 journalctl -u rigcontrol-agent.service -f
-```
 
-show the last 100 log lines:
-
-```bash
+# show the last 100 log lines
 journalctl -u rigcontrol-agent.service -n 100 --no-pager
-```
 
-reload systemd after editing the service file:
-
-```bash
+# reload systemd after editing the service file
 sudo systemctl daemon-reload
-```
 
-enable start on boot:
-
-```bash
+# enable start on boot
 sudo systemctl enable rigcontrol-agent.service
-```
 
-disable start on boot:
-
-```bash
+# disable start on boot
 sudo systemctl disable rigcontrol-agent.service
-```
 
-start the agent:
-
-```bash
+# start the agent
 sudo systemctl start rigcontrol-agent.service
-```
 
-stop the agent:
-
-```bash
+# stop the agent
 sudo systemctl stop rigcontrol-agent.service
-```
 
-restart the agent:
-
-```bash
+# restart the agent
 sudo systemctl restart rigcontrol-agent.service
 ```
 
