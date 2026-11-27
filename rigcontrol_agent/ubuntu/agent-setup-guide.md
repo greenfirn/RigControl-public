@@ -81,11 +81,11 @@ client certs are separate from the server certs from step 0: they let the broker
    cd ~/ha-docker
    sudo bash mosquitto-client-cert.sh WORKER_NAME
    ```
-2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. run on the server, replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
+2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. first write the helper script once (paste the contents of [mosquitto-client-cert-copy.sh](../../rigcontrol_dashboard_server_pi/mosquitto-client-cert-copy.sh), it writes `~/ha-docker/mosquitto-client-cert-copy.sh`), then run it as your normal user (no sudo), replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
 
    ```
-   scp ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key user@WORKER:/tmp/
-   ssh -t user@WORKER "sudo mv /tmp/WORKER_NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/WORKER_NAME.key /etc/rigcontrol/client.key && sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key"
+   cd ~/ha-docker
+   bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
    ```
 3. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker uncomment:
 
