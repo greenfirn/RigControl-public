@@ -239,7 +239,7 @@ sudo systemctl restart rigcontrol-agent.service
 
 ## Custom api / logs
 
-rigcontrol-agent-local-keryxd.sh... keryxd node: aux service name,binary location,log,log type
+[rigcontrol-agent-local.sh](ubuntu/rigcontrol-agent-local.sh)... keryxd node: aux service name,binary location,log,log type
 
 ```
 AUX_SERVICE_NAME=keryxd.service
@@ -248,7 +248,7 @@ KERYXD_LOG_PATH=/run/rigcontrol/aux_miner.log
 KERYXD_LOG_STYLE=blocks
 ```
 
-rigcontrol-agent-local.sh... KERYX_MINER_API
+[rigcontrol-agent-local.sh](ubuntu/rigcontrol-agent-local.sh)... KERYX_MINER_API
 
 ```
 KERYX_MINER_API_HOST=127.0.0.1
