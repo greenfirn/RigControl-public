@@ -23,6 +23,8 @@ start with the install in test mode (1), then verified TLS (2), then client cert
    ```
 
    (windows server: [Windows basic TLS guide](../../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.txt))
+
+   server certs: these are the broker's identity. workers use them to check they are talking to the right broker.
 1. install python on a client worker...
 
 ```
@@ -71,7 +73,9 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
 
 ## 3. Advanced TLS (client certificates, mutual TLS)
 
-1. on the server create the worker's client certificate. `WORKER_NAME` = the worker's hostname, one certificate per worker. needs the helper script [mosquitto-client-cert.sh](../../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) in `~/ha-docker` ([advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1). the dashboard server needs its own certificate too (`rigcontrol-dashboard`, same guide, step 4):
+client certs are separate from the server certs from step 0: they let the broker check who is connecting. each worker gets one. the dashboard server also connects to the broker, so it needs one too (`rigcontrol-dashboard`).
+
+1. on the server create the worker's client certificate. `WORKER_NAME` = the worker's hostname, one certificate per worker. needs the helper script [mosquitto-client-cert.sh](../../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) in `~/ha-docker` ([advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1).:
 
    ```
    cd ~/ha-docker
@@ -96,7 +100,7 @@ ssh -t user@WORKER "bash ~/copy-paste-update.sh"
    sudo systemctl restart rigcontrol-agent.service
    ```
 
-5. when every worker and the server are connected with their certificates, enable `require_certificate true` on the broker ([advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 5)
+5. when every worker is connected with its certificate, enable `require_certificate true` on the broker ([advanced TLS guide](../../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 5). the dashboard server's own client certificate is step 4 of that guide, do it before this
 
 ## Plain MQTT (no TLS, optional)
 
