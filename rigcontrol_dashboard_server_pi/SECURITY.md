@@ -54,7 +54,7 @@ the host (`network_mode: host`), which fronts two internal services:
 | Service        | Internal port | Exposed publicly?          |
 |----------------|---------------|-----------------------------|
 | Home Assistant | `8123`        | Yes, via Caddy (default route) |
-| RigCloud       | `8765`        | Yes, via Caddy (`/dashboard/*`), and directly on the LAN |
+| RigCloud       | `8765`        | Yes, via Caddy (`/dashboard/*`); bound to `127.0.0.1` (`API_BIND`), so not reachable directly on the LAN |
 
 Everything else in the stack (Mosquitto, Zigbee2MQTT, Node-RED, DuckDNS
 updater) stays bound to the host/LAN and is never routed through the public
@@ -106,8 +106,12 @@ site block.
 
 ## Layer 4 — Network segmentation (local access)
 
-- A second Caddy site block listens on `:8081`, plain HTTP, restricted by
-  a `remote_ip` matcher to the LAN's private subnets.
+- A second Caddy site block listens on `:8081`, HTTPS (and `wss://` for the
+  dashboard websocket) using the broker's `server.crt`/`server.key`,
+  restricted by a `remote_ip` matcher to the LAN's private subnets. Install
+  `mosquitto/config/certs/ca.crt` as a trusted root CA on the browsing PC and
+  open it by the broker ip only (`https://10.10.0.10:8081/dashboard/`), the
+  certificate only covers that address.
 - This block intentionally has **no authentication** — it's meant for
   trusted local access only (e.g. dashboards on a home network) and is
   not reachable from outside the LAN, since it isn't included in the

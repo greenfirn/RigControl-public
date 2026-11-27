@@ -7,6 +7,12 @@ website host/backend, mqtt, caddy
 [bridge-windows.conf](mosquitto/config/conf.d/bridge-windows.conf) - [mosquitto-bridge mode.txt](mosquitto-bridge%20mode.txt)
 - forwards mqtt data to another mqtt broker on windows for development/testing a dashboard server on windows
 
+# Web address (encrypted)
+
+- LAN: `https://10.10.0.10:8081/dashboard/` (Caddy, TLS with the broker's `server.crt`; use the ip, install `mosquitto/config/certs/ca.crt` as a trusted root CA on the PC so the browser shows it as secure: windows, admin cmd: `certutil -addstore -f "Root" C:\temp\ca.crt`, then restart the browser)
+- remote: `https://YOUR_DOMAIN/dashboard/` (Caddy, Let's Encrypt, basic auth)
+- the api itself (`8765`) is plain http: `.env` has `API_BIND=127.0.0.1` so only Caddy can reach it. `API_PORT` must match `reverse_proxy 127.0.0.1:8765` in `caddy/Caddyfile`
+
 # IMPORTANT 
 
 create database files,config.json before first run: it will try and mount as a folder if files are missing

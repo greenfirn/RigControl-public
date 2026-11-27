@@ -42,9 +42,14 @@
     tls {$CADDY_TLS_EMAIL}
 }
 ########################################
-# LOCAL — HTTP ONLY, NO AUTH
+# LOCAL — HTTPS (broker server cert), LAN ONLY, NO AUTH
 ########################################
 :8081 {
+    # HTTPS (and so wss:// for the dashboard websocket) with the broker's server
+    # certificate, mounted at /etc/caddy/certs (docker-compose.yml). browsers trust
+    # it once mosquitto/config/certs/ca.crt is installed as a trusted root CA,
+    # open https://10.10.0.10:8081/
+    tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key
     ####################################
     # Allow LAN only
     ####################################
