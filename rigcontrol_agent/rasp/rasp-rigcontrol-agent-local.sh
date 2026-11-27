@@ -5,11 +5,11 @@ BROKER_PORT=8883
 BROKER_USER=admin
 BROKER_PASS=CHANGE_ME
 # MQTT_TLS (default 1): 1 = encrypted connection to the broker (BROKER_PORT = broker TLS port, 8883), 0 = plain MQTT (BROKER_PORT 1883)
-# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.txt) ---
+# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.md) ---
 MQTT_TLS=1
 #MQTT_CA_FILE=/etc/rigcontrol/ca.crt
 # --- END BASIC TLS ---
-# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---
+# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.md) ---
 #MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt
 #MQTT_CLIENT_KEY=/etc/rigcontrol/client.key
 # --- END ADVANCED TLS ---

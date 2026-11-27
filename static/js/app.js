@@ -1131,11 +1131,11 @@ const AGENT_CONF_DEFAULT_TEMPLATE =
     "BROKER_PORT=1883\n" +
     "BROKER_USER=admin\n" +
     "BROKER_PASS=\n" +
-    "# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.txt) ---\n" +
+    "# --- BASIC TLS: encrypted connection on the broker's TLS port. for verified TLS copy ca.crt to the worker and uncomment MQTT_CA_FILE (mosquitto-tls-setup.md) ---\n" +
     "#MQTT_TLS=1\n" +
     "#MQTT_CA_FILE=/etc/rigcontrol/ca.crt\n" +
     "# --- END BASIC TLS ---\n" +
-    "# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.txt) ---\n" +
+    "# --- ADVANCED TLS: client certificate (mutual TLS), uncomment when the broker has require_certificate true (mosquitto-tls-advanced.md) ---\n" +
     "#MQTT_CLIENT_CERT=/etc/rigcontrol/client.crt\n" +
     "#MQTT_CLIENT_KEY=/etc/rigcontrol/client.key\n" +
     "# --- END ADVANCED TLS ---\n" +

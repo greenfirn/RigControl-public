@@ -1,6 +1,6 @@
 sudo tee mosquitto-client-cert.sh > /dev/null <<'EOF'
 #!/bin/bash
-# advanced TLS, see mosquitto-tls-advanced.txt
+# advanced TLS, see mosquitto-tls-advanced.md
 # Creates a client certificate (mutual TLS) signed by the broker CA: sudo bash mosquitto-client-cert.sh <name>
 # run it from the parent folder of mosquitto, certificates are read from ./mosquitto/config/certs
 # <name> = worker hostname, or rigcontrol-dashboard for the dashboard server. Output: <certs>/clients/<name>.crt + .key
@@ -15,7 +15,7 @@ OWNER="${SUDO_USER:-$USER}"
 CERT_DIR="${CERT_DIR:-$PWD/mosquitto/config/certs}"
 OUT="$CERT_DIR/clients"
 if [ ! -f "$CERT_DIR/ca.crt" ] || [ ! -f "$CERT_DIR/ca.key" ]; then
-    echo "ca.crt / ca.key not found in $CERT_DIR (see mosquitto-tls-setup.txt step 1)"
+    echo "ca.crt / ca.key not found in $CERT_DIR (see mosquitto-tls-setup.md step 1)"
     exit 1
 fi
 mkdir -p "$OUT"

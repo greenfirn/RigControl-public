@@ -1,6 +1,6 @@
 # RigControl: upgrade an existing install to encrypted MQTT (TLS)
 
-TLS is now the default in this version (port 8883, `MQTT_TLS` on, certificate verified against your CA). **New installs** just follow `mosquitto-tls-setup.txt` in the server folder. **This guide is for moving a running install** (workers on plain 1883) to TLS without losing connection, so the steps below keep 1883 open until the end.
+TLS is now the default in this version (port 8883, `MQTT_TLS` on, certificate verified against your CA). **New installs** just follow `mosquitto-tls-setup.md` in the server folder. **This guide is for moving a running install** (workers on plain 1883) to TLS without losing connection, so the steps below keep 1883 open until the end.
 
 Do not replace your running `mosquitto/config/mosquitto.conf` with the new one from this package until step 4: the new file has only the TLS listener (no 1883) and would disconnect every worker still on plain MQTT.
 

@@ -44,12 +44,12 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 
 ## Server certificate
 
-1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. paste this once in the parent folder of mosquitto, it writes `mosquitto-server-cert.sh` in the current folder:
+1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.md), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. paste this once in the parent folder of mosquitto, it writes `mosquitto-server-cert.sh` in the current folder:
 
    ```
    sudo tee mosquitto-server-cert.sh > /dev/null <<'EOF'
    #!/bin/bash
-   # TLS, see mosquitto-tls-setup.txt
+   # TLS, see mosquitto-tls-setup.md
    # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <dashboard-server-ip> [more ips or hostnames]
    # run it from the parent folder of mosquitto, certificates go to ./mosquitto/config/certs
    # <dashboard-server-ip> = the ip workers use to reach the broker, 127.0.0.1 is always added. Output: ca.crt ca.key server.crt server.key
@@ -92,7 +92,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
    sudo docker compose up -d mosquitto
    ```
 
-   (windows server: [Windows basic TLS guide](../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.txt))
+   (windows server: [Windows basic TLS guide](../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.md))
 
 ## Agent setup
 
@@ -150,7 +150,7 @@ the broker needs its server certificate first, see [Server certificate](#server-
 
 ## Advanced TLS
 
-1. client certs are separate from the server certs, they let the broker check who is connecting. each worker gets one, the dashboard server also connects to the broker so it needs one too (`rigcontrol-dashboard`, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 4). paste [mosquitto-client-cert.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) once in the parent folder of mosquitto, it writes `mosquitto-client-cert.sh` in the current folder ([advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1), then create the worker's client certificate from there, replace `WORKER_NAME` with the worker's hostname, one certificate per worker:
+1. client certs are separate from the server certs, they let the broker check who is connecting. each worker gets one, the dashboard server also connects to the broker so it needs one too (`rigcontrol-dashboard`, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.md), step 4). paste [mosquitto-client-cert.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) once in the parent folder of mosquitto, it writes `mosquitto-client-cert.sh` in the current folder ([advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.md), step 1), then create the worker's client certificate from there, replace `WORKER_NAME` with the worker's hostname, one certificate per worker:
 
    ```
    sudo bash mosquitto-client-cert.sh WORKER_NAME
@@ -189,7 +189,7 @@ the broker needs its server certificate first, see [Server certificate](#server-
    sudo systemctl restart rigcontrol-agent.service
    ```
 
-5. when every worker is connected with its certificate, enable `require_certificate true` on the broker ([advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 5). the dashboard server's own client certificate is step 4 of that guide, do it before this
+5. when every worker is connected with its certificate, enable `require_certificate true` on the broker ([advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.md), step 5). the dashboard server's own client certificate is step 4 of that guide, do it before this
 
 ## No TLS
 
@@ -200,7 +200,7 @@ the broker needs its server certificate first, see [Server certificate](#server-
    sudo systemctl restart rigcontrol-agent.service
    ```
 
-3. the broker needs a plain 1883 listener: [no TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.txt)
+3. the broker needs a plain 1883 listener: [no TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-no-tls-setup.md)
 
 ## Recommended
 

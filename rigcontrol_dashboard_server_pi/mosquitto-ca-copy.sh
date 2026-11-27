@@ -1,6 +1,6 @@
 sudo tee mosquitto-ca-copy.sh > /dev/null <<'EOF'
 #!/bin/bash
-# TLS, see mosquitto-tls-setup.txt
+# TLS, see mosquitto-tls-setup.md
 # Copies the broker's public ca.crt to one or more workers: bash mosquitto-ca-copy.sh user@worker [user@worker2 ...]
 # run it from the parent folder of mosquitto, ca.crt is read from ./mosquitto/config/certs
 # Run it as your normal user (not sudo) so your ssh keys are used. Installs /etc/rigcontrol/ca.crt on each worker.
@@ -12,7 +12,7 @@ if [ $# -lt 1 ]; then
 fi
 CERT_DIR="${CERT_DIR:-$PWD/mosquitto/config/certs}"
 if [ ! -f "$CERT_DIR/ca.crt" ]; then
-    echo "$CERT_DIR/ca.crt not found (see mosquitto-tls-setup.txt step 1)"
+    echo "$CERT_DIR/ca.crt not found (see mosquitto-tls-setup.md step 1)"
     exit 1
 fi
 for TARGET in "$@"; do

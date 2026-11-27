@@ -1,6 +1,6 @@
 sudo tee mosquitto-client-cert-copy.sh > /dev/null <<'EOF'
 #!/bin/bash
-# advanced TLS, see mosquitto-tls-advanced.txt
+# advanced TLS, see mosquitto-tls-advanced.md
 # Copies a worker's client certificate pair to the worker: bash mosquitto-client-cert-copy.sh <name> [user@worker]
 # run it from the parent folder of mosquitto, certificates are read from ./mosquitto/config/certs/clients
 # <name> = the name used with mosquitto-client-cert.sh (the worker hostname). [user@worker] defaults to $USER@<name>.

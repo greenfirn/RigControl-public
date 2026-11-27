@@ -1,6 +1,6 @@
 sudo tee mosquitto-server-cert.sh > /dev/null <<'EOF'
 #!/bin/bash
-# TLS, see mosquitto-tls-setup.txt
+# TLS, see mosquitto-tls-setup.md
 # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <dashboard-server-ip> [more ips or hostnames]
 # run it from the parent folder of mosquitto, certificates go to ./mosquitto/config/certs
 # <dashboard-server-ip> = the ip workers use to reach the broker, 127.0.0.1 is always added. Output: ca.crt ca.key server.crt server.key
