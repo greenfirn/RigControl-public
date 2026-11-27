@@ -43,29 +43,28 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
 
 ## Server certificate
 
-1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. paste this once, it writes `mosquitto-server-cert.sh` in the current folder:
+1. create the server certificate on the server (skip if already done during the server setup, details: [basic TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-setup.txt), steps 1-2). server certs are the broker's identity, workers use them to check they are talking to the right broker. paste this once in the parent folder of mosquitto, it writes `mosquitto-server-cert.sh` in the current folder:
 
    ```
    sudo tee mosquitto-server-cert.sh > /dev/null <<'EOF'
    #!/bin/bash
    # TLS, see mosquitto-tls-setup.txt
-   # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <root-path> <dashboard-server-ip> [more ips or hostnames]
-   # <root-path> = the folder that holds mosquitto/ (e.g. ~/ha-docker), certificates go to <root-path>/mosquitto/config/certs
+   # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <dashboard-server-ip> [more ips or hostnames]
+   # run it from the parent folder of mosquitto, certificates go to ./mosquitto/config/certs
    # <dashboard-server-ip> = the ip workers use to reach the broker, 127.0.0.1 is always added. Output: ca.crt ca.key server.crt server.key
-   # CERT_DIR=/path/to/certs overrides the certificate folder (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-server-cert.sh . <ip>)
+   # CERT_DIR=/path/to/certs overrides the certificate folder (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-server-cert.sh <ip>)
    set -e
-   if [ $# -lt 2 ]; then
-       echo "usage: sudo $0 <root-path> <dashboard-server-ip> [more ips or hostnames]   (e.g. ~/ha-docker 10.10.0.10)"
+   if [ $# -lt 1 ]; then
+       echo "usage: sudo $0 <dashboard-server-ip> [more ips or hostnames]   (run from the parent folder of mosquitto)"
        exit 1
    fi
-   ROOT="$1"
-   IP="$2"
+   IP="$1"
    SAN="IP:$IP,IP:127.0.0.1"
-   shift 2
+   shift
    for A in "$@"; do
        if [[ "$A" =~ ^[0-9.]+$ ]]; then SAN="$SAN,IP:$A"; else SAN="$SAN,DNS:$A"; fi
    done
-   CERT_DIR="${CERT_DIR:-$ROOT/mosquitto/config/certs}"
+   CERT_DIR="${CERT_DIR:-$PWD/mosquitto/config/certs}"
    if [ -f "$CERT_DIR/ca.key" ] || [ -f "$CERT_DIR/server.crt" ]; then
        echo "certificates already exist in $CERT_DIR, not overwriting (workers would need the new ca.crt). remove the files first to recreate them"
        exit 1
@@ -85,11 +84,11 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
    sudo chmod +x mosquitto-server-cert.sh
    ```
 
-   then run it with the root path and the ip of your dashboard server (extra ips or hostnames can follow) and restart the broker:
+   then run it from the parent folder of mosquitto, with the ip of your dashboard server (extra ips or hostnames can follow), and restart the broker:
 
    ```
-   sudo bash mosquitto-server-cert.sh ~/ha-docker 10.10.0.10
-   cd ~/ha-docker && sudo docker compose up -d mosquitto
+   sudo bash mosquitto-server-cert.sh 10.10.0.10
+   sudo docker compose up -d mosquitto
    ```
 
    (windows server: [Windows basic TLS guide](../rigcontrol_dashboard_server_windows/mosquitto-tls-setup.txt))
@@ -132,10 +131,10 @@ the broker needs its server certificate first, see [Server certificate](#server-
 
 ## Basic TLS
 
-1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on each worker. first write the helper script once (paste the contents of [mosquitto-ca-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-ca-copy.sh), it writes `mosquitto-ca-copy.sh` in the current folder), then run it as your normal user (no sudo) with one or more worker logins:
+1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on each worker. first write the helper script once (paste the contents of [mosquitto-ca-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-ca-copy.sh), it writes `mosquitto-ca-copy.sh` in the current folder), then run it as your normal user (no sudo) from the parent folder of mosquitto, with one or more worker logins:
 
    ```
-   bash mosquitto-ca-copy.sh ~/ha-docker user@WORKER [user@WORKER2 ...]
+   bash mosquitto-ca-copy.sh user@WORKER [user@WORKER2 ...]
    ```
 
    (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
@@ -150,16 +149,16 @@ the broker needs its server certificate first, see [Server certificate](#server-
 
 ## Advanced TLS
 
-1. client certs are separate from the server certs, they let the broker check who is connecting. each worker gets one, the dashboard server also connects to the broker so it needs one too (`rigcontrol-dashboard`, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 4). on the server create the worker's client certificate, `WORKER_NAME` = the worker's hostname, one per worker. needs the helper script [mosquitto-client-cert.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) in `~/ha-docker` ([advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1):
+1. client certs are separate from the server certs, they let the broker check who is connecting. each worker gets one, the dashboard server also connects to the broker so it needs one too (`rigcontrol-dashboard`, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 4). on the server create the worker's client certificate with the helper script [mosquitto-client-cert.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) (paste it once like the server certificate script, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1). run it from the parent folder of mosquitto, replace `WORKER_NAME` with the worker's hostname, one certificate per worker:
 
    ```
-   sudo bash mosquitto-client-cert.sh ~/ha-docker WORKER_NAME
+   sudo bash mosquitto-client-cert.sh WORKER_NAME
    ```
 
-2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. first write the helper script once (paste the contents of [mosquitto-client-cert-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert-copy.sh), it writes `mosquitto-client-cert-copy.sh` in the current folder), then run it as your normal user (no sudo), replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
+2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. first write the helper script once (paste the contents of [mosquitto-client-cert-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert-copy.sh), it writes `mosquitto-client-cert-copy.sh` in the current folder), then run it as your normal user (no sudo) from the parent folder of mosquitto, replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
 
    ```
-   bash mosquitto-client-cert-copy.sh ~/ha-docker WORKER_NAME user@WORKER
+   bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
    ```
 
    from a windows pc (certificates in `C:\temp\clients`) use [copy-client-cert.bat](ubuntu/copy-client-cert.bat) instead:

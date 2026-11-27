@@ -10,7 +10,7 @@ install openssl if missing (skip if 'openssl version' works):
 
 openssl version || (sudo apt update && sudo apt install -y openssl)
 
-1. create the certificates in ~/ha-docker/mosquitto/config/certs (shortcut: the helper script mosquitto-server-cert.sh from this folder, paste it once, then: sudo bash mosquitto-server-cert.sh ~/ha-docker 10.10.0.10. or run the commands below by hand)
+1. create the certificates in mosquitto/config/certs (shortcut: the helper script mosquitto-server-cert.sh from this folder, paste it once in the parent folder of mosquitto and run it from there: sudo bash mosquitto-server-cert.sh 10.10.0.10. or run the commands below by hand)
    (san.ext lists every address a client may use: the broker ip, 127.0.0.1 for the server on the same pi, and a hostname if you use one: add ,DNS:yourhost)
 
 sudo mkdir -p ~/ha-docker/mosquitto/config/certs && cd ~/ha-docker/mosquitto/config/certs
@@ -52,7 +52,7 @@ MQTT_TLS_INSECURE=true
 
 6. verified TLS (stage B), when stage A works: copy the broker's ca.crt to /etc/rigcontrol/ca.crt on each worker once (the install scripts never overwrite it):
 
-# or with the helper script mosquitto-ca-copy.sh (paste it once like mosquitto-client-cert.sh): bash mosquitto-ca-copy.sh ~/ha-docker user@WORKER [user@WORKER2 ...]
+# or with the helper script mosquitto-ca-copy.sh (paste it once like mosquitto-client-cert.sh): bash mosquitto-ca-copy.sh user@WORKER [user@WORKER2 ...]
 # run on the broker pi, once per worker (replace user@WORKER with the worker login)
 scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
 ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt"
