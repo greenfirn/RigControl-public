@@ -4,6 +4,7 @@
 
 - [Server certificate](#server-certificate)
 - [Agent setup ( Get worker connected first )](#agent-setup--get-worker-connected-first-)
+- [Recommended](#recommended)
 - [Basic TLS](#basic-tls)
 - [Advanced TLS](#advanced-tls)
 - [No TLS](#no-tls)
