@@ -116,11 +116,11 @@ the broker needs its server certificate first, see [Server certificate](#server-
 
 ## Basic TLS
 
-1. copy the broker's `ca.crt` (public) from the server's certificate folder (`~/ha-docker/mosquitto/config/certs/`) to `/etc/rigcontrol/ca.crt` on each worker. run on the server for every worker, replace `user@WORKER` with the worker login:
+1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on each worker. first write the helper script once (paste the contents of [mosquitto-ca-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-ca-copy.sh), it writes `~/ha-docker/mosquitto-ca-copy.sh`), then run it as your normal user (no sudo) with one or more worker logins:
 
    ```
-   scp ~/ha-docker/mosquitto/config/certs/ca.crt user@WORKER:/tmp/ca.crt
-   ssh -t user@WORKER "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/ca.crt /etc/rigcontrol/ca.crt"
+   cd ~/ha-docker
+   bash mosquitto-ca-copy.sh user@WORKER [user@WORKER2 ...]
    ```
 
    (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
