@@ -18,7 +18,6 @@ this is the optional plain setup: port 1883, no certificates, only the `BROKER_U
    EOF
    ```
 
-   if a conf.d/`tls.conf` exists from an earlier TLS setup, remove or rename it (it would also open 8883).
 
 2. password file (skip if `~/rigcontrol-server/mosquitto/config/passwd` already exists)
 
