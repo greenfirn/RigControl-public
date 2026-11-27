@@ -1,4 +1,4 @@
-sudo tee ~/ha-docker/mosquitto-client-cert-copy.sh > /dev/null <<'EOF'
+sudo tee mosquitto-client-cert-copy.sh > /dev/null <<'EOF'
 #!/bin/bash
 # advanced TLS, see mosquitto-tls-advanced.txt
 # Copies a worker's client certificate pair to the worker: bash mosquitto-client-cert-copy.sh <root-path> <name> [user@worker]
@@ -24,4 +24,4 @@ scp "$OUT/$NAME.crt" "$OUT/$NAME.key" "$TARGET:/tmp/"
 ssh -t "$TARGET" "sudo mkdir -p /etc/rigcontrol && sudo mv /tmp/$NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/$NAME.key /etc/rigcontrol/client.key && sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key"
 echo "copied $NAME to $TARGET:/etc/rigcontrol/ (client.crt, client.key)"
 EOF
-sudo chmod +x ~/ha-docker/mosquitto-client-cert-copy.sh
+sudo chmod +x mosquitto-client-cert-copy.sh

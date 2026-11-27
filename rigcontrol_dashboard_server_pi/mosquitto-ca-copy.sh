@@ -1,4 +1,4 @@
-sudo tee ~/ha-docker/mosquitto-ca-copy.sh > /dev/null <<'EOF'
+sudo tee mosquitto-ca-copy.sh > /dev/null <<'EOF'
 #!/bin/bash
 # TLS, see mosquitto-tls-setup.txt
 # Copies the broker's public ca.crt to one or more workers: bash mosquitto-ca-copy.sh <root-path> user@worker [user@worker2 ...]
@@ -23,4 +23,4 @@ for TARGET in "$@"; do
     echo "copied ca.crt to $TARGET:/etc/rigcontrol/ca.crt"
 done
 EOF
-sudo chmod +x ~/ha-docker/mosquitto-ca-copy.sh
+sudo chmod +x mosquitto-ca-copy.sh

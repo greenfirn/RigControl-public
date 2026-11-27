@@ -1,4 +1,4 @@
-sudo tee ~/ha-docker/mosquitto-server-cert.sh > /dev/null <<'EOF'
+sudo tee mosquitto-server-cert.sh > /dev/null <<'EOF'
 #!/bin/bash
 # TLS, see mosquitto-tls-setup.txt
 # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <root-path> <dashboard-server-ip> [more ips or hostnames]
@@ -34,4 +34,4 @@ chown 1883:1883 server.key server.crt ca.crt 2>/dev/null || echo "note: chown 18
 chmod 640 server.key
 echo "created certificates for $SAN in $CERT_DIR (keep ca.key private, only ca.crt goes to workers)"
 EOF
-sudo chmod +x ~/ha-docker/mosquitto-server-cert.sh
+sudo chmod +x mosquitto-server-cert.sh
