@@ -19,20 +19,7 @@ basic TLS: the clients verify the broker (`ca.crt`). advanced: the broker also r
    bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
    ```
 
-   (helper script [`mosquitto-client-cert-copy.sh`](mosquitto-client-cert-copy.sh): paste it once in the same parent folder of mosquitto like step 1, run it from there. or run the commands below by hand)
-
-   ```
-   scp ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt ~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key user@WORKER:/tmp/
-   ssh -t user@WORKER "sudo mv /tmp/WORKER_NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/WORKER_NAME.key /etc/rigcontrol/client.key && sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key"
-   ```
-
-   or pull the pair from the worker instead (run on the worker; pi login user@pi5-ubuntu):
-
-   ```
-   scp user@pi5-ubuntu:~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.crt user@pi5-ubuntu:~/ha-docker/mosquitto/config/certs/clients/WORKER_NAME.key /tmp/
-   sudo mv /tmp/WORKER_NAME.crt /etc/rigcontrol/client.crt && sudo mv /tmp/WORKER_NAME.key /etc/rigcontrol/client.key
-   sudo chown root:root /etc/rigcontrol/client.* && sudo chmod 600 /etc/rigcontrol/client.key
-   ```
+   (helper script [`mosquitto-client-cert-copy.sh`](mosquitto-client-cert-copy.sh): paste it once in the same parent folder of mosquitto like step 1, run it from there)
 
 3. worker config: `/etc/rigcontrol/rigcontrol-agent.conf` (the watchdog reads the same file), then restart the agent
 
