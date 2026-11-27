@@ -84,7 +84,7 @@ Value meaning on the dashboard: `0` = intentionally not read (passthrough / `BLO
    sudo chmod +x mosquitto-server-cert.sh
    ```
 
-   then run it from the parent folder of mosquitto, with the ip of your dashboard server (extra ips or hostnames can follow), and restart the broker:
+   then run it from there with the ip of your dashboard server (extra ips or hostnames can follow), and restart the broker:
 
    ```
    sudo bash mosquitto-server-cert.sh 10.10.0.10
@@ -131,13 +131,13 @@ the broker needs its server certificate first, see [Server certificate](#server-
 
 ## Basic TLS
 
-1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on each worker. first write the helper script once (paste the contents of [mosquitto-ca-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-ca-copy.sh), it writes `mosquitto-ca-copy.sh` in the current folder), then run it as your normal user (no sudo) from the parent folder of mosquitto, with one or more worker logins:
+1. copy the broker's `ca.crt` (public) to `/etc/rigcontrol/ca.crt` on each worker. paste [mosquitto-ca-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-ca-copy.sh) once in the parent folder of mosquitto, it writes `mosquitto-ca-copy.sh` in the current folder, then run it from there as your normal user (no sudo), with one or more worker logins:
 
    ```
    bash mosquitto-ca-copy.sh user@WORKER [user@WORKER2 ...]
    ```
 
-   (windows server: the folder is `C:\mosquitto-certs\`, run the same commands in Git Bash with `/c/mosquitto-certs/ca.crt`. a windows worker uses `C:\rigcontrol\ca.crt`)
+   (windows server: there is no mosquitto folder to run from, the certificates are in `C:\mosquitto-certs\`. in Git Bash run `CERT_DIR=/c/mosquitto-certs bash mosquitto-ca-copy.sh user@WORKER`. a windows worker uses `C:\rigcontrol\ca.crt`)
 
 2. in `/etc/rigcontrol/rigcontrol-agent.conf` on the worker set `MQTT_TLS_INSECURE=0` and uncomment `#MQTT_CA_FILE=/etc/rigcontrol/ca.crt` (or `#MQTT_CA_FILE=C:\rigcontrol\ca.crt` in `C:\rigcontrol\rigcontrol_agent.conf` on a windows worker)
 
@@ -149,13 +149,13 @@ the broker needs its server certificate first, see [Server certificate](#server-
 
 ## Advanced TLS
 
-1. client certs are separate from the server certs, they let the broker check who is connecting. each worker gets one, the dashboard server also connects to the broker so it needs one too (`rigcontrol-dashboard`, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 4). on the server create the worker's client certificate with the helper script [mosquitto-client-cert.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) (paste it once like the server certificate script, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1). run it from the parent folder of mosquitto, replace `WORKER_NAME` with the worker's hostname, one certificate per worker:
+1. client certs are separate from the server certs, they let the broker check who is connecting. each worker gets one, the dashboard server also connects to the broker so it needs one too (`rigcontrol-dashboard`, [advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 4). paste [mosquitto-client-cert.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert.sh) once in the parent folder of mosquitto, it writes `mosquitto-client-cert.sh` in the current folder ([advanced TLS guide](../rigcontrol_dashboard_server_pi/mosquitto-tls-advanced.txt), step 1), then create the worker's client certificate from there, replace `WORKER_NAME` with the worker's hostname, one certificate per worker:
 
    ```
    sudo bash mosquitto-client-cert.sh WORKER_NAME
    ```
 
-2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. first write the helper script once (paste the contents of [mosquitto-client-cert-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert-copy.sh), it writes `mosquitto-client-cert-copy.sh` in the current folder), then run it as your normal user (no sudo) from the parent folder of mosquitto, replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
+2. copy the worker's `client.crt` and `client.key` to `/etc/rigcontrol/` on that worker. paste [mosquitto-client-cert-copy.sh](../rigcontrol_dashboard_server_pi/mosquitto-client-cert-copy.sh) once in the parent folder of mosquitto, it writes `mosquitto-client-cert-copy.sh` in the current folder, then run it from there as your normal user (no sudo), replace `WORKER_NAME` with the certificate name and `user@WORKER` with the worker login:
 
    ```
    bash mosquitto-client-cert-copy.sh WORKER_NAME user@WORKER
