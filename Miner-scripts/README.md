@@ -1,10 +1,8 @@
-> **WARNING - for testing / experimental purposes only.** OctaSpace gives a clear warning about mining outside of its own idle mining platform ([Idle jobs](https://docs.octa.space/idle-jobs), see "Do not run workloads outside idle jobs"). A miner or other heavy workload started on a node any other way keeps running during a rental and takes the GPU, CPU or memory the renter paid for, and a node caught doing this can be taken off the marketplace. Use at your own risk.
-
 [Get started](../README.md#get-started)
 
 # Miner-scripts
 
-> ⚠️ **Use extreme caution with any custom scripts — you're risking your host or account being banned.** Test thoroughly before relying on this... not a good option for VastAI (CPU only) ... keep in mind power limit while idle mining will be what is shown in marketplace, so use locked core to limit power, Clore uses oc profiles that can't be over writen so not best if switching between mining very different coins
+> ⚠️ **For testing / experimental purposes only. Use extreme caution with any custom scripts — you're risking your host or account being banned.** OctaSpace gives a clear warning about mining outside of its own idle mining platform ([Idle jobs](https://docs.octa.space/idle-jobs), see "Do not run workloads outside idle jobs"): a miner started any other way keeps running during a rental and takes the GPU, CPU or memory the renter paid for, and a node caught doing this can be taken off the marketplace. Test thoroughly before relying on this... not a good option for VastAI (CPU only) ... keep in mind power limit while idle mining will be what is shown in marketplace, so use locked core to limit power, Clore uses oc profiles that can't be over writen so not best if switching between mining very different coins
 
 ---
 
