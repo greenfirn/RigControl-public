@@ -167,7 +167,7 @@ plain MQTT on port 1883, no certificates, only the user and password. everything
 - remote: `https://YOUR_DOMAIN/dashboard/` (Caddy, Let's Encrypt, basic auth, forward router ports 80 and 443 to the pi)
 - encryption ends at Caddy: the dashboard app (`8765`) listens on `127.0.0.1` only (`API_BIND=127.0.0.1` in `.env`), so the hop from Caddy to the app stays inside the pi and never touches the network. `API_PORT` must match `reverse_proxy 127.0.0.1:8765` in `caddy/Caddyfile`. with `API_BIND=0.0.0.0` that port would also be open on the LAN as plain http
 
-for the browser to show the LAN address as secure, install the broker's `ca.crt` (public) as a trusted root CA on each windows pc. run in cmd on the pc (copies the file from the pi, adds it for your user only, no admin needed, then deletes the file: windows keeps its own copy in the certificate store), then restart the browser:
+for the browser to show the LAN address as secure, install the broker's `ca.crt` (public) as a trusted root CA for any browser accessing the dashboard (windows commands below, chrome and edge use the windows certificate store). run in cmd on the pc (copies the file from the pi, adds it for your user only, no admin needed, then deletes the file: windows keeps its own copy in the certificate store), then restart the browser:
 
 ```
 scp user@10.10.0.10:~/rigcontrol-server/mosquitto/config/certs/ca.crt %USERPROFILE%\ca.crt
