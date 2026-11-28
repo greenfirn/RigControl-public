@@ -116,13 +116,13 @@ encrypted MQTT on port 8883 with the broker's own certificate. `10.10.0.10` belo
 
 the dashboard server and the workers verify the broker certificate with `ca.crt`.
 
-1. in `~/rigcontrol-server/.env` set `MQTT_TLS_INSECURE=false` and uncomment `#MQTT_CA_FILE=/mqtt-certs/ca.crt` (docker-compose.yml already mounts the certs folder at `/mqtt-certs`), then recreate the container (a plain restart does not re-read `.env`):
+1. workers first: copy `ca.crt` to each worker and switch its conf to verified TLS ([agent basic TLS](../rigcontrol_agent/README.md#basic-tls))
+
+2. dashboard server: in `~/rigcontrol-server/.env` set `MQTT_TLS_INSECURE=false` and uncomment `#MQTT_CA_FILE=/mqtt-certs/ca.crt` (docker-compose.yml already mounts the certs folder at `/mqtt-certs`), then recreate the container (a plain restart does not re-read `.env`):
 
    ```
    cd ~/rigcontrol-server && sudo docker compose up -d --force-recreate rigcontrol-ws
    ```
-
-2. copy `ca.crt` to each worker and switch it to verified TLS: [agent basic TLS](../rigcontrol_agent/README.md#basic-tls)
 
 3. tests and details: [basic TLS guide](mosquitto-tls-setup.md)
 
