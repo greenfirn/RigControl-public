@@ -2,7 +2,7 @@
 
 # Dashboard server (mosquitto broker, websocket, caddy, duckdns)
 
-[docker-compose.yml](docker-compose.yml) only has the RigControl containers: mosquitto, rigcontrol-ws, caddy, duckdns. Home Assistant, node-red and zigbee2mqtt run from their own compose: [ha-docker](ha-docker/README.md). Caddy's default route still proxies to Home Assistant on `127.0.0.1:8123` (see `caddy/Caddyfile`).
+optional Home Assistant setup (separate docker-compose): [ha-docker](ha-docker/README.md)
 
 ## Guides
 
