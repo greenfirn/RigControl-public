@@ -1,5 +1,23 @@
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 sudo mkdir -v /usr/local/bin/lib
 sudo tee /usr/local/bin/lib/00-get_rig_conf.sh > /dev/null <<'EOF'
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 if [[ "$CFG_FILE" == *.json ]]; then
     RIG_GPU_JSON="$CFG_FILE"
 elif [[ -n "$CFG_FILE" ]]; then
@@ -224,6 +242,15 @@ resolve_url_indexed() {
 }
 EOF
 sudo tee /usr/local/bin/lib/01-miner_install.sh > /dev/null <<'EOF'
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 XMRIG_VERSION=$(get_rig_conf "$MINER_CONF" "XMRIG_VERSION" "0")
 BZMINER_VERSION=$(get_rig_conf "$MINER_CONF" "BZMINER_VERSION" "0")
 WILDRIG_VERSION=$(get_rig_conf "$MINER_CONF" "WILDRIG_VERSION" "0")
@@ -521,6 +548,15 @@ echo ""
 echo "Installation complete!"
 EOF
 sudo tee /usr/local/bin/lib/02-load_configs.sh > /dev/null <<'EOF'
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 get_miner_bin() {
     local name="$1"
     local custom=$(get_rig_conf "CUSTOM_MINER" "0")
@@ -691,6 +727,15 @@ CPU_CONFIG=$(get_rig_conf "CPU_CONFIG" "0")
 CPU=$(get_rig_conf "CPU" "0")
 EOF
 sudo tee /usr/local/bin/lib/03-cpu_threads.sh > /dev/null <<'EOF'
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 TOTAL_THREADS=$(nproc)
 CPU_THREADS=$((TOTAL_THREADS - 1))
 AUTOFILL_CPU=""
@@ -714,6 +759,15 @@ if [[ "$MINER_NAME" == "xmrig" && "$ALGO" == "rx/0" ]]; then
 fi
 EOF
 sudo tee /usr/local/bin/lib/04-algo_config.sh > /dev/null <<'EOF'
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 WARTHOG_TARGET=""
 if [[ "$ALGO" == "warthog" ]]; then
     if (( TOTAL_THREADS >= 32 )); then

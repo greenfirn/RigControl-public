@@ -201,7 +201,7 @@ optional: reach the dashboard from outside your network at `https://YOUR_DOMAIN/
    sudo docker logs --tail 20 caddy
    ```
 
-6. test from outside your network (phone on mobile data, wifi off): `https://yoursubdomain.duckdns.org/dashboard/` asks for the basic auth login, then shows the dashboard in view-only mode. to test caddy from the pi without the router: `curl -sI --resolve yoursubdomain.duckdns.org:443:127.0.0.1 https://yoursubdomain.duckdns.org/dashboard/ | head -3` (expect `401`).
+6. test from outside your network: `https://yoursubdomain.duckdns.org/dashboard/` asks for the basic auth login, then shows the dashboard in view-only mode. to test caddy from the pi without the router: `curl -sI --resolve yoursubdomain.duckdns.org:443:127.0.0.1 https://yoursubdomain.duckdns.org/dashboard/ | head -3` (expect `401`).
 
 ## Web address
 

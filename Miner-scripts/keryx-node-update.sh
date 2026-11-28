@@ -1,5 +1,23 @@
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 sudo tee /usr/local/bin/keryx-node-update.sh > /dev/null <<'EOF'
 #!/bin/bash
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 set -Eeuo pipefail
 
 VERSION="v1.5.8-PoM"

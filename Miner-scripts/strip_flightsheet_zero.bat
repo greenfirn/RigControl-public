@@ -1,4 +1,13 @@
 @echo off
+REM ================================================================================
+REM WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+REM OctaSpace gives a clear warning about mining outside of its own idle mining
+REM platform (idle jobs). A miner or other heavy workload started on a node any
+REM other way keeps running during a rental and takes the GPU, CPU or memory the
+REM renter paid for, and a node caught doing this can be taken off the marketplace.
+REM https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+REM Use at your own risk.
+REM ================================================================================
 setlocal
 title Strip Flightsheet '0' Column
 set DB_PATH=%~dp0rigcloud_flightsheets.db

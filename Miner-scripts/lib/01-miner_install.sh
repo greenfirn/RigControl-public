@@ -1,3 +1,12 @@
+################################################################################
+# WARNING - FOR TESTING / EXPERIMENTAL PURPOSES ONLY
+# OctaSpace gives a clear warning about mining outside of its own idle mining
+# platform (idle jobs). A miner or other heavy workload started on a node any
+# other way keeps running during a rental and takes the GPU, CPU or memory the
+# renter paid for, and a node caught doing this can be taken off the marketplace.
+# https://docs.octa.space/idle-jobs  (section: Do not run workloads outside idle jobs)
+# Use at your own risk.
+################################################################################
 XMRIG_VERSION=$(get_rig_conf "$MINER_CONF" "XMRIG_VERSION" "0")
 BZMINER_VERSION=$(get_rig_conf "$MINER_CONF" "BZMINER_VERSION" "0")
 WILDRIG_VERSION=$(get_rig_conf "$MINER_CONF" "WILDRIG_VERSION" "0")

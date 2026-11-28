@@ -1,3 +1,5 @@
+> **WARNING - for testing / experimental purposes only.** OctaSpace gives a clear warning about mining outside of its own idle mining platform ([Idle jobs](https://docs.octa.space/idle-jobs), see "Do not run workloads outside idle jobs"). A miner or other heavy workload started on a node any other way keeps running during a rental and takes the GPU, CPU or memory the renter paid for, and a node caught doing this can be taken off the marketplace. Use at your own risk.
+
 [Get started](../README.md#get-started)
 
 # Miner-scripts
