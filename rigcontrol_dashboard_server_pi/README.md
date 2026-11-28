@@ -165,7 +165,7 @@ plain MQTT on port 1883, no certificates, only the user and password. everything
 
 - LAN: `https://10.10.0.10:8081/dashboard/` (use the dashboard ip, a hostname shows a certificate warning)
 - remote: `https://YOUR_DOMAIN/dashboard/` (Caddy, Let's Encrypt, basic auth, forward router ports 80 and 443 to the pi)
-- the api itself (`8765`) is plain http: `.env` has `API_BIND=127.0.0.1` so only Caddy can reach it. `API_PORT` must match `reverse_proxy 127.0.0.1:8765` in `caddy/Caddyfile`
+- encryption ends at Caddy: the dashboard app (`8765`) listens on `127.0.0.1` only (`API_BIND=127.0.0.1` in `.env`), so the hop from Caddy to the app stays inside the pi and never touches the network. `API_PORT` must match `reverse_proxy 127.0.0.1:8765` in `caddy/Caddyfile`. with `API_BIND=0.0.0.0` that port would also be open on the LAN as plain http
 
 for the browser to show the LAN address as secure, install the broker's `ca.crt` (public) as a trusted root CA on each windows pc. run in cmd on the pc (copies the file from the pi, adds it for your user only, no admin needed, then deletes the file: windows keeps its own copy in the certificate store), then restart the browser:
 
