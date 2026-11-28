@@ -118,6 +118,8 @@ the dashboard server and the workers verify the broker certificate with `ca.crt`
 
 1. workers first: copy `ca.crt` to each worker and switch its conf to verified TLS ([agent basic TLS](../rigcontrol_agent/README.md#basic-tls))
 
+   note: if unsure, or on a first-time setup, make the worker changes from a ssh session on the worker (not from the dashboard), a wrong setting can easily lose its connection to the dashboard.
+
 2. dashboard server: in `~/rigcontrol-server/.env` set `MQTT_TLS_INSECURE=false` and uncomment `#MQTT_CA_FILE=/mqtt-certs/ca.crt` (docker-compose.yml already mounts the certs folder at `/mqtt-certs`), then recreate the container (a plain restart does not re-read `.env`):
 
    ```
