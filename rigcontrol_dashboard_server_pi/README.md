@@ -10,8 +10,10 @@ optional Home Assistant setup (separate docker-compose): [ha-docker](ha-docker/R
 - [Basic TLS](#basic-tls)
 - [Advanced TLS](#advanced-tls)
 - [No TLS](#no-tls)
+- [Remote access](#remote-access)
 - [Web address](#web-address)
 - [Update server](#update-server)
+- [Check logs](#check-logs)
 - [Bridge to a windows dashboard server](#bridge-to-a-windows-dashboard-server)
 
 ## Initial setup ( TLS - server cert only )
@@ -33,7 +35,7 @@ encrypted MQTT on port 8883 with the broker's own certificate. `10.10.0.10` belo
 
    the `ha-docker` subfolder is not needed here, it is a separate compose.
 
-3. create `.env` from `.env.example` and set your values: `MQTT_HOST` (the dashboard ip), `MQTT_PASS` (the broker password from step 6), `CADDY_*` and `DUCKDNS_*` (domain, email, basic-auth hash, token, see the comments in the file). the TLS defaults (`MQTT_PORT=8883`, `MQTT_TLS=true`, `MQTT_TLS_INSECURE=true`) are already set.
+3. create `.env` from `.env.example` and set your values: `MQTT_HOST` (the dashboard ip), `MQTT_PASS` (the broker password from step 6), `CADDY_AUTH_HASH` (password hash for the web login, command in [remote access](#remote-access) step 2). the other `CADDY_*` and the `DUCKDNS_*` values are only needed for [remote access](#remote-access), the placeholders are fine for now. the TLS defaults (`MQTT_PORT=8883`, `MQTT_TLS=true`, `MQTT_TLS_INSECURE=true`) are already set.
 
    ```
    cd ~/rigcontrol-server && cp .env.example .env && nano .env
@@ -102,13 +104,15 @@ encrypted MQTT on port 8883 with the broker's own certificate. `10.10.0.10` belo
    sudo chmod 600 ~/rigcontrol-server/mosquitto/config/passwd
    ```
 
-7. start everything and check the broker log (expect `Opening ipv4 listen socket on port 8883`) and the dashboard log (expect `Connecting to 10.10.0.10:8883`):
+7. start the broker, the dashboard server and caddy (caddy is the only way to open the dashboard, the app itself only listens on the pi). check the broker log (expect `Opening ipv4 listen socket on port 8883`) and the dashboard log (expect `Connecting to 10.10.0.10:8883`):
 
    ```
-   cd ~/rigcontrol-server && sudo docker compose up -d --build
+   cd ~/rigcontrol-server && sudo docker compose up -d --build mosquitto rigcontrol-ws caddy
    sudo docker logs --tail 20 mosquitto
    sudo docker logs rigcontrol-ws 2>&1 | grep "Mode="
    ```
+
+   the caddy log may show certificate errors for the placeholder domain until [remote access](#remote-access) is set up, the LAN address still works.
 
 8. open the [dashboard](#web-address) and connect the workers: [agent setup](../rigcontrol_agent/README.md#agent-setup--get-worker-connected-first-) (test mode is the default there too).
 
@@ -163,6 +167,42 @@ client certificates (mutual TLS): the broker only accepts clients that present a
 
 plain MQTT on port 1883, no certificates, only the user and password. everything is sent unencrypted, only use it on a network you trust. steps (broker listener, `.env` with `MQTT_TLS=false` and `MQTT_PORT=1883`, workers): [no TLS guide](mosquitto-no-tls-setup.md), workers: [agent no TLS](../rigcontrol_agent/README.md#no-tls)
 
+## Remote access
+
+optional: reach the dashboard from outside your network at `https://YOUR_DOMAIN/dashboard/` (Caddy, free Let's Encrypt certificate, basic auth login). remote browsers are in [view-only mode](2FA.md) until they unlock with an emailed code. only the dashboard is exposed, never the broker (8883) or the api (8765).
+
+1. duckdns: sign in at duckdns.org, create a subdomain, copy your token.
+
+2. in `~/rigcontrol-server/.env` set:
+
+   ```
+   CADDY_DOMAIN=yoursubdomain.duckdns.org
+   CADDY_TLS_EMAIL=your-email@example.com
+   CADDY_AUTH_USER=admin
+   CADDY_AUTH_HASH=HASH_FROM_THE_COMMAND_BELOW
+   DUCKDNS_TOKEN=YOUR_TOKEN
+   DUCKDNS_SUBDOMAINS=yoursubdomain
+   ```
+
+   create the password hash and paste it as `CADDY_AUTH_HASH`, in `.env` write every `$` of the hash as `$$`:
+
+   ```
+   docker run --rm -it caddy caddy hash-password
+   ```
+
+3. for the emailed unlock code set `GMAIL_USERNAME`, `GMAIL_PASSWORD` (a gmail app password, https://myaccount.google.com/apppasswords) and `EMAIL_RECIPIENTS` in `.env` ([2FA.md](2FA.md)).
+
+4. router: forward TCP ports 80 and 443 to the dashboard ip (Let's Encrypt needs both, see [caddy/Screenshot lets-encrypt-ports.png](caddy/Screenshot%20lets-encrypt-ports.png)). do not forward anything else.
+
+5. start duckdns, restart caddy and the dashboard server with the new values, then check the caddy log for the certificate:
+
+   ```
+   cd ~/rigcontrol-server && sudo docker compose up -d --force-recreate duckdns caddy rigcontrol-ws
+   sudo docker logs --tail 20 caddy
+   ```
+
+6. test from outside your network (phone on mobile data, wifi off): `https://yoursubdomain.duckdns.org/dashboard/` asks for the basic auth login, then shows the dashboard in view-only mode. to test caddy from the pi without the router: `curl -sI --resolve yoursubdomain.duckdns.org:443:127.0.0.1 https://yoursubdomain.duckdns.org/dashboard/ | head -3` (expect `401`).
+
 ## Web address
 
 - LAN: `https://10.10.0.10:8081/dashboard/` (use the dashboard ip, a hostname shows a certificate warning)
@@ -199,6 +239,25 @@ follow logs:
 ```
 docker logs -f rigcontrol-ws
 ```
+
+## Check logs
+
+each container logs separately. `--tail 30` shows the last 30 lines, add `-f` to follow live (ctrl+c to stop). run from any folder:
+
+```
+sudo docker ps --format '{{.Names}}  {{.Status}}'
+sudo docker logs --tail 30 mosquitto
+sudo docker logs --tail 30 rigcontrol-ws
+sudo docker logs --tail 30 caddy
+sudo docker logs --tail 30 duckdns
+```
+
+- `mosquitto` (broker): expect `Opening ipv4 listen socket on port 8883` and `New client connected ... u'admin'` lines as workers connect. `Unable to open pwfile` = missing or unreadable `passwd`, `Unable to load server key file` = certificate file owner/permissions (`sudo chown 1883:1883` the certs), `peer did not return a certificate` = a client without a client certificate while `require_certificate true` is on, `certificate verify failed` / `Protocol error` = TLS mismatch (client set to 1883 or no TLS).
+- `rigcontrol-ws` (dashboard server): `docker logs rigcontrol-ws 2>&1 | grep "Mode="` shows where it connects, expect `Connecting to 10.10.0.10:8883` and `TLS enabled`. `Connection refused` = the broker is down or the wrong host/port in `.env` (run `docker compose` from `~/rigcontrol-server`, then `--force-recreate rigcontrol-ws`).
+- `caddy`: certificate and proxy errors. certificate errors for the placeholder domain are normal until [remote access](#remote-access) is set up. `502` in the browser = the dashboard server is not running.
+- `duckdns`: expect `OK` lines, `KO` = wrong token or subdomain in `.env`.
+
+the agent on a worker logs through its service: `sudo journalctl -u rigcontrol-agent.service -n 30 --no-pager`
 
 ## Bridge to a windows dashboard server
 
