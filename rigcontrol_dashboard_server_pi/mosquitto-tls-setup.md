@@ -5,7 +5,7 @@ TLS on port 8883 is the default. two stages:
 - A. test mode (`MQTT_TLS_INSECURE`): encrypted, the broker certificate is not checked. only the server certificate (step 1) is needed, nothing is copied to the workers. this is what the install scripts and `.env.example` do out of the box.
 - B. verified TLS: copy `ca.crt` to the workers and turn the insecure option off (step 6).
 
-Replace 10.10.0.10 below with the ip agents use to reach the broker.
+Replace 10.10.0.10 below with your dashboard server ip (the broker runs on it).
 
 install openssl if missing (skip if `openssl version` works):
 

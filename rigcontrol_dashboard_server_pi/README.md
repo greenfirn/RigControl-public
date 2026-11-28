@@ -16,7 +16,7 @@ optional Home Assistant setup (separate docker-compose): [ha-docker](ha-docker/R
 
 ## Initial setup ( TLS - server cert only )
 
-encrypted MQTT on port 8883 with the broker's own certificate. the dashboard server and the workers connect in test mode (`MQTT_TLS_INSECURE=1`): encrypted, the broker certificate is not checked, nothing is copied to the workers. verified TLS is the next section.
+encrypted MQTT on port 8883 with the broker's own certificate. `10.10.0.10` below is your dashboard server ip (the broker runs on the same machine), replace it everywhere. the dashboard server and the workers connect in test mode (`MQTT_TLS_INSECURE=1`): encrypted, the broker certificate is not checked, nothing is copied to the workers. verified TLS is the next section.
 
 1. install docker and the compose plugin on the pi (skip if `docker compose version` works):
 
@@ -33,7 +33,7 @@ encrypted MQTT on port 8883 with the broker's own certificate. the dashboard ser
 
    the `ha-docker` subfolder is not needed here, it is a separate compose.
 
-3. create `.env` from `.env.example` and set your values: `MQTT_HOST` (the pi's ip, `10.10.0.10` here), `MQTT_PASS` (the broker password from step 6), `CADDY_*` and `DUCKDNS_*` (domain, email, basic-auth hash, token, see the comments in the file). the TLS defaults (`MQTT_PORT=8883`, `MQTT_TLS=true`, `MQTT_TLS_INSECURE=true`) are already set.
+3. create `.env` from `.env.example` and set your values: `MQTT_HOST` (the dashboard ip), `MQTT_PASS` (the broker password from step 6), `CADDY_*` and `DUCKDNS_*` (domain, email, basic-auth hash, token, see the comments in the file). the TLS defaults (`MQTT_PORT=8883`, `MQTT_TLS=true`, `MQTT_TLS_INSECURE=true`) are already set.
 
    ```
    cd ~/rigcontrol-server && cp .env.example .env && nano .env
@@ -47,7 +47,7 @@ encrypted MQTT on port 8883 with the broker's own certificate. the dashboard ser
    sudo chown user:user *.db
    ```
 
-5. create the server certificate (the broker's identity). paste this once in the parent folder of mosquitto (`~/rigcontrol-server`), it writes `mosquitto-server-cert.sh` in the current folder, then run it with the ip workers use to reach the broker (details: [basic TLS guide](mosquitto-tls-setup.md)):
+5. create the server certificate (the broker's identity). paste this once in the parent folder of mosquitto (`~/rigcontrol-server`), it writes `mosquitto-server-cert.sh` in the current folder, then run it with the dashboard ip (details: [basic TLS guide](mosquitto-tls-setup.md)):
 
    ```
    sudo tee mosquitto-server-cert.sh > /dev/null <<'EOF'
@@ -55,7 +55,7 @@ encrypted MQTT on port 8883 with the broker's own certificate. the dashboard ser
    # TLS, see mosquitto-tls-setup.md
    # Creates the CA and the broker (server) certificate: sudo bash mosquitto-server-cert.sh <dashboard-server-ip> [more ips or hostnames]
    # run it from the parent folder of mosquitto, certificates go to ./mosquitto/config/certs
-   # <dashboard-server-ip> = the ip workers and the dashboard server use to reach the broker. Output: ca.crt ca.key server.crt server.key
+   # <dashboard-server-ip> = the dashboard server ip (the broker runs on it). Output: ca.crt ca.key server.crt server.key
    # CERT_DIR=/path/to/certs overrides the certificate folder (windows git bash: CERT_DIR=/c/mosquitto-certs bash mosquitto-server-cert.sh <ip>)
    set -e
    if [ $# -lt 1 ]; then
@@ -92,7 +92,7 @@ encrypted MQTT on port 8883 with the broker's own certificate. the dashboard ser
    cd ~/rigcontrol-server && sudo bash mosquitto-server-cert.sh 10.10.0.10
    ```
 
-   the certificate only covers the ip you give it, always connect to the broker by that ip. keep `ca.key` on the pi.
+   the certificate only covers the dashboard ip, always connect by that ip (dashboard, workers, browser). keep `ca.key` on the pi.
 
 6. create the mosquitto password file (the broker will not start without it):
 
@@ -163,7 +163,7 @@ plain MQTT on port 1883, no certificates, only the user and password. everything
 
 ## Web address
 
-- LAN: `https://10.10.0.10:8081/dashboard/` (Caddy, TLS with the broker's `server.crt`, use the ip)
+- LAN: `https://10.10.0.10:8081/dashboard/` (use the dashboard ip, a hostname shows a certificate warning)
 - remote: `https://YOUR_DOMAIN/dashboard/` (Caddy, Let's Encrypt, basic auth, forward router ports 80 and 443 to the pi)
 - the api itself (`8765`) is plain http: `.env` has `API_BIND=127.0.0.1` so only Caddy can reach it. `API_PORT` must match `reverse_proxy 127.0.0.1:8765` in `caddy/Caddyfile`
 
