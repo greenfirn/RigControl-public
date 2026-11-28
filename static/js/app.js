@@ -7395,6 +7395,37 @@ function getFlightsheetName() {
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
 }
+let fsCurrentFlightsheetId = "";
+function fsExtractFlightsheetId(rawText) {
+    if (!rawText) return "";
+    const m = String(rawText).match(/"flightsheetID"\s*:\s*"([^"]*)"/);
+    return m ? m[1] : "";
+}
+function fsWithFlightsheetId(body) {
+    return fsCurrentFlightsheetId ? { flightsheetID: fsCurrentFlightsheetId, ...body } : body;
+}
+function fsGenerateFlightsheetId(name, takenIds) {
+    const base = (name || "").trim() || "flightsheet";
+    let id = "";
+    for (let i = 0; i < 50; i++) {
+        id = `${base}-${Math.floor(100000 + Math.random() * 900000)}`;
+        if (!takenIds.has(id)) break;
+    }
+    return id;
+}
+function fsEnsureFlightsheetIdForSave(name) {
+    const otherIds = new Set();
+    for (const f of flightsheets) {
+        if (f.FlightsheetId === name) continue;
+        const id = fsExtractFlightsheetId(f.Value);
+        if (id) otherIds.add(id);
+    }
+    const keep = fsCurrentFlightsheetId
+        && fsCurrentFlightsheetId.startsWith(`${name}-`)
+        && !otherIds.has(fsCurrentFlightsheetId);
+    if (!keep) fsCurrentFlightsheetId = fsGenerateFlightsheetId(name, otherIds);
+    return fsCurrentFlightsheetId;
+}
 function collectFlightsheetEntries() {
     const cmd = fsFinalizeRawForAction().trim();
     if (!cmd) {
@@ -7640,6 +7671,7 @@ function renderFlightsheets() {
             row.classList.add("selected");
             selectedFlightsheetId = fs.FlightsheetId;
             document.getElementById("fs-name").value = fs.FlightsheetId;
+            fsCurrentFlightsheetId = fsExtractFlightsheetId(fs.Value || "");
             document.getElementById("fs-raw").value = fs.Value || "";
             populateFsFieldsFromRaw(fs.Value || "");
             autoResizeFsRaw();
@@ -7853,6 +7885,7 @@ async function saveFlightsheet(flightsheetId, entries) {
 async function saveFlightsheetFromDialog() {
     const flightsheetId = getFlightsheetName();
     try {
+        if (flightsheetId) fsEnsureFlightsheetIdForSave(flightsheetId);
         const entries = collectFlightsheetEntries();
         await saveFlightsheet(flightsheetId, entries);
 		loadFlightsheets();
@@ -8606,7 +8639,7 @@ function buildRigGpuItemObject(values, stash) {
 }
 function buildRigGpuJsonBody(values) {
     const item = buildRigGpuItemObject(values, snapshotFsLiveStash());
-    const body = { items: [item] };
+    const body = fsWithFlightsheetId({ items: [item] });
     return JSON.stringify(body, null, 2);
 }
 function parseNativeRigGpuItemsFromRaw(rawText) {
@@ -9286,7 +9319,7 @@ function buildFsCombinedBlock() {
         const slot = fsDualModeSlots[svc];
         if (!slot) continue;
         const item = buildRigGpuItemObject(slot.values, slot.stash);
-        const body = { items: [item] };
+        const body = fsWithFlightsheetId({ items: [item] });
         const block = fillPlaceholders(fsTemplateForService(svc), {
             RIG_GPU_JSON: JSON.stringify(body, null, 2),
         });
@@ -10199,6 +10232,7 @@ async function deleteFlightsheet() {
         if (selectedFlightsheetId && ids.includes(selectedFlightsheetId)) {
             document.getElementById("fs-name").value = "";
             document.getElementById("fs-raw").value = "";
+            fsCurrentFlightsheetId = "";
             selectedFlightsheetId = null;
         }
         loadFlightsheets();
@@ -10226,6 +10260,7 @@ async function deleteFlightsheet() {
 		loadFlightsheets();
         document.getElementById("fs-name").value = "";
         document.getElementById("fs-raw").value = "";
+        fsCurrentFlightsheetId = "";
         selectedFlightsheetId = null;
         const status = document.getElementById("fs-status");
         if (status) status.textContent = `Deleted "${deletedId}"`;
@@ -14800,6 +14835,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById('btn-cmd-clear').addEventListener('click', handleCmdClearAll);
     document.getElementById('btn-clear-fs').addEventListener('click', function() {
         document.getElementById("fs-raw").value = '';
+        fsCurrentFlightsheetId = "";
         autoResizeFsRaw();
         clearFsFields();
         document.querySelectorAll('.selected').forEach(item => {
