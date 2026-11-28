@@ -33,7 +33,7 @@ sudo cp -a /opt/miners/keryx-miner /opt/miners/custom/keryx-miner
 # Get started
 
 - [rigcontrol_dashboard_server_windows](rigcontrol_dashboard_server_windows)
-- [rigcontrol_dashboard_server_pi](rigcontrol_dashboard_server_pi)
+- [rigcontrol_dashboard_server_pi](rigcontrol_dashboard_server_pi) - raspberry pi, or any docker compatible system
 - [static](static)
 - [rigcontrol_agent](rigcontrol_agent)
 - [Miner-scripts](Miner-scripts)
