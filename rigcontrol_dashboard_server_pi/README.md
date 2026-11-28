@@ -35,6 +35,13 @@ encrypted MQTT on port 8883 with the broker's own certificate. `10.10.0.10` belo
 
    the `ha-docker` subfolder is not needed here, it is a separate compose.
 
+   the web page files (`static`) and the color themes (`themes`) live in the repo root, copy them into `rigcontrol-ws` (run on the pc, in the repo root). the image build needs `static` and `accessKeys.csv` (only used for the optional AWS database, the placeholder file is fine):
+
+   ```
+   scp -r static themes user@PI:~/rigcontrol-server/rigcontrol-ws/
+   ssh user@PI "cd ~/rigcontrol-server/rigcontrol-ws && cp accessKeys.csv.example accessKeys.csv"
+   ```
+
 3. create `.env` from `.env.example` and set your values: `MQTT_HOST` (the dashboard ip), `MQTT_PASS` (the broker password from step 6), `CADDY_AUTH_HASH` (password hash for the web login, command in [remote access](#remote-access--recommended---only-forward-tcp-ports-80-and-443-when-remote-access-is-needed-) step 2). the other `CADDY_*` and the `DUCKDNS_*` values are only needed for [remote access](#remote-access--recommended---only-forward-tcp-ports-80-and-443-when-remote-access-is-needed-), the placeholders are fine for now. the TLS defaults (`MQTT_PORT=8883`, `MQTT_TLS=true`, `MQTT_TLS_INSECURE=true`) are already set.
 
    ```
@@ -224,7 +231,15 @@ the `findstr` line should print `RigControl MQTT CA` (imported ok). to check the
 
 ## Update server
 
-run docker compose from `~/rigcontrol-server`, not from `rigcontrol-ws` (inside that folder it reads the wrong `.env`):
+the web page files are in `~/rigcontrol-server/rigcontrol-ws/static` (`index.html`, `js/app.js`, `css/app.css`, `landing.html`, `config/templates.json`) and are copied into the container image when it is built, so after saving new ones to the server rebuild the container (`themes` is mounted into the container, no rebuild needed). run on the pc, in the repo root:
+
+```
+scp static/index.html user@PI:~/rigcontrol-server/rigcontrol-ws/static/
+scp static/js/app.js user@PI:~/rigcontrol-server/rigcontrol-ws/static/js/
+scp static/css/app.css user@PI:~/rigcontrol-server/rigcontrol-ws/static/css/
+```
+
+(or `scp -r static user@PI:~/rigcontrol-server/rigcontrol-ws/` for all of them, the dashboard server file `rigcontrol_dashboard_server.py` goes in `~/rigcontrol-server/rigcontrol-ws/` the same way). then rebuild and restart. run docker compose from `~/rigcontrol-server`, not from `rigcontrol-ws` (inside that folder it reads the wrong `.env`):
 
 ```
 cd ~/rigcontrol-server
